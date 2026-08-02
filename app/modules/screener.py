@@ -12,6 +12,7 @@ from typing import Optional
 import pandas as pd
 
 from . import reverse_signals
+from .. import notify
 
 # 港股龙头观察池（约 45 只，覆盖科技/金融/消费/能源/医药）
 LEADERS = [
@@ -50,6 +51,26 @@ def _num(v):
         return None
 
 
+def _clean_nums(rows: list) -> list:
+    """把结果中的非有限 float（nan/inf，常由停牌标的除零产生）替换为 None，避免排序/序列化出错。"""
+    for r in rows:
+        for k, v in list(r.items()):
+            if isinstance(v, float) and not math.isfinite(v):
+                r[k] = None
+    return rows
+
+
+def _clean_nan(obj):
+    """递归把任意结构中的非有限 float（nan/inf）替换为 None，避免 JSON 序列化失败。"""
+    if isinstance(obj, dict):
+        return {k: _clean_nan(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_clean_nan(v) for v in obj]
+    if isinstance(obj, float) and not math.isfinite(obj):
+        return None
+    return obj
+
+
 def _batch_snapshot(client, codes):
     parts = []
     for i in range(0, len(codes), 100):
@@ -84,20 +105,25 @@ def _hstech_drop(client, hstech_code: str) -> Optional[float]:
 
 
 def _cash_state(cash_ratio: Optional[float], thresholds: dict, cash_full_stop: bool):
-    """返回 (仓位状态文字, 推送门槛, 是否停推)。"""
+    """返回 (仓位状态文字, 推送门槛, 是否停推)。
+
+    cash_ratio 为占仓比例的**小数**（如 0.21 表示现金占 21%），
+    故阈值用 0.30 / 0.15 比较（不要与百分比整数混淆）。
+    """
     if cash_ratio is None:
         return "中仓(未知)", thresholds["mid"], False
-    if cash_ratio >= 30:
+    if cash_ratio >= 0.30:
         return "轻仓", thresholds["light"], False
-    if cash_ratio >= 15:
+    if cash_ratio >= 0.15:
         return "中仓", thresholds["mid"], False
     # <15% 视为满仓
     return "满仓", thresholds["mid"], cash_full_stop
 
 
 def screen(client, codes: Optional[list] = None, top_n: int = 20,
-           hstech_code: str = "HK.800000", thresholds: Optional[dict] = None,
-           cash_full_stop: bool = True, cash_ratio: Optional[float] = None):
+           hstech_code: str = "HK.800700", thresholds: Optional[dict] = None,
+           cash_full_stop: bool = True, cash_ratio: Optional[float] = None,
+           with_reverse: bool = True):
     """
     买入机会扫描。返回 (dict, error)。
     dict: {results[], cash_ratio, cash_state, push_threshold, stop_push, hstech_drop, count}
@@ -205,44 +231,55 @@ def screen(client, codes: Optional[list] = None, top_n: int = 20,
             "signals": signals,
         })
 
-    results.sort(key=lambda x: x["score"], reverse=True)
+    results = _clean_nums(results)
+    results.sort(key=lambda x: (x["score"] is None, x["score"] or 0), reverse=True)
 
     # 反向信号加权（错杀增强）：仅对基础分靠前的候选拉取南向/回购/新闻三块，
     # 控制 API 调用量；其余候选 reverse=0，不影响排序。
-    REVERSE_CAP = 15
-    top_codes = [r["code"] for r in results[:REVERSE_CAP]]
-    rev_map = {}
-    if top_codes:
-        try:
-            rev_map = reverse_signals.reverse_score_batch(client, top_codes, days=60, num=10)
-        except Exception:  # noqa: BLE001
-            rev_map = {}
-    for r in results[:REVERSE_CAP]:
-        rev, _ = rev_map.get(r["code"], (None, None))
-        if rev:
-            r["reverse"] = rev["score"]
-            r["reverse_signals"] = rev["signals"]
-            r["reverse_details"] = rev["details"]
-        else:
+    # with_reverse=False 时（如定时推送场景）跳过反向调用，控制 API 频率。
+    if with_reverse:
+        REVERSE_CAP = 15
+        top_codes = [r["code"] for r in results[:REVERSE_CAP]]
+        rev_map = {}
+        if top_codes:
+            try:
+                rev_map = reverse_signals.reverse_score_batch(client, top_codes, days=60, num=10)
+            except Exception:  # noqa: BLE001
+                rev_map = {}
+        for r in results[:REVERSE_CAP]:
+            rev, _ = rev_map.get(r["code"], (None, None))
+            if rev:
+                r["reverse"] = rev["score"]
+                r["reverse_signals"] = rev["signals"]
+                r["reverse_details"] = rev["details"]
+            else:
+                r["reverse"] = 0.0
+                r["reverse_signals"] = []
+                r["reverse_details"] = {}
+            r["total_score"] = round(r["score"] + r["reverse"], 1)
+        for r in results[REVERSE_CAP:]:
             r["reverse"] = 0.0
             r["reverse_signals"] = []
             r["reverse_details"] = {}
-        r["total_score"] = round(r["score"] + r["reverse"], 1)
-    for r in results[REVERSE_CAP:]:
-        r["reverse"] = 0.0
-        r["reverse_signals"] = []
-        r["reverse_details"] = {}
-        r["total_score"] = r["score"]
+            r["total_score"] = r["score"]
+    else:
+        for r in results:
+            r["reverse"] = 0.0
+            r["reverse_signals"] = []
+            r["reverse_details"] = {}
+            r["total_score"] = r["score"]
 
     # 按「基础分 + 反向加分」总分重排，使错杀反向信号影响排序
-    results.sort(key=lambda x: x["total_score"], reverse=True)
+    results.sort(key=lambda x: (x["total_score"] is None, x["total_score"] or 0),
+                 reverse=True)
 
     top = results[:top_n]
     # 推送门槛纳入总分：基础分达标 或 反向信号强化后总分达标，均触发买入机会通知。
     # 这样「技术面基础分略低但南向/回购/新闻强烈反向看好」的错杀候选也能进入推送。
     for r in top:
-        r["push"] = (not stop_push) and (r["score"] >= push_th or r["total_score"] >= push_th)
-    return {
+        r["push"] = (not stop_push) and (
+            (r["score"] or 0) >= push_th or (r["total_score"] or 0) >= push_th)
+    return _clean_nan({
         "results": top,
         "cash_ratio": cash_ratio,
         "cash_state": cash_state,
@@ -250,4 +287,61 @@ def screen(client, codes: Optional[list] = None, top_n: int = 20,
         "stop_push": stop_push,
         "hstech_drop": hstech,
         "count": len(top),
-    }, None
+    }), None
+
+
+def _signal_markdown(r: dict, result: dict) -> str:
+    """构建单只 6 策略买入信号的企业微信 markdown（4096 字节保护）。"""
+    cash = result.get("cash_state", "")
+    cash_ratio = result.get("cash_ratio")
+    cr = f"{cash_ratio:.0f}%" if isinstance(cash_ratio, (int, float)) else "—"
+    sigs = "、".join(r.get("signals", [])) or "—"
+    lines = [
+        "🔵 **6大策略买入信号**",
+        f"> {r.get('name', '')}({r.get('code', '')})",
+        f"> 现价: {r.get('price')}  涨跌: {r.get('change_rate')}%",
+        f"> 基础分: {r.get('score') or 0}  反向加分: +{r.get('reverse') or 0}  **总分: {r.get('total_score') or 0}**",
+        f"> 命中: {sigs}",
+        f"> 仓位: {cash}(现金{cr})",
+        "💡 首批建仓≤目标仓位1/3，正股止损参考 -8%",
+    ]
+    text = "\n".join(lines)
+    if len(text.encode("utf-8")) > 4000:
+        text = text[:3900] + "\n…(截断)"
+    return text
+
+
+def run_scheduled_scan(client, codes: Optional[list] = None, webhook: str = "",
+                       hstech_code: str = "HK.800700", cash_full_stop: bool = True,
+                       cooldown_sec: int = 14400, max_push: int = 5, force: bool = False):
+    """交易时段定时扫描：跑全 6 策略，仓位感知 + 指纹去重推送。
+
+    - codes 为空时用 LEADERS 龙头池
+    - stop_push(满仓) 时静默返回，不推送（满仓预警由 monitor 负责，避免重复）
+    - force=True 时忽略冷却立即推送（供手动按钮调用）
+    返回 dict: {scan_type, scanned, pushed, signals, stop_push?, error?, note?}
+    """
+    if not webhook:
+        return {"scan_type": "six_strategy", "scanned": 0, "pushed": 0,
+                "signals": [], "note": "webhook 未配置，跳过推送"}
+    result, err = screen(client, codes=codes, top_n=50, hstech_code=hstech_code,
+                         cash_full_stop=cash_full_stop, with_reverse=False)
+    if err or not result:
+        return {"scan_type": "six_strategy", "scanned": 0, "pushed": 0,
+                "signals": [], "error": err or "no result"}
+    if result.get("stop_push"):
+        return {"scan_type": "six_strategy", "scanned": 0, "pushed": 0,
+                "signals": [], "stop_push": True}
+    eligible = [r for r in result["results"] if r.get("push")]
+    pushed = 0
+    out = []
+    for r in eligible[:max_push]:
+        md = _signal_markdown(r, result)
+        fp = f"six_strategy:{r['code']}"
+        ok = notify.push_wecom(md, webhook) if force else notify.push_if_new(
+            fp, md, webhook, min_interval=cooldown_sec)
+        if ok:
+            pushed += 1
+            out.append({"code": r["code"], "name": r["name"], "score": r["total_score"]})
+    return {"scan_type": "six_strategy", "scanned": len(eligible),
+            "pushed": pushed, "signals": out}

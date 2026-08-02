@@ -25,7 +25,7 @@ TP_LADDER = [
 
 def _classify(name: str, code: str) -> str:
     n = (name or "")
-    if "杠杆" in n or "2X" in n or "3X" in n or "XL" in n.upper():
+    if "杠杆" in n or "2X" in n or "3X" in n or "XL" in n.upper() or "两倍" in n or "三倍" in n:
         return "杠杆ETF"
     if any(k in n for k in ("购", "沽", "牛", "熊", "证", "Call", "Put", "CBBC")):
         return "窝轮"

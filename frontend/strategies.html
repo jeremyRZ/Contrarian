@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>6大策略扫描 · Contrarian 港股错杀猎手</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="app.css" />
+<link rel="icon" href="favicon.ico" />
+</head>
+<body data-page="strategies">
+  <nav class="topnav">
+    <div class="brand"><img src="logo.png" alt="Contrarian" class="logo-img"></div>
+    <div class="links">
+      <a href="index.html" data-page="hunter">错杀猎手</a>
+      <a href="analyze.html" data-page="analyze">单票深度</a>
+      <a href="intraday.html" data-page="intraday">盘中急跌联动</a>
+      <a href="strategies.html" data-page="strategies">6大策略</a>
+      <a href="ipo.html" data-page="ipo">新股打新</a>
+    </div>
+    <div id="conn" class="status bad">检测中…</div>
+  </nav>
+
+  <main class="page">
+    <div class="page-head">
+      <h1>6 大策略规则式扫描</h1>
+      <p>深度超跌反弹 · 放量突破 · 低估值高股息 · 恒科急跌联动 · 恐慌急跌 · 龙头观察池 —— 10 分制综合评分 + 仓位感知推送</p>
+    </div>
+
+    <!-- 仓位状态 -->
+    <section class="card">
+      <div class="card-head">
+        <div class="card-title">仓位与推送门槛 <span class="sub">仓位感知</span></div>
+        <div id="cash_pill" class="pill warn">检测中…</div>
+      </div>
+      <div class="grid2">
+        <div class="kv"><span>仓位状态</span><span id="cash_state">—</span></div>
+        <div class="kv"><span>现金比例</span><span id="cash_ratio">—</span></div>
+        <div class="kv"><span>推送门槛</span><span id="push_th">—</span></div>
+        <div class="kv"><span>满仓停推</span><span id="stop_push">—</span></div>
+        <div class="kv"><span>恒科涨跌%</span><span id="hstech_drop">—</span></div>
+        <div class="kv"><span>候选数量</span><span id="res_count">—</span></div>
+      </div>
+    </section>
+
+    <!-- 扫描控制 -->
+    <section class="card">
+      <div class="card-head">
+        <div class="card-title">扫描控制 <span class="sub">持仓 + 观察池 + 龙头池</span></div>
+        <div>
+          <button class="act" onclick="runScan()">立即扫描</button>
+          <button class="act ghost" onclick="pushNow()" style="margin-left:8px">推送达标信号</button>
+        </div>
+      </div>
+      <div class="hint-bar">
+        「立即扫描」仅刷新本页表格；「推送达标信号」会立即把达标个股（总分 ≥ 门槛）推送到企业微信（忽略冷却），
+        也可由盘中调度在交易时段每 30 分钟自动扫描并推送（指纹去重，最短 4 小时）。
+      </div>
+      <div id="push_msg" class="muted" style="margin-top:10px"></div>
+    </section>
+
+    <!-- 扫描结果 -->
+    <section class="card">
+      <div class="card-head">
+        <div class="card-title">扫描结果 <span class="sub" id="tbl_count">—</span></div>
+        <div class="muted">按「基础分 + 反向加分」总分排序</div>
+      </div>
+      <div id="scan_result" class="muted">点击「立即扫描」开始</div>
+    </section>
+
+    <!-- 微信预览 -->
+    <section class="card">
+      <div class="card-head">
+        <div class="card-title">企业微信推送预览 <span class="sub">达标信号</span></div>
+      </div>
+      <pre id="md_preview" class="muted" style="white-space:pre-wrap;font-family:var(--mono);font-size:12.5px;line-height:1.6;margin:0"></pre>
+    </section>
+
+    <!-- 调度状态 -->
+    <section class="card">
+      <div class="card-head">
+        <div class="card-title">盘中调度状态 <span class="sub" id="sched_window">09:30–16:00</span></div>
+      </div>
+      <div class="grid2">
+        <div class="kv"><span>调度开关</span><span id="st_enabled">—</span></div>
+        <div class="kv"><span>扫描间隔</span><span id="st_interval">—</span></div>
+        <div class="kv"><span>累计扫描(周期)</span><span id="st_runs">—</span></div>
+        <div class="kv"><span>累计推送</span><span id="st_pushes">—</span></div>
+        <div class="kv"><span>6策略扫描次数</span><span id="st_strat_scans">—</span></div>
+        <div class="kv"><span>6策略推送次数</span><span id="st_strat_pushes">—</span></div>
+      </div>
+      <div class="hint-bar" style="margin-top:14px">
+        调度同时运行「急跌联动」与「6 大策略」两类扫描；开关 / 间隔 / 阈值在
+        <a href="intraday.html">盘中急跌联动</a> 页调整。
+      </div>
+    </section>
+  </main>
+
+<script src="app.js"></script>
+<script>
+async function loadScan() {
+  showLoading("正在跑 6 大策略扫描…");
+  try {
+    const r = await fetch("/strategies/scan?top_n=50");
+    const j = await r.json();
+    if (!j.ok) { $("scan_result").innerHTML = '<div class="err">' + (j.error || "扫描失败") + '</div>'; return; }
+    const d = j.data || {};
+    // 仓位状态
+    const cs = d.cash_state || "—";
+    const cp = $("cash_pill");
+    cp.textContent = cs;
+    cp.className = "pill " + (cs.includes("轻") ? "good" : cs.includes("中") ? "warn" : "risk");
+    $("cash_state").textContent = cs;
+    $("cash_ratio").textContent = (d.cash_ratio == null ? "—" : (d.cash_ratio * 100).toFixed(1) + "%");
+    $("push_th").textContent = (d.push_threshold == null ? "—" : d.push_threshold);
+    $("stop_push").textContent = d.stop_push ? "是（满仓暂停）" : "否";
+    $("hstech_drop").textContent = (d.hstech_drop == null ? "—" : (d.hstech_drop >= 0 ? "+" : "") + d.hstech_drop.toFixed(2) + "%");
+    const rows = d.results || [];
+    $("res_count").textContent = rows.length;
+    $("tbl_count").textContent = rows.length + " 只";
+    renderRows(rows);
+    renderPreview(rows.filter(x => x.push));
+  } finally { hideLoading(); }
+}
+
+function renderRows(rows) {
+  const el = $("scan_result");
+  if (!rows.length) { el.innerHTML = '<div class="muted">候选池暂无达标标的，或数据获取失败。</div>'; return; }
+  let html = `<table><thead><tr><th>代码·名称</th><th>现价</th><th>涨跌%</th><th>换手%</th>
+    <th>PE</th><th>52周位%</th><th>基础分</th><th>反向+</th><th>总分</th><th>命中策略</th></tr></thead><tbody>`;
+  rows.forEach(r => {
+    const hit = (r.signals || []).map(s => pill(s, "good")).join(" ");
+    const clsP = r.push ? "good" : "";
+    html += `<tr class="${r.push ? 'row-push' : ''}">
+      <td><span class="stock-link" onclick="openAnalyze('${r.code}')">${r.code}</span>
+          <span class="muted"> ${r.name}</span></td>
+      <td class="mono">${fmt(r.price, 3)}</td>
+      <td class="${cls(r.change_rate)} mono">${fmt(r.change_rate, 2)}</td>
+      <td class="mono">${fmt(r.turnover_rate, 2)}</td>
+      <td class="mono">${fmt(r.pe, 2)}</td>
+      <td class="mono">${fmt(r.week52_position_pct, 1)}</td>
+      <td class="mono">${fmt(r.score, 1)}</td>
+      <td class="mono">+${(r.reverse || 0)}</td>
+      <td class="mono"><b>${fmt(r.total_score, 1)}</b> ${clsP ? pill("达标", "push") : ''}</td>
+      <td>${hit || '—'}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function renderPreview(eligible) {
+  const box = $("md_preview");
+  if (!eligible.length) { box.textContent = "（当前无达标信号）"; return; }
+  const lines = [];
+  eligible.slice(0, 5).forEach(r => {
+    const sigs = (r.signals || []).join("、") || "—";
+    lines.push("🔵 **6大策略买入信号**");
+    lines.push(`> ${r.name}(${r.code})`);
+    lines.push(`> 现价: ${fmt(r.price, 3)}  涨跌: ${fmt(r.change_rate, 2)}%`);
+    lines.push(`> 基础分: ${fmt(r.score, 1)}  反向加分: +${r.reverse || 0}  **总分: ${fmt(r.total_score, 1)}**`);
+    lines.push(`> 命中: ${sigs}`);
+    lines.push("");
+  });
+  box.textContent = lines.join("\n").trim();
+}
+
+async function pushNow() {
+  showLoading("正在推送达标信号到企业微信…");
+  $("push_msg").textContent = "";
+  try {
+    const r = await fetch("/strategies/push", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({force: true})});
+    const j = await r.json();
+    if (!j.ok) { $("push_msg").innerHTML = '<span class="err">' + (j.error || "推送失败") + '</span>'; return; }
+    const d = j.data || {};
+    if (d.stop_push) { $("push_msg").textContent = "满仓状态（现金<15%），已暂停买入推送。"; return; }
+    if (d.note) { $("push_msg").textContent = d.note; return; }
+    const names = (d.signals || []).map(s => `${s.name}(${s.score})`).join("、") || "无";
+    $("push_msg").innerHTML = `<span class="ok">已推送 ${d.pushed} 条（扫描 ${d.scanned} 只达标）：</span> ${names}`;
+  } catch (e) { $("push_msg").innerHTML = '<span class="err">请求异常</span>'; }
+  finally { hideLoading(); loadStatus(); }
+}
+
+async function loadStatus() {
+  try {
+    const r = await fetch("/intraday/status");
+    const j = await r.json();
+    if (!j.ok) return;
+    const s = j.data;
+    $("st_enabled").textContent = s.enabled ? "● 运行中" : "○ 已关闭";
+    $("st_enabled").className = s.enabled ? "ok" : "muted";
+    $("st_interval").textContent = s.interval_min + " 分钟";
+    $("sched_window").textContent = (s.window || "09:30-16:00").replace("-", "–");
+    $("st_runs").textContent = s.runs;
+    $("st_pushes").textContent = s.pushes;
+    $("st_strat_scans").textContent = s.strategy_scans || 0;
+    $("st_strat_pushes").textContent = s.strategy_pushes || 0;
+  } catch (e) { /* ignore */ }
+}
+
+runScan = async function () { await loadScan(); };
+
+loadStatus();
+loadScan();
+setInterval(loadStatus, 30000);
+</script>
+</body>
+</html>

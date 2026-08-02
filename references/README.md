@@ -5,8 +5,11 @@
 前端为 **Apple 风多页面结构**（顶部横向导航、无图标、纯文字），每个功能对应独立 HTML 页面，便于日后各自扩展 JS：
 - **index.html — 错杀猎手**（核心）：合并原「选股扫描」+「错杀猎手」，内设内部分栏「综合选股扫描 / 错杀观察池」。
 - **analyze.html — 单票深度**（核心）：原「单票分析」，作为二级下钻——在错杀猎手列表点击任意股票代码/名称即跳转 `analyze.html?code=` 并自动分析，也可直接输入代码查询。单票深度页集成三块研究数据：**南向资金**（港股通净买入 + 个股持股）、**回购 Timeline**、**相关新闻**，三者并行拉取、各自优雅降级。
-- **risk.html — 风控与预警**（核心）：合并原「持仓风控」+「价格报警」，含持仓监控、价格报警检查与新增报警。
+- **intraday.html — 盘中急跌联动**（核心）：恒生科技指数盘中急跌联动低吸 + 交易时段调度（急跌联动扫描 + 6 大策略扫描并发）。
+- **strategies.html — 6大策略扫描**（核心）：规则式买入机会扫描（深度超跌反弹/放量突破/低估值高股息/恒科急跌联动/恐慌急跌/龙头观察池）+ 10 分制综合评分 + 仓位感知，手动扫描 + 微信推送预览；调度自动推送由 `intraday_scheduler` 统一托管（见 `intraday.html` 调度控制）。
 - **ipo.html — 新股打新**（辅助）：港股打新专用，边缘工具，置于导航末尾不抢占主功能注意力。
+
+> 注：「风控与预警」独立页面（risk.html）已移除；持仓风控（`/monitor`）、价格报警（`/price-alerts`）后端能力保留，并继续由交易时段调度与持仓预警推送使用。
 
 共享资源：`app.css`（Apple 风样式）、`app.js`（通用工具、连接检测、下钻跳转、导航激活态）。
 
@@ -33,6 +36,26 @@ futu:
   acc_id: "你的账户ID"  # 在富途 App 内查看，留空取首个账户
 ```
 
+每日持仓背离报告推送（企业微信群机器人 + 后端内置调度器）：
+```yaml
+wecom:
+  webhook: ""          # 企业微信群机器人 Webhook 地址；留空则推送降级为日志
+schedule:
+  enabled: true        # 每日自动推送开关
+  time: "16:30"        # 推送时间（本地时间，建议收盘后）
+```
+
+盘中「恒科急跌联动」低吸扫描调度（交易时段守护线程）：
+```yaml
+intraday:
+  enabled: true            # 盘中调度总开关
+  interval_min: 30         # 扫描间隔（分钟）
+  start: "09:30"           # 交易时段开始（本地时间 HK）
+  end: "16:00"             # 交易时段结束
+  threshold: -2.0          # 急跌阈值（恒科涨跌%，≤ 此值判定为急跌）
+  hstech_code: "HK.800700" # 恒生科技指数（注意：HK.800000 是恒生指数，非科技指数）
+```
+
 ## 四、启动
 ```bash
 cd hk-stock-platform
@@ -48,9 +71,12 @@ $PY -m uvicorn app.api:app --host 127.0.0.1 --port 8000
 |------|------|------|
 | GET  | /health | 连接健康检查 |
 | GET  | /valuation?code=HK.00700 | 估值分析（可带 financials JSON） |
-| GET  | /screener?top_n=20&codes= | 选股扫描（6 策略 + 仓位感知） |
+| GET  | /screener?top_n=20&codes= | 选股扫描（6 策略 + 仓位感知；恒科联动用 HK.800700） |
+| GET  | /strategies/scan?top_n=50 | 6 策略扫描（持仓 + 观察池 + 龙头池组合），与推送同池，供 strategies.html 手动刷新 |
+| POST | /strategies/push?force=true | 手动触发 6 策略扫描并立即推送达标信号到企业微信（force 忽略冷却） |
 | GET  | /missed-scan?top_n=5&pool=leaders | 错杀观察扫描（Contrarian 核心） |
 | GET  | /monitor | 持仓风控（止损/止盈/技术面 + 企业微信推送） |
+| GET  | /daily-divergence?push=true | 每日持仓资金面背离报告（遍历持仓正股，检测「南向连续减持 + 单日主力净流入但超大单流出 + 15日主力累计净流出」的中短期背离，输出 markdown 并推企业微信；push=false 仅生成不推送） |
 | GET  | /price-alerts | 价格报警检查；POST 增运行时报警 |
 | GET  | /analyze?code=HK.00700 | 单票实时技术面（MA/RSI/量能） |
 | GET  | /buybacks?code=HK.00700 | 个股回购记录（富途 get_corporate_actions_buybacks） |
@@ -62,6 +88,9 @@ $PY -m uvicorn app.api:app --host 127.0.0.1 --port 8000
 | GET  | /dividend?code=HK.00700 | 个股股息率/分红反向信号（第 7 档源数据）：TTM 股息率 + 增派/弃派判定 + 评分（富途快照 `dividend_ratio_ttm`）。 |
 | GET  | /earnings?code=HK.00700 | 个股财报窗口信号（第 8 档源数据）：财报季月份启发式 + 可选东财业绩日历精确窗口 + 评分。 |
 | GET  | /holdings | 持仓中的正股（排除窝轮/杠杆ETF **且自动剔除停牌/无报价/无估值标的**），供单票页快速选择。轻量，不做技术面。可用 `config.yaml` 的 `monitor.holdings_exclude` 列表补充排除。 |
+| GET  | /intraday/scan?push=false&threshold=&codes= | 盘中恒科急跌联动低吸扫描：抓恒生科技指数状态（涨跌%+日内回撤）判定急跌（≤ threshold），汇总候选池（持仓正股 + 本地观察池 + 龙头池，自动剔除窝轮/杠杆ETF/停牌/无报价），对「跟跌」个股做八档反向信号打分并叠加深度超跌/跟跌幅度算出「低吸吸引力评分」，输出候选表 + 企业微信 markdown（4096 字节保护）；push=true 且急跌触发时已配 webhook 则推送（指纹去重，最短 30 分钟）。 |
+| GET  | /intraday/status | 盘中调度器运行状态与配置（不触发扫描）：enabled/running/interval_min/window/threshold/last_run/next_run/runs/pushes。 |
+| POST | /intraday/config | 运行时调度配置：`{action:'enable'\|'interval'\|'threshold', value}`；开关/间隔/阈值就近持久化到 `config.yaml`。 |
 | GET  | /watchlist | 读取用户观察池（存 `watchlist.json`，跨浏览器持久化）。 |
 | POST | /watchlist | 加入/移除观察池：body `{code, name?, action?: 'add'|'remove'}`。 |
 | POST | /ipo | 打新打分（JSON body） |
@@ -91,3 +120,7 @@ $PY -m uvicorn app.api:app --host 127.0.0.1 --port 8000
 - **资金流向（capital_flow，v1.4.0 新增）**：富途 OpenAPI 逐档统计个股大单/超大单资金流向。`distribution`（最近交易时段，单位港元）给出 超大单/大单/中单/小单 的流入、流出与净流入，并汇总 `main_net`(主力=超大+大) 与 `total_net`(全部档合计)；`flow` 给出每日 `super/big/mid/small/main/total` 净流入序列与近 N 日窗口汇总。单票深度页新增「资金流向（大单/超大单）」卡片展示，红涨绿跌（港股习惯）。
 - **南向减持风险聚合（southbound_risk，v1.4.0 新增）**：扫描持仓（已配置交易账户）或龙头观察池，对每只标的新查港股通持股并汇总含 `risk` 的标的（连续减持/骤减反向风险），风控页「南向减持风险预警」卡片统一展示。
 - **新股打新**（港股打新专用 skill 移植）：5 维打分（市场情绪30%/基本面20%/稀缺性23%/估值12%/配售15）+ 一句话说明 + 申购建议；中签率预测具名档位（甲头/甲中/甲大/甲尾/大甲尾；乙头/乙中/乙尾/顶头锤）+ 5 个真实校准案例（蜜雪/茶百道/古茗/巨星传奇/布鲁可）；招股信息完整字段（核心数据速览）；联网获取（新浪 best-effort，失败降级）
+
+- **盘中恒科急跌联动（intraday，v1.8.0 新增）**：恒生科技指数（HK.800700，区别于 HK.800000 恒生指数）盘中急跌（涨跌% ≤ threshold 默认 −2%）时，扫描持仓正股 + 本地观察池 + 龙头池的「跟跌」个股捕捉错杀低吸窗口。`intraday.scan_linkage` 抓指数状态（涨跌%+日内回撤）→ 汇总候选并剔除窝轮/杠杆ETF/停牌/无报价 → 仅对跟跌个股跑八档反向信号打分（`reverse_score_batch`，上限 20 只控 API 量）→ 叠加「深度超跌加成（52 周低位）+ 跟跌幅度加成」算出低吸吸引力评分与操作建议（强/中/弱/观望），生成 4096 字节保护的微信 markdown。`intraday_scheduler` 为交易时段守护线程（周一至周五 09:30–16:00 HK），按 interval_min 扫描、仅在急跌触发时推送（指纹去重，最短 30 分钟），运行时可通过 `/intraday/config` 调整开关/间隔/阈值并持久化。前端独立页 `intraday.html` 展示指数状态卡、调度控制卡（开关/间隔/阈值/立即扫描/统计）与低吸候选表。
+
+- **6 大策略规则式扫描（screener，v1.8.1 接入调度）**：`screener.screen` 实现 skill 的 6 大策略规则筛选（深度超跌反弹 / 放量突破 / 低估值高股息 / 恒科急跌联动 / 恐慌急跌 / 龙头观察池）+ 10 分制综合评分（基础分 + 八档反向信号加分）+ 仓位感知门槛（轻仓 6 分 / 中仓 7 分 / 满仓停推）。恒科联动阈值使用正确的恒生科技指数 HK.800700（修复旧版误用 HK.800000 恒生指数）。`screener.run_scheduled_scan` 复用持仓+观察池+龙头池候选，交易时段每次调度跑全 6 策略并以指纹去重（最短 4 小时）推送企业微信买入信号（`force=True` 供手动 `/strategies/push` 立即推送）。`intraday_scheduler` 现并发运行「急跌联动」与「6 大策略」两类扫描。前端独立页 `strategies.html` 展示仓位状态、扫描结果表（基础分/反向/总分/命中策略）、微信推送预览与调度统计。

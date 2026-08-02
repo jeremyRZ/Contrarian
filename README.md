@@ -49,8 +49,9 @@
 |------|------|
 | 错杀猎手 | 核心。综合选股扫描 + 错杀观察池，输出 TopN 错杀候选（含反向信号分与确信度），支持列表指纹去重推送 |
 | 单票深度 | 输入/点击任意股票代码，下钻分析技术面（MA/RSI/量能）+ 八档反向信号分解图 + 南向/回购/新闻三卡片 + 观察池/预警/自选股操作 |
-| 风控与预警 | 持仓风控（止损/止盈/技术面）+ 价格报警（预警→警告→止损三级）与企业微信推送 |
+| 6大策略 | 规则式买入机会扫描（深度超跌反弹/放量突破/低估值高股息/恒科急跌联动/恐慌急跌/龙头观察池）+ 10 分制综合评分 + 仓位感知推送；独立页手动扫描 + 交易时段调度自动推送 |
 | 新股打新 | 港股打新 5 维打分 + 中签率预测 + 招股信息速览 |
+| 盘中急跌联动 | 恒生科技指数盘中急跌时，扫描持仓/观察池/龙头池的「跟跌」个股，叠加八档反向信号输出低吸吸引力评分；交易时段守护线程按间隔自动扫描并推送企业微信 |
 
 ### 反向信号评分模型（八档，clamp 到 `[-1.0, 10.0]`）
 
@@ -116,6 +117,22 @@ news:
 
 monitor:
   holdings_exclude: ["HK.44165"]  # 手动排除列表（补充自动剔除）
+
+# 每日持仓资金面背离报告推送（企业微信群机器人 + 后端内置调度器）
+wecom:
+  webhook: ""          # 企业微信群机器人 Webhook；留空则推送降级为日志
+schedule:
+  enabled: true        # 每日自动推送开关
+  time: "16:30"        # 推送时间（本地时间，建议收盘后）
+
+# 盘中「恒科急跌联动」低吸扫描调度
+intraday:
+  enabled: true            # 盘中调度总开关
+  interval_min: 30         # 扫描间隔（分钟）
+  start: "09:30"           # 交易时段开始（本地时间 HK）
+  end: "16:00"             # 交易时段结束
+  threshold: -2.0          # 急跌阈值（恒科涨跌%，≤ 此值判定为急跌）
+  hstech_code: "HK.800700" # 恒生科技指数（注意：HK.800000 是恒生指数，非科技指数）
 ```
 
 ---
@@ -135,7 +152,9 @@ Contrarian/
 │   ├── futu_client.py        # 富途 OpenAPI 封装
 │   ├── cache.py              # 5 分钟 TTL 缓存层
 │   ├── notify.py             # 企业微信推送（指纹去重）
+│   ├── intraday_scheduler.py # 盘中扫描调度器（交易时段守护线程）
 │   └── modules/
+│       ├── intraday.py         # ★ 恒科急跌联动低吸扫描（指数判定+反向信号加权）
 │       ├── reverse_signals.py  # ★ 八档反向信号聚合（核心模型）
 │       ├── screener.py         # 综合选股扫描（6 策略）
 │       ├── missed_scan.py      # 错杀观察扫描（Contrarian 核心）
@@ -155,7 +174,8 @@ Contrarian/
 ├── frontend/
 │   ├── index.html            # 错杀猎手
 │   ├── analyze.html          # 单票深度
-│   ├── risk.html             # 风控与预警
+│   ├── intraday.html         # 盘中急跌联动
+│   ├── strategies.html       # 6大策略扫描
 │   ├── ipo.html              # 新股打新
 │   ├── app.css               # Apple 风共享样式
 │   └── app.js                # 通用工具 / 导航 / 下钻
@@ -177,6 +197,7 @@ Contrarian/
 | GET | `/missed-scan` | 错杀观察扫描（核心） |
 | GET | `/analyze?code=HK.00700` | 单票技术面 + 八档反向信号 |
 | GET | `/monitor` | 持仓风控（自动过滤窝轮/杠杆ETF） |
+| GET | `/daily-divergence` | 每日持仓资金面背离报告（推企业微信） |
 | GET/POST | `/price-alerts` | 价格报警检查 / 新增报警 |
 | GET | `/southbound` | 港股通持股（个股或全市场净买额） |
 | GET | `/capital-flow` | 资金流向（大单/超大单） |
@@ -188,6 +209,9 @@ Contrarian/
 | GET | `/holdings` | 持仓正股（已自动剔除停牌/无报价） |
 | GET/POST | `/watchlist` | 本地观察池读取 / 增删 |
 | GET | `/futu-watchlist` | 富途自选股（只读） |
+| GET | `/intraday/scan` | 盘中恒科急跌联动低吸扫描（手动触发 + 可选推送） |
+| GET | `/intraday/status` | 盘中调度器运行状态与配置 |
+| POST | `/intraday/config` | 运行时调度配置（开关 / 间隔 / 阈值，持久化） |
 | GET/POST | `/ipo` · `/ipo/meta` · `/ipo/auto` | 新股打新 |
 
 完整字段说明与信号权重细节见 **[references/README.md](references/README.md)**。
