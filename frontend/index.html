@@ -8,11 +8,12 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="app.css" />
+<link rel="icon" href="favicon.ico" />
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 </head>
 <body data-page="hunter">
   <nav class="topnav">
-    <div class="brand">Contrarian<small>港股错杀猎手</small></div>
+    <div class="brand"><img src="logo.png" alt="Contrarian" class="logo-img"></div>
     <div class="links">
       <a href="index.html" data-page="hunter">错杀猎手</a>
       <a href="analyze.html" data-page="analyze">单票深度</a>
@@ -84,6 +85,8 @@ async function runScreener() {
   const top = $('s_top').value;
   let url = '/screener?top_n=' + top;
   if (codes) url += '&codes=' + encodeURIComponent(codes);
+  showLoading('正在扫描综合选股池…');
+  try {
   const r = await fetch(url); const j = await r.json();
   const el = $('s_result'); const meta = $('s_meta');
   if (!j.ok) { meta.innerHTML=''; el.innerHTML = '<div class="err">'+j.error+'</div>'; return; }
@@ -91,30 +94,37 @@ async function runScreener() {
   meta.innerHTML = `仓位：<b>${d.cash_state}</b> · 现金比例 ${d.cash_ratio}% · 推送门槛 ${d.push_threshold} 分${d.stop_push?'（满仓停推）':''} · 恒科涨跌 ${d.hstech_drop}%`;
   if (!rows.length) { el.innerHTML = '<div class="muted">无结果</div>'; return; }
   let html = `<table><thead><tr><th>代码</th><th>名称</th><th>现价</th><th>涨跌%</th>
-    <th>PE</th><th>52周位%</th><th>评分</th><th>推送</th><th>信号</th></tr></thead><tbody>`;
+    <th>PE</th><th>52周位%</th><th>基础分</th><th>反向+</th><th>总分</th><th>推送</th><th>信号</th></tr></thead><tbody>`;
   rows.forEach(x => {
     const push = x.push ? pill('推','push') : '';
+    const rev = (x.reverse && x.reverse > 0) ? ('<span class="rev-pos">+'+x.reverse+'</span>') : '';
+    const revSigs = (x.reverse_signals || []).map(s=>pill(s,'good')).join(' ');
     html += `<tr class="has-link"><td><span class="stock-link" onclick="openAnalyze('${x.code}')">${x.code}</span></td>
-      <td><span class="stock-link" onclick="openAnalyze('${x.code}')">${x.name}</span></td><td class="mono">${x.price}</td>
-      <td class="${cls(x.change_rate)} mono">${x.change_rate}</td><td class="mono">${x.pe}</td>
-      <td class="mono">${x.week52_position_pct}</td><td class="mono"><b>${x.score}</b></td><td>${push}</td>
-      <td>${x.signals.map(s=>pill(s,'warn')).join(' ')}</td></tr>`;
+      <td><span class="stock-link" onclick="openAnalyze('${x.code}')">${x.name}</span></td><td class="mono">${fmt(x.price, 3)}</td>
+      <td class="${cls(x.change_rate)} mono">${fmt(x.change_rate, 2)}</td><td class="mono">${fmt(x.pe, 2)}</td>
+      <td class="mono">${fmt(x.week52_position_pct, 1)}</td><td class="mono">${fmt(x.score, 1)}</td><td class="mono">${rev}</td>
+      <td class="mono"><b>${fmt(x.total_score, 1)}</b></td><td>${push}</td>
+      <td>${x.signals.map(s=>pill(s,'warn')).join(' ')} ${revSigs}</td></tr>`;
   });
   html += '</tbody></table>';
   el.innerHTML = html;
   const top10 = rows.slice(0,10);
+  const mx = Math.max(10, ...top10.map(x=>(x.total_score||x.score)));
   const c = echarts.init($('scoreChart'));
   c.setOption({ tooltip:{}, grid:{left:80,right:30},
-    xAxis:{type:'value', max:10}, yAxis:{type:'category', data: top10.map(x=>x.name).reverse()},
-    series:[{type:'bar', data: top10.map(x=>x.score).reverse(),
+    xAxis:{type:'value', max: mx}, yAxis:{type:'category', data: top10.map(x=>x.name).reverse()},
+    series:[{type:'bar', data: top10.map(x=>(x.total_score||x.score)).reverse(),
       itemStyle:{
         color: new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#0071e3'},{offset:1,color:'#4ea1ff'}]),
         borderRadius:[0,5,5,0] },
       label:{show:true,position:'right',color:'#1d1d1f',fontWeight:600} }] });
+  } finally { hideLoading(); }
 }
 
 async function runMissed() {
   const top = $('m_top').value; const pool = $('m_pool').value;
+  showLoading('正在扫描错杀观察池…');
+  try {
   const r = await fetch(`/missed-scan?top_n=${top}&pool=${pool}`); const j = await r.json();
   const el = $('missed_result');
   if (!j.ok) { el.innerHTML = '<div class="err">'+j.error+'</div>'; return; }
@@ -124,13 +134,14 @@ async function runMissed() {
     <th>代码</th><th>名称</th><th>现价</th><th>涨跌%</th><th>PE</th><th>52周位%</th><th>评分</th><th>确信度</th><th>信号</th></tr></thead><tbody>`;
   rows.forEach(x => {
     html += `<tr class="has-link"><td><span class="stock-link" onclick="openAnalyze('${x.code}')">${x.code}</span></td>
-      <td><span class="stock-link" onclick="openAnalyze('${x.code}')">${x.name}</span></td><td class="mono">${x.price}</td>
-      <td class="${cls(x.change_rate)} mono">${x.change_rate}</td><td class="mono">${x.pe}</td>
-      <td class="mono">${x.week52_position_pct}</td><td class="mono">${x.score}</td><td class="mono"><b>${x.conviction}</b></td>
+      <td><span class="stock-link" onclick="openAnalyze('${x.code}')">${x.name}</span></td><td class="mono">${fmt(x.price, 3)}</td>
+      <td class="${cls(x.change_rate)} mono">${fmt(x.change_rate, 2)}</td><td class="mono">${fmt(x.pe, 2)}</td>
+      <td class="mono">${fmt(x.week52_position_pct, 1)}</td><td class="mono">${fmt(x.score, 1)}</td><td class="mono"><b>${fmt(x.conviction, 1)}</b></td>
       <td>${x.signals.map(s=>pill(s,'good')).join(' ')}</td></tr>`;
   });
   html += '</tbody></table>';
   el.innerHTML = html;
+  } finally { hideLoading(); }
 }
 </script>
 </body>

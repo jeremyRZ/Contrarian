@@ -61,6 +61,11 @@ def analyze(client, code: str):
     pb = get("pb_ratio")
     hi = get("highest52weeks_price") or get("52_week_high")
     lo = get("lowest52weeks_price") or get("52_week_low")
+    price = round(price, 3) if price is not None else None
+    pe = round(pe, 2) if pe is not None else None
+    pb = round(pb, 2) if pb is not None else None
+    hi = round(hi, 3) if hi is not None else None
+    lo = round(lo, 3) if lo is not None else None
 
     tech = {}
     signals = []

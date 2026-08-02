@@ -8,10 +8,11 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="app.css" />
+<link rel="icon" href="favicon.ico" />
 </head>
 <body data-page="risk">
   <nav class="topnav">
-    <div class="brand">Contrarian<small>港股错杀猎手</small></div>
+    <div class="brand"><img src="logo.png" alt="Contrarian" class="logo-img"></div>
     <div class="links">
       <a href="index.html" data-page="hunter">错杀猎手</a>
       <a href="analyze.html" data-page="analyze">单票深度</a>
@@ -62,11 +63,24 @@
         <button class="act" onclick="addAlert()">添加</button>
       </div>
     </section>
+
+    <section class="card">
+      <div class="card-head">
+        <div class="card-title">南向减持风险预警 <span class="sub">个股港股通连续减持 / 骤减反向风险聚合</span></div>
+      </div>
+      <div class="row">
+        <button class="act" onclick="runSouthboundRisk()">刷新南向减持风险</button>
+        <span class="muted">扫持仓（无持仓退回龙头池），聚合存在风险的标的</span>
+      </div>
+      <div id="sb_risk_result" class="muted" style="margin-top:16px">点击「刷新南向减持风险」</div>
+    </section>
   </main>
 
 <script src="app.js"></script>
 <script>
 async function runMonitor() {
+  showLoading('正在读取富途持仓并扫描风控信号…');
+  try {
   const r = await fetch('/monitor'); const j = await r.json();
   const el = $('m_result'); const ab = $('m_alerts');
   if (!j.ok) { ab.innerHTML = ''; el.innerHTML = '<div class="err">'+j.error+'</div>'; return; }
@@ -80,17 +94,21 @@ async function runMonitor() {
   d.positions.forEach(p => {
     const sig = p.signals.length ? p.signals.map(x=>pill(x, x.includes('技术止盈')?'good':(x.includes('止损')?'bad':'warn'))).join(' ') : '<span class="muted">—</span>';
     const tech = `${p.rsi14 ?? '—'} / ${p.vol_ratio ?? '—'}`;
-    html += `<tr><td>${p.code}</td><td>${p.name}</td><td>${p.type}</td>
-      <td class="mono">${p.cur_price}</td><td class="mono">${p.cost_price}</td>
-      <td class="${cls(p.pl_ratio)} mono">${p.pl_ratio}</td>
-      <td class="mono">${p.stop_loss_price}</td><td>${p.lots ?? '—'}<br><span class="muted">${p.scale}</span></td>
+    html += `<tr class="has-link"><td><span class="stock-link" onclick="openAnalyze('${p.code}')">${p.code}</span></td>
+      <td><span class="stock-link" onclick="openAnalyze('${p.code}')">${p.name}</span></td><td>${p.type}</td>
+      <td class="mono">${fmt(p.cur_price, 3)}</td><td class="mono">${fmt(p.cost_price, 3)}</td>
+      <td class="${cls(p.pl_ratio)} mono">${fmt(p.pl_ratio, 2)}</td>
+      <td class="mono">${fmt(p.stop_loss_price, 3)}</td><td>${p.lots ?? '—'}<br><span class="muted">${p.scale}</span></td>
       <td class="mono">${tech}</td><td>${sig}</td><td class="muted">${p.advice}</td></tr>`;
   });
   html += '</tbody></table>';
   el.innerHTML = html;
+  } finally { hideLoading(); }
 }
 
 async function runAlerts() {
+  showLoading('正在检查价格报警…');
+  try {
   const r = await fetch('/price-alerts'); const j = await r.json();
   const el = $('alerts_result');
   if (!j.ok) { el.innerHTML = '<div class="err">'+j.error+'</div>'; return; }
@@ -100,13 +118,16 @@ async function runAlerts() {
     <th>代码</th><th>名称</th><th>现价</th><th>涨跌%</th><th>减仓价</th><th>警告价</th><th>止损价</th><th>止盈价</th><th>当前信号</th></tr></thead><tbody>`;
   items.forEach(x => {
     const sig = x.active_signals.length ? x.active_signals.map(s=>pill(s,'bad')).join(' ') : '<span class="muted">—</span>';
-    html += `<tr><td>${x.code}</td><td>${x.name}</td><td class="mono">${x.price}</td>
-      <td class="${cls(x.change_rate)} mono">${x.change_rate}</td>
-      <td class="mono">${x.warn_px ?? '—'}</td><td class="mono">${x.alarm_px ?? '—'}</td><td class="mono">${x.stop_px ?? '—'}</td><td class="mono">${x.tp_px ?? '—'}</td>
+    html += `<tr class="has-link"><td><span class="stock-link" onclick="openAnalyze('${x.code}')">${x.code}</span></td>
+      <td><span class="stock-link" onclick="openAnalyze('${x.code}')">${x.name}</span></td>
+      <td class="mono">${fmt(x.price, 3)}</td>
+      <td class="${cls(x.change_rate)} mono">${fmt(x.change_rate, 2)}</td>
+      <td class="mono">${fmt(x.warn_px, 3)}</td><td class="mono">${fmt(x.alarm_px, 3)}</td><td class="mono">${fmt(x.stop_px, 3)}</td><td class="mono">${fmt(x.tp_px, 3)}</td>
       <td>${sig}</td></tr>`;
   });
   html += '</tbody></table>';
   el.innerHTML = html;
+  } finally { hideLoading(); }
 }
 
 async function addAlert() {
@@ -120,6 +141,31 @@ async function addAlert() {
   const j = await r.json();
   if (j.ok) { $('a_code').value=''; runAlerts(); }
   else alert('添加失败: ' + (j.error||''));
+}
+
+async function runSouthboundRisk() {
+  showLoading('正在扫描南向减持风险（港股通个股持股）…');
+  try {
+  const r = await fetch('/southbound-risk'); const j = await r.json();
+  const el = $('sb_risk_result');
+  if (!j.ok) { el.innerHTML = '<div class="err">'+j.error+'</div>'; return; }
+  const d = j.data || {};
+  const items = d.items || [];
+  let html = `<div class="muted" style="margin-bottom:8px">扫描范围：${d.universe} · 共扫 ${d.scanned} 只 · 命中风险 ${d.count} 只</div>`;
+  if (!items.length) {
+    html += '<div class="alert ok">✅ 当前扫描范围内无南向连续减持 / 骤减风险标的</div>';
+  } else {
+    html += items.map(x=>{
+      const sig = (x.risk||[]).map(r=>pill(r,'risk')).join(' ');
+      const down = x.contiguous_down_days || 0;
+      const up = x.contiguous_up_days || 0;
+      return `<div class="alert danger"><b>⚠️ <span class="stock-link" onclick="openAnalyze('${x.code}')">${x.name}(${x.code})</span></b>`+
+        `<div style="margin-top:4px">${sig}</div>`+
+        `<div class="muted" style="margin-top:4px">港股通持股占发行 ${fmt(x.hold_ratio, 2)}%（${x.date||'—'}）· 连续增持 ${up} 日 / 连续减持 ${down} 日</div></div>`;
+    }).join('');
+  }
+  el.innerHTML = html;
+  } finally { hideLoading(); }
 }
 </script>
 </body>

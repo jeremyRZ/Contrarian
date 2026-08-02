@@ -143,6 +143,34 @@ def monitor_positions(client, technical: bool = True):
             plr = (cur_price - cost) / cost * 100
 
         ptype = _classify(name, code)
+
+        # 衍生品（窝轮/杠杆ETF）的 qty/mv/cost 语义完全不同，
+        # cur_price=mv/qty 算出的价格是垃圾数据，直接跳过不做风控计算。
+        if ptype in ("窝轮", "杠杆ETF"):
+            positions.append({
+                "code": code,
+                "name": name,
+                "qty": qty,
+                "lots": None,
+                "cur_price": None,
+                "market_val": round(mv, 2) if mv else 0,
+                "pl_ratio": None,
+                "pl_val": round(plv, 2) if plv else 0,
+                "type": ptype,
+                "stop_pct": STOP_RULES.get(ptype, 8.0),
+                "stop_loss_price": None,
+                "tp_hit": [],
+                "scale": "衍生品(不适用)",
+                "signals": [],
+                "advice": f"{ptype}，不适用正股止损/止盈逻辑",
+                "rsi14": None,
+                "ma20": None,
+                "vol_ratio": None,
+            })
+            total_mv += mv
+            total_pl += plv
+            continue
+
         stop_pct = STOP_RULES.get(ptype, 8.0)
         stop_price = round(cost * (1 - stop_pct / 100), 3)
         lots = _lots(qty, lot_map.get(code, 0))
@@ -193,7 +221,7 @@ def monitor_positions(client, technical: bool = True):
             "qty": qty,
             "lots": lots,
             "lot_size": lot_map.get(code, 0),
-            "cost_price": cost,
+            "cost_price": round(cost, 3) if cost else None,
             "cur_price": round(cur_price, 3),
             "market_val": round(mv, 2),
             "pl_ratio": round(plr, 2),
@@ -210,7 +238,7 @@ def monitor_positions(client, technical: bool = True):
             "vol_ratio": tech.get("vol_ratio"),
         })
 
-    positions.sort(key=lambda x: x["pl_ratio"])
+    positions.sort(key=lambda x: x["pl_ratio"] if x.get("pl_ratio") is not None else -9999)
 
     # 汇总需推送预警的项：止损触发(danger) + 止盈阶梯命中(info)
     alerts = []

@@ -160,6 +160,124 @@ class FutuClient:
         except Exception as e:  # noqa: BLE001
             return None, str(e)
 
+    # ---------- 研究数据（错杀猎手增强） ----------
+    def capital_distribution(self, code: str) -> Tuple[Optional[object], Optional[str]]:
+        """个股资金流向分布（超大/大/中/小单 净流入/流出）。返回 (DataFrame, error)。
+
+        调用富途 OpenAPI get_capital_distribution(code)，实测字段（futu 10.9.6908,
+        HK.00700 2026-07-31）：
+          capital_in_super/out_super 超大单、capital_in_big/out_big 大单、
+          capital_in_mid/out_mid 中单、capital_in_small/out_small 小单、
+          update_time（单位：港元）
+        """
+        ok, msg = self._ensure_quote()
+        if not ok:
+            return None, msg
+        try:
+            ret, data = self._quote.get_capital_distribution(code)
+            if ret != ft.RET_OK:
+                return None, str(data)
+            return data, None
+        except Exception as e:  # noqa: BLE001
+            return None, str(e)
+
+    def capital_flow(self, code: str, days: int = 10) -> Tuple[Optional[object], Optional[str]]:
+        """个股资金流向（主力/特大/大/中/小单净流入）。返回 (DataFrame, error)。"""
+        ok, msg = self._ensure_quote()
+        if not ok:
+            return None, msg
+        try:
+            from datetime import datetime, timedelta
+            end = datetime.now().strftime("%Y-%m-%d")
+            start = (datetime.now() - timedelta(days=max(int(days), 1))).strftime("%Y-%m-%d")
+            ret, data = self._quote.get_capital_flow(
+                code, period_type=ft.PeriodType.DAY, start=start, end=end)
+            if ret != ft.RET_OK:
+                return None, str(data)
+            return data, None
+        except Exception as e:  # noqa: BLE001
+            return None, str(e)
+
+    def buybacks(self, code: str, num: int = 10) -> Tuple[Optional[dict], Optional[str]]:
+        """个股回购记录（港股）。返回 (dict{hk_buy_back_list}, error)。"""
+        ok, msg = self._ensure_quote()
+        if not ok:
+            return None, msg
+        try:
+            ret, data = self._quote.get_corporate_actions_buybacks(code, num=int(num))
+            if ret != ft.RET_OK:
+                return None, str(data)
+            return data, None
+        except Exception as e:  # noqa: BLE001
+            return None, str(e)
+
+    def news(self, code: str, num: int = 10) -> Tuple[Optional[object], Optional[str]]:
+        """个股相关新闻（富途 OpenAPI get_search_news）。
+
+        futu-api 10.9 已用 get_search_news(keyword, max_count) 取代旧的 get_news，
+        返回 DataFrame（title/source/publish_time/url/news_sub_type）。以股票代码为
+        关键词检索，得到与该标的相关的资讯流。
+        """
+        ok, msg = self._ensure_quote()
+        if not ok:
+            return None, msg
+        try:
+            ret, data = self._quote.get_search_news(code, max_count=int(num))
+            if ret != ft.RET_OK:
+                return None, str(data)
+            return data, None
+        except Exception as e:  # noqa: BLE001
+            return None, str(e)
+
+    def valuation_detail(self, code: str, valuation_type: int = 1) -> Tuple[Optional[dict], Optional[str]]:
+        """个股估值详情（历史 PE/PB/PS 分位、行业/市场排名）。
+
+        调用富途 OpenAPI get_valuation_detail(code, valuation_type)，实测（futu 10.9.6908, HK.00700）：
+          valuation_type: 1=PE_TTM 2=PB 3=PS_TTM（4 无效）
+          返回 dict（非 DataFrame）：trend.{current_value, valuation_percentile,
+          average_value, avg_minus_1_stddev, avg_plus_1_stddev, forward_value}；
+          market_distribution.{ranking, total, median_value}；
+          plate_distribution.{plate_name, plate_ranking, plate_stock_item_count}
+        港股可用。返回 (dict, error)。
+        """
+        ok, msg = self._ensure_quote()
+        if not ok:
+            return None, msg
+        try:
+            res = self._quote.get_valuation_detail(code, valuation_type=int(valuation_type))
+            # 富途 10.x 返回 2 元组 (ret, dict)
+            if len(res) == 3:
+                ret, data, _ = res
+            else:
+                ret, data = res
+            if ret != ft.RET_OK:
+                return None, str(data)
+            return data, None
+        except Exception as e:  # noqa: BLE001
+            return None, str(e)
+
+    def shareholders_holding_changes(self, code: str, num: int = 5,
+                                     filter_type: int = 1) -> Tuple[Optional[object], Optional[str]]:
+        """个股大股东/机构持股变动（增持 filter_type=1 / 减持 filter_type=2）。
+
+        调用富途 OpenAPI get_shareholders_holding_changes(code, num, filter_type)，实测（HK.00700）：
+          返回 DataFrame，列含 period_text/name/share_change_num/share_ratio/
+          share_ratio_change/holder_type/holding_date_str/share_num
+          share_change_num>0 增持、<0 减持；share_ratio 为变动后持股占流通比(%)
+        港股可用。返回 (DataFrame, error)。
+        """
+        ok, msg = self._ensure_quote()
+        if not ok:
+            return None, msg
+        try:
+            ret, data = self._quote.get_shareholders_holding_changes(
+                code, num=int(num), filter_type=int(filter_type))
+            if ret != ft.RET_OK:
+                return None, str(data)
+            return data, None
+        except Exception as e:  # noqa: BLE001
+            return None, str(e)
+
     # ---------- 交易 / 持仓 ----------
     def acc_list(self) -> Tuple[Optional[object], Optional[str]]:
         ok, msg = self._ensure_trade()
@@ -226,6 +344,55 @@ class FutuClient:
                 return data, None
             except Exception as e:  # noqa: BLE001
                 return None, str(e)
+        except Exception as e:  # noqa: BLE001
+            return None, str(e)
+
+    # ---------- 自选股（watchlist） ----------
+    # 注意：富途 OpenAPI 的 get_user_security_group() 返回的所有分组均为 SYSTEM 类型，
+    # modify_user_security() 对系统分组返回「不支持系统分组」，故**只读不可写**。
+    # 增删操作需用户在富途客户端手动完成；本模块提供读取能力供前端展示/参考。
+
+    # 默认读取的分组名（「全部」= 富途客户端自选页汇总）
+    WATCHLIST_GROUP = "全部"
+
+    def get_watchlist(self) -> Tuple[Optional[list], Optional[str]]:
+        """读取富途自选股列表。返回 ([(code, name), ...], error)。"""
+        ok, msg = self._ensure_quote()
+        if not ok:
+            return None, msg
+        try:
+            ret, data = self._quote.get_user_security(self.WATCHLIST_GROUP)
+            if ret != ft.RET_OK:
+                return None, str(data)
+            if data is None or data.empty:
+                return [], None
+            cols = {c.lower(): c for c in data.columns}
+            c_code = cols.get("code")
+            c_name = cols.get("name") or cols.get("stock_name")
+            result = []
+            for _, row in data.iterrows():
+                code = str(row[c_code])
+                name = str(row[c_name]) if c_name else code
+                result.append((code, name))
+            return result, None
+        except Exception as e:  # noqa: BLE001
+            return None, str(e)
+
+    def get_watchlist_groups(self) -> Tuple[Optional[list], Optional[str]]:
+        """列出所有自选股分组。返回 ([(group_name, group_type), ...], error)。"""
+        ok, msg = self._ensure_quote()
+        if not ok:
+            return None, msg
+        try:
+            ret, data = self._quote.get_user_security_group()
+            if ret != ft.RET_OK:
+                return None, str(data)
+            if data is None or data.empty:
+                return [], None
+            result = []
+            for _, row in data.iterrows():
+                result.append((str(row.get("group_name", "")), str(row.get("group_type", ""))))
+            return result, None
         except Exception as e:  # noqa: BLE001
             return None, str(e)
 

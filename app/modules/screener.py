@@ -11,6 +11,8 @@ from typing import Optional
 
 import pandas as pd
 
+from . import reverse_signals
+
 # 港股龙头观察池（约 45 只，覆盖科技/金融/消费/能源/医药）
 LEADERS = [
     "HK.00700", "HK.03690", "HK.01810", "HK.09988", "HK.09618", "HK.01024",
@@ -129,17 +131,26 @@ def screen(client, codes: Optional[list] = None, top_n: int = 20,
     hi_c = _col(snap, "highest52weeks_price") or _col(snap, "52_week_high")
     lo_c = _col(snap, "lowest52weeks_price") or _col(snap, "52_week_low")
     vol_c = _col(snap, "volume")
+    susp_c = _col(snap, "suspension")
 
     leaders_set = set(LEADERS)
     results = []
     for _, row in snap.iterrows():
         code = str(row[code_c]) if code_c else ""
+        # 自动剔除停牌 / 无报价标的（如已停牌老千股 last_price=0）
+        if susp_c and row[susp_c] is True:
+            continue
         price = _num(row[price_c]) if price_c else None
+        price = round(price, 3) if price is not None else None
+        # 无报价（last_price=0 或无行情）直接剔除，不参与扫描
+        if not price or price <= 0:
+            continue
         chg = _num(row[chg_c]) if chg_c else None
         prev_close = _num(row[prev_close_c]) if prev_close_c else None
         turn = _num(row[turn_c]) if turn_c else 0.0
         amp = _num(row[amp_c]) if amp_c else None
         pe = _num(row[pe_c]) if pe_c else None
+        pe = round(pe, 2) if pe is not None else None
         hi = _num(row[hi_c]) if hi_c else None
         lo = _num(row[lo_c]) if lo_c else None
         if chg is None and price is not None and prev_close:
@@ -185,7 +196,7 @@ def screen(client, codes: Optional[list] = None, top_n: int = 20,
         results.append({
             "code": code,
             "name": str(row[name_c]) if name_c else code,
-            "price": price,
+            "price": round(price, 3) if price is not None else None,
             "change_rate": chg,
             "turnover_rate": turn,
             "pe": pe,
@@ -195,9 +206,42 @@ def screen(client, codes: Optional[list] = None, top_n: int = 20,
         })
 
     results.sort(key=lambda x: x["score"], reverse=True)
+
+    # 反向信号加权（错杀增强）：仅对基础分靠前的候选拉取南向/回购/新闻三块，
+    # 控制 API 调用量；其余候选 reverse=0，不影响排序。
+    REVERSE_CAP = 15
+    top_codes = [r["code"] for r in results[:REVERSE_CAP]]
+    rev_map = {}
+    if top_codes:
+        try:
+            rev_map = reverse_signals.reverse_score_batch(client, top_codes, days=60, num=10)
+        except Exception:  # noqa: BLE001
+            rev_map = {}
+    for r in results[:REVERSE_CAP]:
+        rev, _ = rev_map.get(r["code"], (None, None))
+        if rev:
+            r["reverse"] = rev["score"]
+            r["reverse_signals"] = rev["signals"]
+            r["reverse_details"] = rev["details"]
+        else:
+            r["reverse"] = 0.0
+            r["reverse_signals"] = []
+            r["reverse_details"] = {}
+        r["total_score"] = round(r["score"] + r["reverse"], 1)
+    for r in results[REVERSE_CAP:]:
+        r["reverse"] = 0.0
+        r["reverse_signals"] = []
+        r["reverse_details"] = {}
+        r["total_score"] = r["score"]
+
+    # 按「基础分 + 反向加分」总分重排，使错杀反向信号影响排序
+    results.sort(key=lambda x: x["total_score"], reverse=True)
+
     top = results[:top_n]
+    # 推送门槛纳入总分：基础分达标 或 反向信号强化后总分达标，均触发买入机会通知。
+    # 这样「技术面基础分略低但南向/回购/新闻强烈反向看好」的错杀候选也能进入推送。
     for r in top:
-        r["push"] = (not stop_push) and r["score"] >= push_th
+        r["push"] = (not stop_push) and (r["score"] >= push_th or r["total_score"] >= push_th)
     return {
         "results": top,
         "cash_ratio": cash_ratio,

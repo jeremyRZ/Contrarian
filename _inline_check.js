@@ -1,116 +1,4 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>单票深度 · Contrarian 港股错杀猎手</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="app.css" />
-<link rel="icon" href="favicon.ico" />
-<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
-</head>
-<body data-page="analyze">
-  <nav class="topnav">
-    <div class="brand"><img src="logo.png" alt="Contrarian" class="logo-img"></div>
-    <div class="links">
-      <a href="index.html" data-page="hunter">错杀猎手</a>
-      <a href="analyze.html" data-page="analyze">单票深度</a>
-      <a href="risk.html" data-page="risk">风控与预警</a>
-      <a href="ipo.html" data-page="ipo">新股打新</a>
-    </div>
-    <div id="conn" class="status bad">检测中…</div>
-  </nav>
 
-  <main class="page">
-    <div class="page-head">
-      <h1>单票深度</h1>
-      <p>个股 360° 诊断 — 股价与南向持股背离、技术面、估值与信号</p>
-    </div>
-
-    <section class="card">
-      <div class="hint-bar" style="margin-bottom:12px">提示：在「错杀猎手」列表中点击任意股票代码，可直接下钻到本页并自动分析。</div>
-      <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
-        <div class="field" style="margin-bottom:0"><label>股票代码</label><input id="an_code" placeholder="HK.00700" value="HK.00700" style="width:150px" /></div>
-        <button class="act" onclick="runAnalyze()">分析</button>
-        <button class="icon-btn" id="cf_settings_btn" title="我的持仓设置" onclick="openWatchSettings()">⚙</button>
-        <div style="width:1px;height:24px;background:#e5e7eb;margin:0 4px"></div>
-        <button class="ghost sm" id="an_watch_btn" onclick="addToWatch()" title="加入本地观察池">⭐ 观察池</button>
-        <button class="ghost sm" id="an_alert_btn" onclick="openAlertDialog()" title="设置价格预警">🔔 预警</button>
-        <button class="ghost sm" id="an_fw_btn" onclick="checkFutuWatchlist()" title="查看富途自选股状态">★ 自选</button>
-        <span id="an_op_hint" class="muted" style="font-size:12px"></span>
-      </div>
-      <div id="cf_watch" class="watch-bar muted" style="margin-top:8px">读取我的正股持仓中…</div>
-      <div id="an_result" class="muted" style="margin-top:12px">输入代码后点击「分析」，或从错杀猎手列表点击股票</div>
-    </section>
-
-    <section class="card">
-      <div class="card-title">错杀反向信号构成<span class="sub">各档贡献（红=利好 · 绿=利空）</span></div>
-      <div id="an_rev_chart" style="width:100%;height:auto;min-height:200px"></div>
-    </section>
-
-    <section class="card">
-      <div class="card-title">南向资金（港股通）<span class="sub">市场净流向 + 个股持股</span></div>
-      <div id="an_sb" class="muted">加载中…</div>
-    </section>
-
-    <section class="card">
-      <div class="card-title">回购 Timeline<span class="sub">公司认为低估，是强错杀反向信号</span></div>
-      <div id="an_bb" class="muted">加载中…</div>
-    </section>
-
-    <section class="card">
-      <div class="card-title">相关新闻<span class="sub">利好 / 利空事件标注</span></div>
-      <div id="an_news" class="muted">加载中…</div>
-    </section>
-
-    <section class="card">
-      <div class="card-title">资金流向（大单 / 超大单）<span class="sub">主力净流入 = 超大单 + 大单，富途逐档统计</span></div>
-      <div id="an_cf" class="muted">加载中…</div>
-    </section>
-
-    <section class="card">
-      <div class="card-title">基本面反向信号<span class="sub">估值分位 + 机构增减持（错杀核心）</span></div>
-      <div id="an_fund" class="muted">加载中…</div>
-    </section>
-  </main>
-
-  <!-- 我的持仓设置弹窗 -->
-  <div id="cf_modal" class="modal-mask" style="display:none">
-    <div class="modal">
-      <div class="modal-head"><span>我的持仓（正股）</span><button class="icon-btn" onclick="closeWatchSettings()">✕</button></div>
-      <div class="modal-body">
-        <div class="muted" style="margin-bottom:8px">勾选要在单票页顶部显示为快捷芯片的股票，点击芯片即可直接分析。默认显示全部正股。</div>
-        <div id="cf_modal_list" class="watch-opts"></div>
-      </div>
-      <div class="modal-foot">
-        <button class="ghost" onclick="refreshHoldings()">刷新持仓</button>
-        <button class="act" onclick="saveWatchSettings()">保存</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 设置预警弹窗 -->
-  <div id="cf_alert_modal" class="modal-mask" style="display:none">
-    <div class="modal">
-      <div class="modal-head"><span>设置价格预警 <em id="cf_alert_code" style="font-style:normal;color:var(--faint);font-weight:400"></em></span><button class="icon-btn" onclick="closeAlertDialog()">✕</button></div>
-      <div class="modal-body">
-        <div class="muted" style="margin-bottom:10px">设置多级预警价（留空表示不启用该级）。保存后进入运行时报警列表，行情触发时推送企业微信。</div>
-        <div class="field"><label>减仓预警价 warn</label><input id="al_warn" type="number" step="0.001" placeholder="0" style="width:140px" /></div>
-        <div class="field"><label>警告价 alarm</label><input id="al_alarm" type="number" step="0.001" placeholder="0" style="width:140px" /></div>
-        <div class="field"><label>止损价 stop</label><input id="al_stop" type="number" step="0.001" placeholder="0" style="width:140px" /></div>
-        <div class="muted" style="margin-top:8px">快捷：<button class="ghost sm" onclick="fillAlertPct(-5)">止损 -5%</button> <button class="ghost sm" onclick="fillAlertPct(-8)">-8%</button></div>
-      </div>
-      <div class="modal-foot">
-        <button class="ghost" onclick="closeAlertDialog()">取消</button>
-        <button class="act" onclick="submitAlert()">保存预警</button>
-      </div>
-    </div>
-  </div>
-
-<script src="app.js"></script>
-<script>
 async function runAnalyze() {
   showLoading('正在拉取个股深度数据…');
   try {
@@ -325,95 +213,60 @@ function renderFundamentals(j) {
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
-// 错杀反向信号「构成分解图」：每档一行横向条形图（红=利好加分 / 绿=利空扣分），
-// 一眼看清总分由哪几档驱动。替代旧版堆叠单条（文字挤成一团不可读）。
+// 错杀反向信号「构成分解图」：把六档（南向/回购/新闻/资金流/估值/机构）各自贡献
+// 渲染成单条堆叠横向条 + 图例，一眼看清总分由哪几档驱动（红=利好加分，绿=利空扣分）。
 function renderReverseBreakdown(rev) {
   const chartEl = $('an_rev_chart');
-  // 清除旧的 legend 容器（如有）
-  const oldLeg = $('an_rev_legend');
-  if (oldLeg) oldLeg.remove();
-
+  const legEl = $('an_rev_legend');
   if (!rev || !rev.details) {
     chartEl.innerHTML = '<span class="muted">无反向信号数据</span>';
+    legEl.innerHTML = '';
     return;
   }
   const d = rev.details;
   const tiers = [
     ['southbound', '南向持股'], ['buyback', '公司回购'], ['news', '新闻情绪'],
     ['capital_flow', '资金流向'], ['valuation', '估值分位'], ['institution', '机构增减'],
-    ['dividend', '股息'], ['earnings', '财报窗口'],
+    ['short_sell', '沽空'], ['dividend', '股息'], ['earnings', '财报窗口'],
   ];
-  const rows = tiers.map(([k, label]) => {
+  const data = tiers.map(([k, label]) => {
     const v = (d[k] && typeof d[k].score === 'number') ? d[k].score : 0;
-    return { value: v, name: label, key: k };
-  }).filter(r => r.value !== 0);  // 隐藏零分档，减少噪音
-
-  // 无非零档时降级为纯文字
-  if (!rows.length) {
-    chartEl.innerHTML = '<span class="muted">各档贡献均为 0</span>';
-    return;
-  }
+    const color = v > 0 ? '#e0392b' : (v < 0 ? '#16a34a' : '#d4d4d4');
+    return { value: v, name: label, itemStyle: { color } };
+  });
+  const total = rev.score;
 
   if (typeof echarts === 'undefined') {
-    // 无 echarts 时用 HTML pill 行兜底
-    chartEl.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
-      tiers.map(([k,label]) => {
-        const v = (d[k] && typeof d[k].score === 'number') ? d[k].score : 0;
-        const cls = v > 0 ? 'good' : (v < 0 ? 'bad' : 'warn');
-        return '<span class="pill '+cls+'">'+label+' '+(v>0?'+':'')+v+'</span>';
-      }).join('') + '</div>';
-    return;
+    chartEl.innerHTML = '<span class="muted">图表库未加载（需联网）</span>';
+  } else {
+    const chart = echarts.getInstanceByDom(chartEl) || echarts.init(chartEl);
+    chart.setOption({
+      grid: { left: 2, right: 2, top: 8, bottom: 2, containLabel: false },
+      tooltip: { trigger: 'item', formatter: (p) => `${p.name}：${p.value > 0 ? '+' : ''}${p.value} 分` },
+      xAxis: { type: 'value', show: false, min: -3, max: 11 },
+      yAxis: { type: 'category', data: [''], show: false },
+      series: [{
+        type: 'bar', stack: 'rev', barWidth: 26,
+        data: data,
+        itemStyle: { borderRadius: 3 },
+        label: {
+          show: true, position: 'inside', color: '#fff', fontSize: 11,
+          formatter: (p) => (p.value !== 0 ? `${p.value > 0 ? '+' : ''}${p.value}` : ''),
+        },
+      }],
+      graphic: [{
+        type: 'text', right: 10, top: 6,
+        style: { text: '总分 ' + total, fill: '#333', fontSize: 13, fontWeight: 600 },
+      }],
+    });
+    chart.resize();
   }
 
-  const yCats = rows.map(r => r.name);
-  const values = rows.map(r => r.value);
-  const colors = rows.map(r => r.value > 0 ? '#dc2626' : (r.value < 0 ? '#16a34a' : '#d4d4d4'));
-
-  const chart = echarts.getInstanceByDom(chartEl) || echarts.init(chartEl);
-  chart.setOption({
-    grid: { left: 90, right: 36, top: 8, bottom: 8, containLabel: false },
-    tooltip: {
-      trigger: 'axis', axisPointer: { type: 'shadow' },
-      formatter: (p) => {
-        const item = p[0];
-        return `${item.name}：<b>${item.value > 0 ? '+' : ''}${item.value}</b> 分`;
-      },
-    },
-    xAxis: {
-      type: 'value',
-      min: function(v) { return Math.min(v.min, -1); },
-      max: function(v) { return Math.max(v.max, 1); },
-      splitLine: { show: true, lineStyle: { color: '#f0f0f0', type: 'dashed' } },
-      axisLabel: { fontSize: 11, color: '#999', formatter: (v) => (v > 0 ? '+' + v : v) },
-    },
-    yAxis: {
-      type: 'category', data: yCats, inverse: true,
-      axisLabel: { fontSize: 12, color: '#444' },
-      axisTick: { show: false }, axisLine: { lineStyle: { color: '#e5e7eb' } },
-    },
-    series: [{
-      type: 'bar',
-      data: values.map((v, i) => ({
-        value: v,
-        itemStyle: {
-          color: colors[i],
-          borderRadius: [0, 3, 3, 0],
-        },
-        label: {
-          show: true, position: 'right',
-          color: '#333', fontSize: 12, fontWeight: 600,
-          formatter: (p) => (p.value > 0 ? '+' : '') + p.value,
-        },
-      })),
-      barWidth: 20,
-      animationDelay: (idx) => idx * 50,
-    }],
-    graphic: [{
-      type: 'text', left: 0, bottom: 0,
-      style: { text: '总分 ' + rev.score, fill: '#333', fontSize: 13, fontWeight: 600 },
-    }],
-  });
-  chart.resize();
+  legEl.innerHTML = tiers.map(([k, label]) => {
+    const v = (d[k] && typeof d[k].score === 'number') ? d[k].score : 0;
+    const cls = v > 0 ? 'good' : (v < 0 ? 'bad' : 'warn');
+    return '<span class="pill ' + cls + '">' + label + ' ' + (v > 0 ? '+' : '') + v + '</span>';
+  }).join(' ');
 }
 
 // 从 URL ?code= 带入并自动分析
@@ -521,10 +374,11 @@ function openAlertDialog() {
   if (!code) return;
   $('cf_alert_code').textContent = ' ' + code;
   const p = (CF_CUR.price != null) ? CF_CUR.price : null;
-  // 默认预填：减仓-5% / 警告-8% / 止损-8%
+  // 默认预填：减仓-5% / 警告-8% / 止损-8% / 止盈+10%
   $('al_warn').value = p ? round3(p * 0.95) : '';
   $('al_alarm').value = p ? round3(p * 0.92) : '';
   $('al_stop').value = p ? round3(p * 0.92) : '';
+  $('al_tp').value = p ? round3(p * 1.10) : '';
   $('cf_alert_modal').style.display = 'flex';
 }
 function closeAlertDialog() { $('cf_alert_modal').style.display = 'none'; }
@@ -534,6 +388,7 @@ function fillAlertPct(pct) {
   if (p == null) return;
   const target = round3(p * (1 + pct / 100));
   if (pct < 0) { $('al_alarm').value = target; $('al_stop').value = target; }
+  else { $('al_tp').value = target; }
 }
 async function submitAlert() {
   const code = $('an_code').value.trim();
@@ -542,7 +397,7 @@ async function submitAlert() {
   const payload = {
     code, name: CF_CUR.name || code,
     warn_px: num('al_warn'), alarm_px: num('al_alarm'),
-    stop_px: num('al_stop'),
+    stop_px: num('al_stop'), tp_px: num('al_tp'),
   };
   const hint = $('an_op_hint');
   hint.textContent = '保存中…';
@@ -559,31 +414,3 @@ async function submitAlert() {
   }
   setTimeout(() => { hint.textContent = ''; }, 2500);
 }
-
-/* ===== 富途自选股（只读状态查询） ===== */
-async function checkFutuWatchlist() {
-  const code = $('an_code').value.trim();
-  if (!code) return;
-  const hint = $('an_op_hint');
-  hint.textContent = '查询自选股…';
-  try {
-    const r = await fetch('/futu-watchlist?_=' + Date.now());
-    const j = await r.json();
-    if (!j.ok) { hint.textContent = '✗ ' + (j.error || '查询失败'); return; }
-    const d = j.data;
-    const stocks = (d.stocks || []);
-    const inWatch = stocks.some(s => s.code === code);
-    const names = stocks.map(s => s.name).join('、');
-    if (inWatch) {
-      hint.textContent = '★ 已在富途自选股中（共' + stocks.length + '只）';
-    } else {
-      hint.textContent = '☆ 未在富途自选中（自选共' + stocks.length + '只，请到富途客户端添加）';
-    }
-  } catch (e) {
-    hint.textContent = '✗ 网络错误';
-  }
-  setTimeout(() => { hint.textContent = ''; }, 5000);
-}
-</script>
-</body>
-</html>

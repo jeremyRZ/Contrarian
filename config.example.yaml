@@ -18,6 +18,9 @@ monitor:
   max_single_loss_pct: 3.0     # 单笔亏损 ≤ 总本金 3%
   max_total_risk_pct: 10.0     # 总风险敞口 ≤ 10%
   min_cash_pct: 15.0           # 现金 ≥ 15%
+  # 单票页持仓快捷选择中排除的股票（如已停牌的老千股，分析无数据且干扰选择）。
+  # 填股票代码，可多个；改完需重启后端。
+  holdings_exclude: ["HK.44165"]
 
 screener:
   # 默认扫描池：港股龙头观察池（可在前端覆盖为自定义代码列表）

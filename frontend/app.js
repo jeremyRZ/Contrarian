@@ -8,6 +8,31 @@ const $ = (id) => document.getElementById(id);
 const cls = (v) => (v >= 0) ? 'up' : 'down';
 const pill = (s, clsname) => `<span class="pill ${clsname}">${s}</span>`;
 
+// 数字格式化：null/NaN/Inf → '—'，否则保留 d 位小数（消除浮点长尾如 0.011680000000000001）
+function fmt(v, d = 2) {
+  if (v === null || v === undefined || v === '' || (typeof v === 'number' && !isFinite(v))) return '—';
+  const n = Number(v);
+  if (isNaN(n)) return (v === '—' ? '—' : v);
+  return n.toFixed(d);
+}
+
+// 全屏加载遮罩：扫描/读取耗时操作时给用户明确反馈
+function showLoading(msg) {
+  let el = document.getElementById('__loading');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = '__loading';
+    el.innerHTML = '<div class="loading-box"><div class="spinner"></div><div class="loading-msg"></div></div>';
+    document.body.appendChild(el);
+  }
+  el.querySelector('.loading-msg').textContent = msg || '加载中…';
+  el.style.display = 'flex';
+}
+function hideLoading() {
+  const el = document.getElementById('__loading');
+  if (el) el.style.display = 'none';
+}
+
 async function checkConn() {
   const el = $('conn');
   if (!el) return;
@@ -21,9 +46,9 @@ async function checkConn() {
 checkConn();
 setInterval(checkConn, 15000);
 
-// 错杀猎手列表点击股票 -> 跳转到单票深度页并带入代码
+// 错杀猎手列表点击股票 -> 新标签页打开单票深度页并带入代码（保留原页面）
 function openAnalyze(code) {
-  window.location.href = 'analyze.html?code=' + encodeURIComponent(code);
+  window.open('analyze.html?code=' + encodeURIComponent(code), '_blank');
 }
 
 // 导航激活态：根据 body 的 data-page 高亮对应链接
