@@ -1,0 +1,19 @@
+# 真实配置（含富途账户 ID，勿提交到公开仓库）
+config.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# 运行时产物
+*.log
+.env
+.env.*
+
+# 操作系统
+.DS_Store
+Thumbs.db

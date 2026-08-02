@@ -1,0 +1,24 @@
+# 港股投资研究平台 - 配置模板
+# 复制本文件为 config.yaml 并填入你的信息
+
+futu:
+  host: "127.0.0.1"   # FutuOpenD 网关地址（本机或云端）
+  port: 11111          # FutuOpenD 监听端口（默认 11111）
+  trd_env: "REAL"      # REAL（真实）+ SIMULATE（模拟）
+  acc_id: ""           # 富途交易账户 ID（在富途 App 内查看，留空则自动取首个账户）
+
+ipo:
+  # 打新模块联网取数超时（秒）
+  timeout: 15
+  # 数据源优先级：sina（新浪财经）/ hkexnews（披露易）
+  sources: ["sina", "hkexnews"]
+
+monitor:
+  # 风控铁律（可选覆盖）
+  max_single_loss_pct: 3.0     # 单笔亏损 ≤ 总本金 3%
+  max_total_risk_pct: 10.0     # 总风险敞口 ≤ 10%
+  min_cash_pct: 15.0           # 现金 ≥ 15%
+
+screener:
+  # 默认扫描池：港股龙头观察池（可在前端覆盖为自定义代码列表）
+  default_watchlist: "leaders"
