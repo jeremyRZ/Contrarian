@@ -12,10 +12,11 @@
   --faint: #86868b;
   --line: #d2d2d7;
   --line-soft: #e8e8ed;
-  --accent: #0071e3;
-  --accent-hover: #0077ed;
-  --accent-soft: #e8f1fd;
-  --accent-soft-2: #f0f6fe;
+  /* Apple System Blue */
+  --accent: #007aff;
+  --accent-hover: #3d93ff;
+  --accent-soft: rgba(0,122,255,0.10);
+  --accent-soft-2: rgba(0,122,255,0.06);
   --up: #e5484d;      /* 港股：涨红 */
   --down: #16a34a;    /* 港股：跌绿 */
   --warn: #b45309;
@@ -66,8 +67,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .topnav .status { font-size: 12px; padding: 4px 11px; border-radius: 999px;
   font-weight: 500; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .topnav .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.topnav .status.ok { background: #e7f6ec; color: #15803d; }
-.topnav .status.bad { background: #fdeaea; color: var(--bad); }
+.topnav .status.ok { background: #e8f5e9; color: #34c759; }
+.topnav .status.bad { background: #ffebee; color: var(--bad); }
 
 /* ---------- 页面容器 ---------- */
 .page { max-width: 1180px; margin: 0 auto; padding: 40px max(22px, 4vw) 64px; }
@@ -89,18 +90,39 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
 .field { display: flex; flex-direction: column; gap: 5px; }
 .field label { font-size: 12px; color: var(--muted); font-weight: 500; }
+
+/* ---------- 工具栏行（输入框 + 按钮组，严格等高对齐） ---------- */
+.toolbar-row {
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap;
+}
+.toolbar-sep {
+  width: 1px; height: 22px; background: var(--line);
+  flex-shrink: 0; margin: 0 2px;
+}
+.toolbar-btn {
+  background: transparent; border: none; color: var(--muted);
+  cursor: pointer; font-family: inherit; font-size: 13.5px; font-weight: 500;
+  padding: 7px 12px; border-radius: var(--radius);
+  display: inline-flex; align-items: center; gap: 5px;
+  white-space: nowrap;
+  transition: color .16s var(--ease-out), background .16s var(--ease-out),
+              transform .12s var(--ease-out);
+}
+.toolbar-btn:hover { color: var(--accent); background: var(--accent-soft); }
+.toolbar-btn:active { transform: scale(0.97); }
 input, select { font-family: inherit; font-size: 14px; color: var(--ink);
   padding: 8px 11px; border: 1px solid var(--line); border-radius: var(--radius);
   background: #fff; outline: none;
   transition: border-color .16s var(--ease-out), box-shadow .16s var(--ease-out); }
 input:focus, select:focus { border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(0,113,227,.15); }
+  box-shadow: 0 0 0 3px rgba(0,122,255,.12); }
 /* 按钮必须具备按压反馈：scale(0.97) 让界面"听得到"点击 */
 button.act { background: var(--accent); color: #fff; border: none; cursor: pointer;
   padding: 9px 18px; border-radius: var(--radius); font-family: inherit; font-size: 14px; font-weight: 500;
-  transition: background .16s var(--ease-out), transform .12s var(--ease-out); }
+  transition: background .16s var(--ease-out), transform .12s var(--ease-out), box-shadow .16s var(--ease-out); }
 button.act:hover { background: var(--accent-hover); }
-button.act:active { background: #0064c8; transform: scale(0.97); }
+button.act:active { background: #0056b3; transform: scale(0.97); }
 button.act[disabled] { opacity: .55; cursor: progress; transform: none; }
 .muted { color: var(--muted); font-size: 13px; }
 .sub { font-size: 12.5px; color: var(--muted); margin: 8px 0 2px; }
@@ -122,7 +144,7 @@ td.mono, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 /* 配色统一：利好=红，利空=绿（港股涨红跌绿） */
 .pill.bad { background: #ecfdf5; color: #047857; }   /* 利空=绿 */
 .pill.good { background: #fef2f2; color: #b91c1c; }  /* 利好=红 */
-.pill.push { background: var(--accent-soft); color: #0058b9; }
+.pill.push { background: var(--accent-soft); color: var(--accent); }
 /* 反向风险警示（减持/骤减等利空信号）：绿色实框，与「利空=绿」一致 */
 .pill.risk { background: #f6ffed; color: #389e0d; border: 1px solid #b7eb8f; }
 /* 新闻情绪徽章 */
@@ -170,10 +192,11 @@ td.mono, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   font-size: 14px; cursor: pointer; transition: background .14s var(--ease-out); }
 .wopt:hover { background: var(--surface); }
 .wopt small { color: var(--faint); font-family: var(--mono); font-size: 11px; margin-left: 2px; }
-button.ghost { background: #fff; border: 1px solid var(--line); color: var(--muted);
+button.ghost { background: transparent; border: 1px solid var(--line); color: var(--muted);
   padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13.5px;
-  transition: transform .12s var(--ease-out), border-color .16s var(--ease-out), color .16s var(--ease-out); }
-button.ghost:hover { border-color: var(--accent); color: var(--ink); }
+  transition: transform .12s var(--ease-out), border-color .16s var(--ease-out), color .16s var(--ease-out),
+              background .16s var(--ease-out); }
+button.ghost:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 button.ghost:active { transform: scale(0.97); }
 button.ghost.sm { padding: 4px 9px; font-size: 12px; border-radius: 6px; }
 
@@ -182,8 +205,8 @@ button.ghost.sm { padding: 4px 9px; font-size: 12px; border-radius: 6px; }
 .alert { padding: 11px 15px; border-radius: var(--radius); font-size: 13.5px;
   border-left: 3px solid; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .alert.danger { background: #fef2f2; border-color: var(--bad); color: #b91c1c; }
-.alert.info { background: #eef4ff; border-color: var(--accent); color: #1e40af; }
-.alert.ok { background: #ecfdf5; border-color: #16a34a; color: #15803d; }
+.alert.info { background: rgba(0,122,255,0.07); border-color: var(--accent); color: var(--accent); }
+.alert.ok { background: #e8f5e9; border-color: #34c759; color: #1a8a3a; }
 
 .big { font-size: 30px; font-weight: 700; font-family: var(--mono); letter-spacing: -.02em; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
@@ -257,7 +280,7 @@ tbody tr.has-link:hover { background: var(--accent-soft-2); }
 /* ---------- 触屏设备：hover 变换会误触，仅对精确指针开启位移/缩放 hover ---------- */
 @media (hover: hover) and (pointer: fine) {
   .icon-btn:hover { border-color: var(--accent); color: var(--ink); transform: translateY(-1px); }
-  .chip:hover { border-color: var(--accent); background: var(--accent-soft); color: #0058b9; transform: translateY(-1px); }
+  .chip:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); transform: translateY(-1px); }
   .card:hover { transform: translateY(-1px); }
 }
 

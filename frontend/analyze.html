@@ -32,14 +32,14 @@
 
     <section class="card">
       <div class="hint-bar" style="margin-bottom:12px">提示：在「错杀猎手」列表中点击任意股票代码，可直接下钻到本页并自动分析。</div>
-      <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
-        <div class="field" style="margin-bottom:0"><label>股票代码</label><input id="an_code" placeholder="HK.00700" value="HK.00700" style="width:150px" /></div>
+      <div class="toolbar-row">
+        <input id="an_code" placeholder="HK.00700" value="HK.00700" style="width:160px" />
         <button class="act" onclick="runAnalyze()">分析</button>
         <button class="icon-btn" id="cf_settings_btn" title="我的持仓设置" onclick="openWatchSettings()">⚙</button>
-        <div style="width:1px;height:24px;background:#e5e7eb;margin:0 4px"></div>
-        <button class="ghost sm" id="an_watch_btn" onclick="addToWatch()" title="加入本地观察池">⭐ 观察池</button>
-        <button class="ghost sm" id="an_alert_btn" onclick="openAlertDialog()" title="设置价格预警">🔔 预警</button>
-        <button class="ghost sm" id="an_fw_btn" onclick="checkFutuWatchlist()" title="查看富途自选股状态">★ 自选</button>
+        <div class="toolbar-sep"></div>
+        <button class="toolbar-btn" id="an_watch_btn" onclick="addToWatch()" title="加入本地观察池">⭐ 观察池</button>
+        <button class="toolbar-btn" id="an_alert_btn" onclick="openAlertDialog()" title="设置价格预警">🔔 预警</button>
+        <button class="toolbar-btn" id="an_fw_btn" onclick="checkFutuWatchlist()" title="查看富途自选股状态">★ 自选</button>
         <span id="an_op_hint" class="muted" style="font-size:12px"></span>
       </div>
       <div id="cf_watch" class="watch-bar muted" style="margin-top:8px">读取我的正股持仓中…</div>
