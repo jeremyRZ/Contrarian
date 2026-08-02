@@ -3,377 +3,81 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Contrarian 港股错杀猎手</title>
+<title>错杀猎手 · Contrarian 港股错杀猎手</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="app.css" />
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
-<style>
-  :root {
-    --bg: #f5f7fb;
-    --panel: #ffffff;
-    --ink: #0f172a;
-    --muted: #64748b;
-    --faint: #94a3b8;
-    --line: #e7ebf1;
-    --line-strong: #d8dee9;
-    --accent: #2563eb;
-    --accent-soft: #eef2ff;
-    --up: #e5484d;
-    --down: #16a34a;
-    --warn: #f59e0b;
-    --bad: #e5484d;
-    --radius: 14px;
-    --shadow: 0 1px 2px rgba(15,23,42,.04), 0 10px 28px -16px rgba(15,23,42,.18);
-    --sans: "Outfit", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif;
-    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  }
-  * { box-sizing: border-box; }
-  html, body { height: 100%; }
-  body { margin: 0; font-family: var(--sans); background: var(--bg); color: var(--ink);
-         font-size: 14px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
-  .up { color: var(--up); }
-  .down { color: var(--down); }
-
-  /* ---------- Layout shell ---------- */
-  .app { display: flex; min-height: 100vh; }
-  .sidebar { width: 248px; flex: none; background: var(--panel); border-right: 1px solid var(--line);
-             padding: 22px 16px; display: flex; flex-direction: column; gap: 20px;
-             position: sticky; top: 0; height: 100vh; }
-  .brand { display: flex; align-items: center; gap: 12px; padding: 4px 8px; }
-  .logo { width: 38px; height: 38px; border-radius: 11px; background: var(--accent);
-          display: grid; place-items: center; flex: none;
-          box-shadow: 0 6px 16px -8px rgba(37,99,235,.55); }
-  .brand-name { font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
-  .brand-sub { font-size: 11.5px; color: var(--muted); letter-spacing: .02em; }
-
-  .nav { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
-  .nav button { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
-    padding: 11px 14px; border: none; background: none; border-radius: 11px; color: var(--muted);
-    font-family: inherit; font-size: 14.5px; cursor: pointer; position: relative;
-    transition: background .18s ease, color .18s ease; }
-  .nav button svg { width: 19px; height: 19px; flex: none; opacity: .85; }
-  .nav button:hover { background: #f1f5f9; color: var(--ink); }
-  .nav button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-  .nav button.active svg { opacity: 1; }
-  .nav button.active::before { content: ""; position: absolute; left: 0; top: 11px; bottom: 11px;
-    width: 3px; border-radius: 3px; background: var(--accent); }
-
-  .side-foot { margin-top: auto; padding: 12px 14px; border-top: 1px solid var(--line);
-               font-size: 11.5px; color: var(--faint); line-height: 1.7; }
-  .side-foot b { color: var(--muted); font-weight: 600; }
-
-  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .topbar { position: sticky; top: 0; z-index: 20; background: rgba(255,255,255,.82);
-            backdrop-filter: saturate(140%) blur(10px); border-bottom: 1px solid var(--line);
-            padding: 15px 30px; display: flex; align-items: center; justify-content: space-between; }
-  .topbar-left { display: flex; align-items: baseline; gap: 12px; }
-  .topbar-left h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.01em; }
-  .crumb { font-size: 12.5px; color: var(--faint); }
-
-  .status { font-size: 12.5px; padding: 5px 13px; border-radius: 999px; font-weight: 500;
-            display: inline-flex; align-items: center; gap: 7px; }
-  .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-  .status.ok { background: #e7f6ec; color: #15803d; }
-  .status.bad { background: #fdeaea; color: var(--bad); }
-
-  .content { max-width: 1280px; width: 100%; margin: 0 auto; padding: 26px 30px 40px; }
-  .tab { display: none; }
-  .tab.active { display: block; animation: fadeIn .28s ease; }
-  @keyframes fadeIn { from { opacity: .35; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-
-  /* ---------- Cards ---------- */
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
-          padding: 22px; margin-bottom: 18px; box-shadow: var(--shadow); }
-  .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-  .card-title { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
-  .card-title .sub { font-size: 12.5px; color: var(--faint); font-weight: 400; margin-left: 8px; }
-
-  /* ---------- Controls ---------- */
-  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-  .field { display: flex; flex-direction: column; gap: 5px; }
-  .field label { font-size: 12px; color: var(--muted); font-weight: 500; }
-  label.inline { font-size: 13px; color: var(--muted); }
-  input, select { font-family: inherit; font-size: 14px; color: var(--ink); padding: 9px 12px;
-    border: 1px solid var(--line-strong); border-radius: 10px; background: #fff; outline: none;
-    transition: border-color .15s ease, box-shadow .15s ease; }
-  input:focus, select:focus { border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(37,99,235,.13); }
-  button.act { background: var(--accent); color: #fff; border: none; cursor: pointer;
-    padding: 10px 18px; border-radius: 10px; font-family: inherit; font-size: 14px; font-weight: 600;
-    transition: transform .12s ease, box-shadow .18s ease, background .18s ease; }
-  button.act:hover { transform: translateY(-1px); box-shadow: 0 8px 18px -8px rgba(37,99,235,.55); }
-  button.act:active { transform: translateY(0); }
-  button.act[disabled] { opacity: .6; cursor: progress; transform: none; box-shadow: none; }
-  .muted { color: var(--muted); font-size: 13px; }
-  .sub { font-size: 12px; color: var(--muted); margin: 6px 0 2px; }
-
-  /* ---------- Tables ---------- */
-  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px;
-          font-variant-numeric: tabular-nums; }
-  th, td { text-align: left; padding: 10px 11px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { color: var(--muted); font-weight: 600; font-size: 12.5px; background: #f8fafc; }
-  tbody tr { transition: background .12s ease; }
-  tbody tr:hover { background: #f8fafc; }
-  td.mono, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-
-  /* ---------- Pills ---------- */
-  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px;
-          margin: 1px 2px; font-weight: 500; }
-  .pill.warn { background: #fff7ed; color: #b45309; }
-  .pill.bad { background: #fef2f2; color: #b91c1c; }
-  .pill.good { background: #ecfdf5; color: #047857; }
-  .pill.push { background: var(--accent-soft); color: #4338ca; }
-
-  /* ---------- Alerts ---------- */
-  .alerts { display: flex; flex-direction: column; gap: 8px; }
-  .alert { padding: 11px 15px; border-radius: 11px; font-size: 13.5px; border-left: 4px solid;
-           display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .alert.danger { background: #fef2f2; border-color: var(--bad); color: #b91c1c; }
-  .alert.info { background: #eff5ff; border-color: var(--accent); color: #1e40af; }
-  .alert.ok { background: #ecfdf5; border-color: #16a34a; color: #15803d; }
-
-  .big { font-size: 30px; font-weight: 700; font-family: var(--mono); letter-spacing: -.02em; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .kv { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0;
-        border-bottom: 1px dashed var(--line); font-size: 13.5px; }
-  .kv span:first-child { color: var(--muted); }
-  .kv span:last-child { font-weight: 600; font-family: var(--mono); font-variant-numeric: tabular-nums; }
-  #scoreChart { width: 100%; height: 320px; margin-top: 6px; }
-  .err { color: var(--bad); background: #fef2f2; padding: 13px 15px; border-radius: 10px;
-         border: 1px solid #fecaca; }
-
-  .hint-bar { font-size: 12.5px; color: var(--muted); background: #f8fafc; border: 1px solid var(--line);
-              border-radius: 10px; padding: 9px 13px; }
-
-  @media (max-width: 880px) {
-    .app { flex-direction: column; }
-    .sidebar { width: 100%; height: auto; position: static; border-right: none;
-               border-bottom: 1px solid var(--line); flex-direction: row; align-items: center;
-               gap: 12px; padding: 12px 16px; }
-    .brand { padding: 0; }
-    .nav { flex-direction: row; overflow-x: auto; margin: 0; gap: 4px; }
-    .nav button { width: auto; white-space: nowrap; padding: 9px 12px; }
-    .nav button.active::before { display: none; }
-    .side-foot { display: none; }
-    .grid2 { grid-template-columns: 1fr; }
-    .content { padding: 18px; }
-  }
-</style>
 </head>
-<body>
-<div class="app">
-  <aside class="sidebar">
-    <div class="brand">
-      <div class="logo">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">
-          <circle cx="12" cy="12" r="8"></circle>
-          <circle cx="12" cy="12" r="3.4"></circle>
-          <path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3"></path>
-        </svg>
-      </div>
-      <div class="brand-txt">
-        <div class="brand-name">Contrarian</div>
-        <div class="brand-sub">港股错杀猎手</div>
-      </div>
+<body data-page="hunter">
+  <nav class="topnav">
+    <div class="brand">Contrarian<small>港股错杀猎手</small></div>
+    <div class="links">
+      <a href="index.html" data-page="hunter">错杀猎手</a>
+      <a href="analyze.html" data-page="analyze">单票深度</a>
+      <a href="risk.html" data-page="risk">风控与预警</a>
+      <a href="ipo.html" data-page="ipo">新股打新</a>
     </div>
-    <nav>
-      <button class="active" data-tab="screener">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5h16l-6 7v6l-4 2v-8z"/></svg>选股扫描</button>
-      <button data-tab="monitor">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.2-3 7.2-7 9-4-1.8-7-4.8-7-9V6z"/></svg>持仓风控</button>
-      <button data-tab="missed">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></svg>错杀猎手</button>
-      <button data-tab="alerts">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6z"/><path d="M10 19a2 2 0 004 0"/></svg>价格报警</button>
-      <button data-tab="analyze">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 4-6"/></svg>单票分析</button>
-      <button data-tab="ipo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c3 1 5 4 5 8 0 3-1 5-1 6H8c0-1-1-3-1-6 0-4 2-7 5-8z"/><circle cx="12" cy="10" r="2"/></svg>新股打新</button>
-    </nav>
-    <div class="side-foot">
-      <div><b>v1.1</b> · 自托管</div>
-      <div>数据源：富途 OpenD</div>
+    <div id="conn" class="status bad">检测中…</div>
+  </nav>
+
+  <main class="page">
+    <div class="page-head">
+      <h1>错杀猎手</h1>
+      <p>全市场低吸 / 超卖股票池看板 — 多因子打分 + 仓位感知推送</p>
     </div>
-  </aside>
 
-  <div class="main">
-    <header class="topbar">
-      <div class="topbar-left">
-        <h2 id="pageTitle">选股扫描</h2>
-        <span class="crumb">研究控制台</span>
+    <section class="card">
+      <div class="card-head">
+        <div class="card-title">股票池 <span class="sub">综合选股扫描 / 错杀观察池</span></div>
+        <div class="subtabs">
+          <button class="subtab active" data-sub="scan" onclick="switchHunter('scan')">综合选股扫描</button>
+          <button class="subtab" data-sub="missed" onclick="switchHunter('missed')">错杀观察池</button>
+        </div>
       </div>
-      <div id="conn" class="status bad">检测中…</div>
-    </header>
 
-    <main class="content">
-      <!-- 选股扫描 -->
-      <section id="screener" class="tab active">
-        <div class="card">
-          <div class="row">
-            <div class="field">
-              <label>自定义代码（逗号分隔，留空用龙头池）</label>
-              <input id="s_codes" placeholder="HK.00700, HK.09988" style="width:320px" />
-            </div>
-            <div class="field">
-              <label>数量</label>
-              <input id="s_top" value="20" style="width:64px" />
-            </div>
-            <button class="act" onclick="runScreener()">扫描</button>
+      <!-- 综合选股扫描 -->
+      <div id="hunter-scan">
+        <div class="row">
+          <div class="field">
+            <label>自定义代码（逗号分隔，留空用龙头池）</label>
+            <input id="s_codes" placeholder="HK.00700, HK.09988" style="width:320px" />
           </div>
-          <div id="s_meta" class="muted" style="margin-top:14px"></div>
-          <div id="s_result" class="muted" style="margin-top:8px">点击「扫描」开始</div>
-          <div id="scoreChart"></div>
+          <div class="field">
+            <label>数量</label>
+            <input id="s_top" value="20" style="width:64px" />
+          </div>
+          <button class="act" onclick="runScreener()">扫描</button>
         </div>
-      </section>
+        <div id="s_meta" class="muted" style="margin-top:14px"></div>
+        <div id="s_result" class="muted" style="margin-top:8px">点击「扫描」开始</div>
+        <div id="scoreChart"></div>
+      </div>
 
-      <!-- 持仓风控 -->
-      <section id="monitor" class="tab">
-        <div class="card">
-          <div class="row">
-            <button class="act" onclick="runMonitor()">刷新持仓风控</button>
-            <span class="muted">止损 / 阶梯止盈 / 技术面止盈 + 企业微信推送</span>
+      <!-- 错杀观察池 -->
+      <div id="hunter-missed" style="display:none">
+        <div class="row">
+          <div class="field"><label>数量</label><input id="m_top" value="5" style="width:64px" /></div>
+          <div class="field">
+            <label>池</label>
+            <select id="m_pool"><option value="leaders">龙头池</option><option value="all">全市场</option></select>
           </div>
-          <div id="m_alerts" class="alerts" style="margin-top:14px"></div>
-          <div id="m_result" class="muted" style="margin-top:14px">点击「刷新持仓风控」</div>
+          <button class="act" onclick="runMissed()">扫描错杀</button>
         </div>
-      </section>
+        <div id="missed_result" class="muted" style="margin-top:14px">点击「扫描错杀」开始（盈利且被错杀的优质标的）</div>
+      </div>
+    </section>
+  </main>
 
-      <!-- 错杀猎手 -->
-      <section id="missed" class="tab">
-        <div class="card">
-          <div class="row">
-            <div class="field"><label>数量</label><input id="m_top" value="5" style="width:64px" /></div>
-            <div class="field">
-              <label>池</label>
-              <select id="m_pool"><option value="leaders">龙头池</option><option value="all">全市场</option></select>
-            </div>
-            <button class="act" onclick="runMissed()">扫描错杀</button>
-          </div>
-          <div id="missed_result" class="muted" style="margin-top:14px">点击「扫描错杀」开始（盈利且被错杀的优质标的）</div>
-        </div>
-      </section>
-
-      <!-- 价格报警 -->
-      <section id="alerts" class="tab">
-        <div class="card">
-          <div class="row">
-            <button class="act" onclick="runAlerts()">检查价格报警</button>
-            <span class="muted">预警 → 警告 → 止损 三级 + 止盈；升级才推送，不重复轰炸</span>
-          </div>
-          <div id="alerts_result" class="muted" style="margin-top:14px">点击「检查价格报警」</div>
-        </div>
-        <div class="card">
-          <div class="card-title">新增报警 <span class="sub">运行时有效，重启清空</span></div>
-          <div class="row" style="margin-top:12px">
-            <div class="field"><label>代码</label><input id="a_code" placeholder="HK.01810" style="width:120px" /></div>
-            <div class="field"><label>名称</label><input id="a_name" placeholder="名称" style="width:120px" /></div>
-            <div class="field"><label>减仓预警价</label><input id="a_warn" type="number" style="width:90px" /></div>
-            <div class="field"><label>警告价</label><input id="a_alarm" type="number" style="width:90px" /></div>
-            <div class="field"><label>止损价</label><input id="a_stop" type="number" style="width:90px" /></div>
-            <div class="field"><label>止盈价</label><input id="a_tp" type="number" style="width:90px" /></div>
-            <button class="act" onclick="addAlert()">添加</button>
-          </div>
-        </div>
-      </section>
-
-      <!-- 单票分析 -->
-      <section id="analyze" class="tab">
-        <div class="card">
-          <div class="row">
-            <div class="field"><label>股票代码</label><input id="an_code" placeholder="HK.00700" value="HK.00700" style="width:150px" /></div>
-            <button class="act" onclick="runAnalyze()">分析</button>
-          </div>
-          <div id="an_result" class="muted" style="margin-top:14px">输入代码后点击「分析」</div>
-        </div>
-      </section>
-
-      <!-- 新股打新 -->
-      <section id="ipo" class="tab">
-        <div class="card">
-          <div class="card-title">联网获取 <span class="sub">可选，自动预填招股信息</span></div>
-          <div class="row" style="margin-top:12px">
-            <div class="field"><label>代码（联网获取可选）</label><input id="i_code_auto" placeholder="HK.02197" style="width:130px" /></div>
-            <button class="act" onclick="runIpoAuto()">联网获取并打分</button>
-            <span class="muted">留空则手动填写下方</span>
-          </div>
-          <div id="i_auto_note" class="muted" style="margin-top:10px"></div>
-        </div>
-        <div class="card">
-          <div class="card-title">招股信息 <span class="sub">核心数据速览，可留空</span></div>
-          <div class="row" style="margin-top:12px">
-            <div class="field"><label>名称</label><input id="i_name" placeholder="名称" style="width:130px" /></div>
-            <div class="field"><label>代码</label><input id="i_code" placeholder="代码" style="width:110px" /></div>
-            <div class="field"><label>招股价低</label><input id="i_plow" type="number" style="width:90px" /></div>
-            <div class="field"><label>高</label><input id="i_phigh" type="number" style="width:90px" /></div>
-            <div class="field"><label>每手股数</label><input id="i_lot" type="number" style="width:80px" /></div>
-            <div class="field"><label>入场费</label><input id="i_fee" type="number" style="width:90px" /></div>
-          </div>
-          <div class="row" style="margin-top:12px">
-            <div class="field"><label>保荐人</label><input id="i_sponsors" placeholder="高盛/中金" style="width:170px" /></div>
-            <div class="field"><label>基石比例%</label><input id="i_corner" type="number" placeholder="40" style="width:80px" /></div>
-            <div class="field"><label>认购起</label><input id="i_sstart" placeholder="08-01" style="width:90px" /></div>
-            <div class="field"><label>止</label><input id="i_send" placeholder="08-06" style="width:90px" /></div>
-            <div class="field"><label>上市日</label><input id="i_list" placeholder="08-12" style="width:90px" /></div>
-          </div>
-          <div class="card-title" style="margin-top:16px">打分字段</div>
-          <div class="row" style="margin-top:12px">
-            <div class="field"><label>认购倍数</label><input id="i_sub" type="number" placeholder="5000" style="width:100px" /></div>
-            <div class="field"><label>营收(亿)</label><input id="i_rev" type="number" placeholder="100" style="width:90px" /></div>
-            <div class="field"><label>盈利</label>
-              <select id="i_profit"><option value="true">盈利</option><option value="false">亏损</option></select></div>
-            <div class="field"><label>稀缺性</label>
-              <select id="i_rarity">
-                <option value="global_unique">全球唯一</option>
-                <option value="top3" selected>赛道前三</option>
-                <option value="front">赛道前列</option>
-                <option value="red_ocean">红海</option>
-              </select></div>
-            <div class="field"><label>估值</label>
-              <select id="i_val">
-                <option value="discount">折价发行</option>
-                <option value="slight_low">略低于行业</option>
-                <option value="fair" selected>持平</option>
-                <option value="slight_high">略偏高</option>
-                <option value="high">明显偏高</option>
-              </select></div>
-            <div class="field"><label>顶级保荐人</label>
-              <select id="i_sponsor"><option value="true">是</option><option value="false" selected>否</option></select></div>
-            <button class="act" onclick="runIpo()">打分</button>
-          </div>
-          <div id="i_result" class="muted" style="margin-top:14px">填写后点击「打分」</div>
-        </div>
-      </section>
-    </main>
-  </div>
-</div>
-
+<script src="app.js"></script>
 <script>
-const $ = (id) => document.getElementById(id);
-
-async function checkConn() {
-  try {
-    const r = await fetch('/health'); const j = await r.json();
-    const el = $('conn');
-    if (j.connected) { el.className = 'status ok'; el.textContent = '富途已连接'; }
-    else { el.className = 'status bad'; el.textContent = '富途未连接'; }
-  } catch (e) { $('conn').textContent = '后端不可达'; }
+function switchHunter(sub) {
+  document.querySelectorAll('.subtab').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.subtab[data-sub="${sub}"]`).classList.add('active');
+  $('hunter-scan').style.display = (sub === 'scan') ? '' : 'none';
+  $('hunter-missed').style.display = (sub === 'missed') ? '' : 'none';
 }
-checkConn(); setInterval(checkConn, 15000);
-
-const TITLES = {screener:'选股扫描', monitor:'持仓风控', missed:'错杀猎手', alerts:'价格报警', analyze:'单票分析', ipo:'新股打新'};
-document.querySelectorAll('nav button').forEach(b => {
-  b.onclick = () => {
-    document.querySelectorAll('nav button').forEach(x => x.classList.remove('active'));
-    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-    b.classList.add('active');
-    $(b.dataset.tab).classList.add('active');
-    $('pageTitle').textContent = TITLES[b.dataset.tab] || '';
-  };
-});
-
-function cls(v){ return (v>=0) ? 'up':'down'; }
-function pill(s, clsname){ return '<span class="pill '+clsname+'">'+s+'</span>'; }
 
 async function runScreener() {
   const codes = $('s_codes').value.trim();
@@ -390,7 +94,8 @@ async function runScreener() {
     <th>PE</th><th>52周位%</th><th>评分</th><th>推送</th><th>信号</th></tr></thead><tbody>`;
   rows.forEach(x => {
     const push = x.push ? pill('推','push') : '';
-    html += `<tr><td>${x.code}</td><td>${x.name}</td><td class="mono">${x.price}</td>
+    html += `<tr class="has-link"><td><span class="stock-link" onclick="openAnalyze('${x.code}')">${x.code}</span></td>
+      <td><span class="stock-link" onclick="openAnalyze('${x.code}')">${x.name}</span></td><td class="mono">${x.price}</td>
       <td class="${cls(x.change_rate)} mono">${x.change_rate}</td><td class="mono">${x.pe}</td>
       <td class="mono">${x.week52_position_pct}</td><td class="mono"><b>${x.score}</b></td><td>${push}</td>
       <td>${x.signals.map(s=>pill(s,'warn')).join(' ')}</td></tr>`;
@@ -402,31 +107,10 @@ async function runScreener() {
   c.setOption({ tooltip:{}, grid:{left:80,right:30},
     xAxis:{type:'value', max:10}, yAxis:{type:'category', data: top10.map(x=>x.name).reverse()},
     series:[{type:'bar', data: top10.map(x=>x.score).reverse(),
-      itemStyle:{color:'#2563eb'}, label:{show:true,position:'right'}}] });
-}
-
-async function runMonitor() {
-  const r = await fetch('/monitor'); const j = await r.json();
-  const el = $('m_result'); const ab = $('m_alerts');
-  if (!j.ok) { ab.innerHTML = ''; el.innerHTML = '<div class="err">'+j.error+'</div>'; return; }
-  const d = j.data; const s = d.summary; const alerts = d.alerts || [];
-  ab.innerHTML = alerts.length
-    ? alerts.map(a => `<div class="alert ${a.level}"><b>${a.level==='danger'?'🔴 止损预警':'🟢 止盈/技术提醒'}</b> ${a.name}(${a.code})：${a.msg}</div>`).join('')
-        + `<div class="muted" style="margin-top:4px">⚠️ 预警已尝试推送企业微信（若已配置 Webhook）</div>`
-    : '<div class="alert ok">✅ 当前无止损/止盈预警触发</div>';
-  let html = `<div class="muted" style="margin-bottom:8px">持仓 ${s.count} 只 · 市值 ${s.total_market_val} · 浮动盈亏 ${s.total_pl_val}</div><table><thead><tr>
-    <th>代码</th><th>名称</th><th>类型</th><th>现价</th><th>成本</th><th>盈亏%</th><th>止损价</th><th>手数</th><th>技术(RSI/量比)</th><th>信号</th><th>建议</th></tr></thead><tbody>`;
-  d.positions.forEach(p => {
-    const sig = p.signals.length ? p.signals.map(x=>pill(x, x.includes('技术止盈')?'good':(x.includes('止损')?'bad':'warn'))).join(' ') : '<span class="muted">—</span>';
-    const tech = `${p.rsi14 ?? '—'} / ${p.vol_ratio ?? '—'}`;
-    html += `<tr><td>${p.code}</td><td>${p.name}</td><td>${p.type}</td>
-      <td class="mono">${p.cur_price}</td><td class="mono">${p.cost_price}</td>
-      <td class="${cls(p.pl_ratio)} mono">${p.pl_ratio}</td>
-      <td class="mono">${p.stop_loss_price}</td><td>${p.lots ?? '—'}<br><span class="muted">${p.scale}</span></td>
-      <td class="mono">${tech}</td><td>${sig}</td><td class="muted">${p.advice}</td></tr>`;
-  });
-  html += '</tbody></table>';
-  el.innerHTML = html;
+      itemStyle:{
+        color: new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#0071e3'},{offset:1,color:'#4ea1ff'}]),
+        borderRadius:[0,5,5,0] },
+      label:{show:true,position:'right',color:'#1d1d1f',fontWeight:600} }] });
 }
 
 async function runMissed() {
@@ -439,143 +123,12 @@ async function runMissed() {
   let html = `<div class="sub">Contrarian 错杀观察（确信度 = 评分 + 深度超跌加成）</div><table><thead><tr>
     <th>代码</th><th>名称</th><th>现价</th><th>涨跌%</th><th>PE</th><th>52周位%</th><th>评分</th><th>确信度</th><th>信号</th></tr></thead><tbody>`;
   rows.forEach(x => {
-    html += `<tr><td>${x.code}</td><td>${x.name}</td><td class="mono">${x.price}</td>
+    html += `<tr class="has-link"><td><span class="stock-link" onclick="openAnalyze('${x.code}')">${x.code}</span></td>
+      <td><span class="stock-link" onclick="openAnalyze('${x.code}')">${x.name}</span></td><td class="mono">${x.price}</td>
       <td class="${cls(x.change_rate)} mono">${x.change_rate}</td><td class="mono">${x.pe}</td>
       <td class="mono">${x.week52_position_pct}</td><td class="mono">${x.score}</td><td class="mono"><b>${x.conviction}</b></td>
       <td>${x.signals.map(s=>pill(s,'good')).join(' ')}</td></tr>`;
   });
-  html += '</tbody></table>';
-  el.innerHTML = html;
-}
-
-async function runAlerts() {
-  const r = await fetch('/price-alerts'); const j = await r.json();
-  const el = $('alerts_result');
-  if (!j.ok) { el.innerHTML = '<div class="err">'+j.error+'</div>'; return; }
-  const d = j.data; const items = d.items || [];
-  if (!items.length) { el.innerHTML = '<div class="muted">未配置价格报警</div>'; return; }
-  let html = `<div class="muted">共 ${d.count} 条 · 本轮需推送 ${d.push_count} 条</div><table><thead><tr>
-    <th>代码</th><th>名称</th><th>现价</th><th>涨跌%</th><th>减仓价</th><th>警告价</th><th>止损价</th><th>止盈价</th><th>当前信号</th></tr></thead><tbody>`;
-  items.forEach(x => {
-    const sig = x.active_signals.length ? x.active_signals.map(s=>pill(s,'bad')).join(' ') : '<span class="muted">—</span>';
-    html += `<tr><td>${x.code}</td><td>${x.name}</td><td class="mono">${x.price}</td>
-      <td class="${cls(x.change_rate)} mono">${x.change_rate}</td>
-      <td class="mono">${x.warn_px ?? '—'}</td><td class="mono">${x.alarm_px ?? '—'}</td><td class="mono">${x.stop_px ?? '—'}</td><td class="mono">${x.tp_px ?? '—'}</td>
-      <td>${sig}</td></tr>`;
-  });
-  html += '</tbody></table>';
-  el.innerHTML = html;
-}
-
-async function addAlert() {
-  const body = {
-    code: $('a_code').value.trim(), name: $('a_name').value.trim(),
-    warn_px: Number($('a_warn').value||0), alarm_px: Number($('a_alarm').value||0),
-    stop_px: Number($('a_stop').value||0), tp_px: Number($('a_tp').value||0),
-  };
-  if (!body.code) { alert('请填写代码'); return; }
-  const r = await fetch('/price-alerts', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
-  const j = await r.json();
-  if (j.ok) { $('a_code').value=''; runAlerts(); }
-  else alert('添加失败: ' + (j.error||''));
-}
-
-async function runAnalyze() {
-  const code = $('an_code').value.trim();
-  const r = await fetch('/analyze?code=' + encodeURIComponent(code)); const j = await r.json();
-  const el = $('an_result');
-  if (!j.ok) { el.innerHTML = '<div class="err">'+j.error+'</div>'; return; }
-  const d = j.data; const t = d.technical || {};
-  el.innerHTML = `
-  <div class="grid2"><div>
-    <div class="kv"><span>名称</span><span>${d.name} (${d.code})</span></div>
-    <div class="kv"><span>现价</span><span class="${cls(d.change_rate)}">${d.price} (${d.change_rate}%)</span></div>
-    <div class="kv"><span>PE / PB</span><span>${d.pe} / ${d.pb}</span></div>
-    <div class="kv"><span>52周区间</span><span>${d.week52_low} ~ ${d.week52_high}</span></div>
-    <div class="kv"><span>52周位置</span><span>${d.week52_position_pct}%</span></div>
-    <div class="kv"><span>结论</span><span class="pill ${d.week52_position_pct<25?'good':'warn'}">${d.conclusion}</span></div>
-  </div><div>
-    <div class="kv"><span>MA5 / MA10 / MA20</span><span>${t.ma5} / ${t.ma10} / ${t.ma20}</span></div>
-    <div class="kv"><span>RSI14</span><span>${t.rsi14}</span></div>
-    <div class="kv"><span>量能比</span><span>${t.vol_ratio}</span></div>
-    <div class="kv"><span>技术信号</span><span>${(d.signals||[]).map(s=>pill(s,'warn')).join(' ')||'—'}</span></div>
-  </div></div>`;
-}
-
-async function runIpo() {
-  const num = (v) => { const x = Number(v); return isNaN(x) ? null : x; };
-  const data = {
-    name: $('i_name').value.trim(), code: $('i_code').value.trim(),
-    price_low: num($('i_plow').value), price_high: num($('i_phigh').value),
-    lot_size: num($('i_lot').value), entry_fee: num($('i_fee').value),
-    sponsors: $('i_sponsors').value.trim() || null,
-    cornerstone_pct: num($('i_corner').value),
-    sub_start: $('i_sstart').value.trim() || null, sub_end: $('i_send').value.trim() || null,
-    list_date: $('i_list').value.trim() || null,
-    sub_times: num($('i_sub').value) || 0, revenue: num($('i_rev').value) || 0,
-    profitable: $('i_profit').value === 'true', rarity_tier: $('i_rarity').value,
-    valuation_level: $('i_val').value, top_sponsor: $('i_sponsor').value === 'true',
-  };
-  renderIpo(data);
-}
-
-async function runIpoAuto() {
-  const code = $('i_code_auto').value.trim();
-  const note = $('i_auto_note');
-  if (!code) { note.textContent = '请输入代码'; return; }
-  note.textContent = '联网获取中…';
-  const r = await fetch('/ipo/auto?code=' + encodeURIComponent(code));
-  const j = await r.json();
-  if (!j.ok) { note.textContent = '⚠️ ' + j.error; return; }
-  const d = j.data;
-  $('i_name').value = d.name || ''; $('i_code').value = d.code || '';
-  if (d.prospectus) {
-    $('i_plow').value = d.prospectus.price_low ?? '';
-    $('i_phigh').value = d.prospectus.price_high ?? '';
-    $('i_lot').value = d.prospectus.lot_size ?? '';
-    $('i_fee').value = d.prospectus.entry_fee ?? '';
-    $('i_sponsors').value = d.prospectus.sponsors ?? '';
-    $('i_corner').value = d.prospectus.cornerstone_pct ?? '';
-  }
-  note.textContent = '✅ 已联网获取并预填，认购倍数等打分字段请补全后点「打分」';
-  renderIpo(d);
-}
-
-function renderIpo(d) {
-  const el = $('i_result');
-  const dims = d.dimensions || {}; const rem = d.dimensions_remark || {};
-  const L = (x) => ({market_sentiment:'市场情绪',fundamentals:'基本面',rarity:'稀缺性',valuation:'估值合理度',placement:'配售结构'}[x] || x);
-  let html = `<div class="grid2"><div>`;
-  const p = d.prospectus || {};
-  const pe = (a,b)=> (a??'—')+(b!=null&&b!==''?' - '+b:'');
-  html += `<div class="sub">核心数据速览</div>`;
-  html += `<div class="kv"><span>招股价</span><span>${pe(p.price_low,p.price_high)}</span></div>`;
-  html += `<div class="kv"><span>每手股数</span><span>${p.lot_size ?? '—'}</span></div>`;
-  html += `<div class="kv"><span>入场费</span><span>${p.entry_fee ?? '—'}</span></div>`;
-  html += `<div class="kv"><span>认购日期</span><span>${p.sub_start ?? '—'}${p.sub_end?' ~ '+p.sub_end:''}</span></div>`;
-  html += `<div class="kv"><span>上市日期</span><span>${p.list_date ?? '—'}</span></div>`;
-  html += `<div class="kv"><span>保荐人</span><span>${p.sponsors ?? '—'}</span></div>`;
-  html += `<div class="kv"><span>基石比例</span><span>${p.cornerstone_pct ?? '—'}</span></div>`;
-  html += `</div><div>`;
-  html += `<div class="kv"><span>综合打分</span><span class="big ${d.composite_score>=7?'up':d.composite_score<4?'down':''}">${d.composite_score}/10</span></div>`;
-  html += `<div class="kv"><span>建议</span><span class="pill ${d.composite_score>=5.5?'good':'bad'}">${d.verdict}</span></div>`;
-  html += `<div class="kv"><span>数据完整性</span><span class="muted">${d.completeness}</span></div>`;
-  html += `</div></div>`;
-  html += `<div class="sub" style="margin-top:14px">综合打分（5 维权重）</div><table><thead><tr><th>维度</th><th>得分</th><th>说明</th></tr></thead><tbody>`;
-  for (const k in dims) html += `<tr><td>${L(k)}</td><td class="mono"><b>${dims[k]}</b></td><td class="muted">${rem[k]||''}</td></tr>`;
-  html += '</tbody></table>';
-  const a = d.allotment || {};
-  if (a.calibration) {
-    const c = a.calibration;
-    html += `<div class="muted" style="margin-top:10px">校准参照：${c.name}（${c.code}）认购 ${c.sub_times} 倍，甲尾 ${c.a_tail||'—'}，乙头 ${c.b_head||'—'}${c.hammer?'，顶头锤 '+c.hammer:''}（基于认购倍数 ${d.sub_times} 倍分段）</div>`;
-  }
-  const ga = a.group_a || {}, gb = a.group_b || {};
-  const ka = Object.keys(ga), kb = Object.keys(gb);
-  html += `<div class="sub">中签率预测（认购 ${d.sub_times} 倍，区间 ${a.band}）</div><table><thead><tr><th>档位</th><th>甲组</th><th>乙组</th></tr></thead><tbody>`;
-  for (let i=0;i<ka.length;i++) {
-    const kbk = kb[i] || '';
-    html += `<tr><td>${ka[i]}</td><td class="mono">${ga[ka[i]]}</td><td class="mono">${kbk?gb[kbk]:'—'}</td></tr>`;
-  }
   html += '</tbody></table>';
   el.innerHTML = html;
 }

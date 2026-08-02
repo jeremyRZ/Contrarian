@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>单票深度 · Contrarian 港股错杀猎手</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="app.css" />
+</head>
+<body data-page="analyze">
+  <nav class="topnav">
+    <div class="brand">Contrarian<small>港股错杀猎手</small></div>
+    <div class="links">
+      <a href="index.html" data-page="hunter">错杀猎手</a>
+      <a href="analyze.html" data-page="analyze">单票深度</a>
+      <a href="risk.html" data-page="risk">风控与预警</a>
+      <a href="ipo.html" data-page="ipo">新股打新</a>
+    </div>
+    <div id="conn" class="status bad">检测中…</div>
+  </nav>
+
+  <main class="page">
+    <div class="page-head">
+      <h1>单票深度</h1>
+      <p>个股 360° 诊断 — 股价与南向持股背离、技术面、估值与信号</p>
+    </div>
+
+    <section class="card">
+      <div class="hint-bar" style="margin-bottom:16px">提示：在「错杀猎手」列表中点击任意股票代码，可直接下钻到本页并自动分析。</div>
+      <div class="row">
+        <div class="field"><label>股票代码</label><input id="an_code" placeholder="HK.00700" value="HK.00700" style="width:150px" /></div>
+        <button class="act" onclick="runAnalyze()">分析</button>
+      </div>
+      <div id="an_result" class="muted" style="margin-top:16px">输入代码后点击「分析」，或从错杀猎手列表点击股票</div>
+    </section>
+  </main>
+
+<script src="app.js"></script>
+<script>
+async function runAnalyze() {
+  const code = $('an_code').value.trim();
+  const r = await fetch('/analyze?code=' + encodeURIComponent(code)); const j = await r.json();
+  const el = $('an_result');
+  if (!j.ok) { el.innerHTML = '<div class="err">'+j.error+'</div>'; return; }
+  const d = j.data; const t = d.technical || {};
+  el.innerHTML = `
+  <div class="grid2"><div>
+    <div class="kv"><span>名称</span><span>${d.name} (${d.code})</span></div>
+    <div class="kv"><span>现价</span><span class="${cls(d.change_rate)}">${d.price} (${d.change_rate}%)</span></div>
+    <div class="kv"><span>PE / PB</span><span>${d.pe} / ${d.pb}</span></div>
+    <div class="kv"><span>52周区间</span><span>${d.week52_low} ~ ${d.week52_high}</span></div>
+    <div class="kv"><span>52周位置</span><span>${d.week52_position_pct}%</span></div>
+    <div class="kv"><span>结论</span><span class="pill ${d.week52_position_pct<25?'good':'warn'}">${d.conclusion}</span></div>
+  </div><div>
+    <div class="kv"><span>MA5 / MA10 / MA20</span><span>${t.ma5} / ${t.ma10} / ${t.ma20}</span></div>
+    <div class="kv"><span>RSI14</span><span>${t.rsi14}</span></div>
+    <div class="kv"><span>量能比</span><span>${t.vol_ratio}</span></div>
+    <div class="kv"><span>技术信号</span><span>${(d.signals||[]).map(s=>pill(s,'warn')).join(' ')||'—'}</span></div>
+  </div></div>`;
+}
+
+// 从 URL ?code= 带入并自动分析
+(function initFromQuery() {
+  const p = new URLSearchParams(location.search);
+  const code = p.get('code');
+  if (code) { $('an_code').value = code; runAnalyze(); }
+})();
+</script>
+</body>
+</html>

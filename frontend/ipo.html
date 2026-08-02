@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>新股打新 · Contrarian 港股错杀猎手</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="app.css" />
+</head>
+<body data-page="ipo">
+  <nav class="topnav">
+    <div class="brand">Contrarian<small>港股错杀猎手</small></div>
+    <div class="links">
+      <a href="index.html" data-page="hunter">错杀猎手</a>
+      <a href="analyze.html" data-page="analyze">单票深度</a>
+      <a href="risk.html" data-page="risk">风控与预警</a>
+      <a href="ipo.html" data-page="ipo">新股打新</a>
+    </div>
+    <div id="conn" class="status bad">检测中…</div>
+  </nav>
+
+  <main class="page">
+    <div class="page-head">
+      <h1>新股打新</h1>
+      <p>港股 IPO 招股信息速览与多维度打分 — 认购倍数 / 保荐人 / 基石 / 估值</p>
+    </div>
+
+    <section class="card">
+      <div class="card-title">联网获取 <span class="sub">可选，自动预填招股信息</span></div>
+      <div class="row" style="margin-top:14px">
+        <div class="field"><label>代码（联网获取可选）</label><input id="i_code_auto" placeholder="HK.02197" style="width:130px" /></div>
+        <button class="act" onclick="runIpoAuto()">联网获取并打分</button>
+        <span class="muted">留空则手动填写下方</span>
+      </div>
+      <div id="i_auto_note" class="muted" style="margin-top:10px"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-title">招股信息 <span class="sub">核心数据速览，可留空</span></div>
+      <div class="row" style="margin-top:14px">
+        <div class="field"><label>名称</label><input id="i_name" placeholder="名称" style="width:130px" /></div>
+        <div class="field"><label>代码</label><input id="i_code" placeholder="代码" style="width:110px" /></div>
+        <div class="field"><label>招股价低</label><input id="i_plow" type="number" style="width:90px" /></div>
+        <div class="field"><label>高</label><input id="i_phigh" type="number" style="width:90px" /></div>
+        <div class="field"><label>每手股数</label><input id="i_lot" type="number" style="width:80px" /></div>
+        <div class="field"><label>入场费</label><input id="i_fee" type="number" style="width:90px" /></div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <div class="field"><label>保荐人</label><input id="i_sponsors" placeholder="高盛/中金" style="width:170px" /></div>
+        <div class="field"><label>基石比例%</label><input id="i_corner" type="number" placeholder="40" style="width:80px" /></div>
+        <div class="field"><label>认购起</label><input id="i_sstart" placeholder="08-01" style="width:90px" /></div>
+        <div class="field"><label>止</label><input id="i_send" placeholder="08-06" style="width:90px" /></div>
+        <div class="field"><label>上市日</label><input id="i_list" placeholder="08-12" style="width:90px" /></div>
+      </div>
+      <div class="card-title" style="margin-top:18px">打分字段</div>
+      <div class="row" style="margin-top:14px">
+        <div class="field"><label>认购倍数</label><input id="i_sub" type="number" placeholder="5000" style="width:100px" /></div>
+        <div class="field"><label>营收(亿)</label><input id="i_rev" type="number" placeholder="100" style="width:90px" /></div>
+        <div class="field"><label>盈利</label>
+          <select id="i_profit"><option value="true">盈利</option><option value="false">亏损</option></select></div>
+        <div class="field"><label>稀缺性</label>
+          <select id="i_rarity">
+            <option value="global_unique">全球唯一</option>
+            <option value="top3" selected>赛道前三</option>
+            <option value="front">赛道前列</option>
+            <option value="red_ocean">红海</option>
+          </select></div>
+        <div class="field"><label>估值</label>
+          <select id="i_val">
+            <option value="discount">折价发行</option>
+            <option value="slight_low">略低于行业</option>
+            <option value="fair" selected>持平</option>
+            <option value="slight_high">略偏高</option>
+            <option value="high">明显偏高</option>
+          </select></div>
+        <div class="field"><label>顶级保荐人</label>
+          <select id="i_sponsor"><option value="true">是</option><option value="false" selected>否</option></select></div>
+        <button class="act" onclick="runIpo()">打分</button>
+      </div>
+      <div id="i_result" class="muted" style="margin-top:16px">填写后点击「打分」</div>
+    </section>
+  </main>
+
+<script src="app.js"></script>
+<script>
+async function runIpo() {
+  const num = (v) => { const x = Number(v); return isNaN(x) ? null : x; };
+  const data = {
+    name: $('i_name').value.trim(), code: $('i_code').value.trim(),
+    price_low: num($('i_plow').value), price_high: num($('i_phigh').value),
+    lot_size: num($('i_lot').value), entry_fee: num($('i_fee').value),
+    sponsors: $('i_sponsors').value.trim() || null,
+    cornerstone_pct: num($('i_corner').value),
+    sub_start: $('i_sstart').value.trim() || null, sub_end: $('i_send').value.trim() || null,
+    list_date: $('i_list').value.trim() || null,
+    sub_times: num($('i_sub').value) || 0, revenue: num($('i_rev').value) || 0,
+    profitable: $('i_profit').value === 'true', rarity_tier: $('i_rarity').value,
+    valuation_level: $('i_val').value, top_sponsor: $('i_sponsor').value === 'true',
+  };
+  renderIpo(data);
+}
+
+async function runIpoAuto() {
+  const code = $('i_code_auto').value.trim();
+  const note = $('i_auto_note');
+  if (!code) { note.textContent = '请输入代码'; return; }
+  note.textContent = '联网获取中…';
+  const r = await fetch('/ipo/auto?code=' + encodeURIComponent(code));
+  const j = await r.json();
+  if (!j.ok) { note.textContent = '⚠️ ' + j.error; return; }
+  const d = j.data;
+  $('i_name').value = d.name || ''; $('i_code').value = d.code || '';
+  if (d.prospectus) {
+    $('i_plow').value = d.prospectus.price_low ?? '';
+    $('i_phigh').value = d.prospectus.price_high ?? '';
+    $('i_lot').value = d.prospectus.lot_size ?? '';
+    $('i_fee').value = d.prospectus.entry_fee ?? '';
+    $('i_sponsors').value = d.prospectus.sponsors ?? '';
+    $('i_corner').value = d.prospectus.cornerstone_pct ?? '';
+  }
+  note.textContent = '✅ 已联网获取并预填，认购倍数等打分字段请补全后点「打分」';
+  renderIpo(d);
+}
+
+function renderIpo(d) {
+  const el = $('i_result');
+  const dims = d.dimensions || {}; const rem = d.dimensions_remark || {};
+  const L = (x) => ({market_sentiment:'市场情绪',fundamentals:'基本面',rarity:'稀缺性',valuation:'估值合理度',placement:'配售结构'}[x] || x);
+  let html = `<div class="grid2"><div>`;
+  const p = d.prospectus || {};
+  const pe = (a,b)=> (a??'—')+(b!=null&&b!==''?' - '+b:'');
+  html += `<div class="sub">核心数据速览</div>`;
+  html += `<div class="kv"><span>招股价</span><span>${pe(p.price_low,p.price_high)}</span></div>`;
+  html += `<div class="kv"><span>每手股数</span><span>${p.lot_size ?? '—'}</span></div>`;
+  html += `<div class="kv"><span>入场费</span><span>${p.entry_fee ?? '—'}</span></div>`;
+  html += `<div class="kv"><span>认购日期</span><span>${p.sub_start ?? '—'}${p.sub_end?' ~ '+p.sub_end:''}</span></div>`;
+  html += `<div class="kv"><span>上市日期</span><span>${p.list_date ?? '—'}</span></div>`;
+  html += `<div class="kv"><span>保荐人</span><span>${p.sponsors ?? '—'}</span></div>`;
+  html += `<div class="kv"><span>基石比例</span><span>${p.cornerstone_pct ?? '—'}</span></div>`;
+  html += `</div><div>`;
+  html += `<div class="kv"><span>综合打分</span><span class="big ${d.composite_score>=7?'up':d.composite_score<4?'down':''}">${d.composite_score}/10</span></div>`;
+  html += `<div class="kv"><span>建议</span><span class="pill ${d.composite_score>=5.5?'good':'bad'}">${d.verdict}</span></div>`;
+  html += `<div class="kv"><span>数据完整性</span><span class="muted">${d.completeness}</span></div>`;
+  html += `</div></div>`;
+  html += `<div class="sub" style="margin-top:14px">综合打分（5 维权重）</div><table><thead><tr><th>维度</th><th>得分</th><th>说明</th></tr></thead><tbody>`;
+  for (const k in dims) html += `<tr><td>${L(k)}</td><td class="mono"><b>${dims[k]}</b></td><td class="muted">${rem[k]||''}</td></tr>`;
+  html += '</tbody></table>';
+  const a = d.allotment || {};
+  if (a.calibration) {
+    const c = a.calibration;
+    html += `<div class="muted" style="margin-top:10px">校准参照：${c.name}（${c.code}）认购 ${c.sub_times} 倍，甲尾 ${c.a_tail||'—'}，乙头 ${c.b_head||'—'}${c.hammer?'，顶头锤 '+c.hammer:''}（基于认购倍数 ${d.sub_times} 倍分段）</div>`;
+  }
+  const ga = a.group_a || {}, gb = a.group_b || {};
+  const ka = Object.keys(ga), kb = Object.keys(gb);
+  html += `<div class="sub">中签率预测（认购 ${d.sub_times} 倍，区间 ${a.band}）</div><table><thead><tr><th>档位</th><th>甲组</th><th>乙组</th></tr></thead><tbody>`;
+  for (let i=0;i<ka.length;i++) {
+    const kbk = kb[i] || '';
+    html += `<tr><td>${ka[i]}</td><td class="mono">${ga[ka[i]]}</td><td class="mono">${kbk?gb[kbk]:'—'}</td></tr>`;
+  }
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+</script>
+</body>
+</html>
