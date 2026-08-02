@@ -1,6 +1,7 @@
 /* ============================================================
    Contrarian 港股错杀猎手 — Apple 风共享样式
    顶部横向导航（无图标）· 系统字体 · 克制专业
+   设计抛光遵循 Emil Kowalski 设计工程哲学
    ============================================================ */
 :root {
   --bg: #ffffff;
@@ -24,9 +25,14 @@
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
           "Helvetica Neue", "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  /* 自定义缓动曲线：内置 ease 太弱，用强曲线让动效显得"有意而为" */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
+html { scroll-behavior: smooth; }
 body { margin: 0; font-family: var(--sans); color: var(--ink);
        font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;
        background: var(--bg); }
@@ -35,9 +41,16 @@ body { margin: 0; font-family: var(--sans); color: var(--ink);
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
+/* 键盘可达性：聚焦可见描边（不依赖鼠标 hover） */
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+.chip:focus-visible, .icon-btn:focus-visible, .subtab:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px;
+}
+
 /* ---------- 顶部横向导航（Apple 风，无图标） ---------- */
 .topnav { position: sticky; top: 0; z-index: 50; height: 48px;
   background: rgba(255,255,255,.72); backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 1px solid var(--line-soft);
   display: flex; align-items: center; padding: 0 max(22px, 4vw); }
 .topnav .brand { display: inline-flex; align-items: center; gap: 8px;
@@ -46,7 +59,8 @@ a:hover { text-decoration: underline; }
 .topnav .brand small { font-weight: 400; color: var(--faint); font-size: 12px; margin-left: 6px; }
 .topnav .links { display: flex; align-items: center; gap: 4px; flex: 1; }
 .topnav .links a { color: var(--muted); font-size: 13.5px; font-weight: 400;
-  padding: 6px 12px; border-radius: 7px; transition: color .14s ease, background .14s ease; }
+  padding: 6px 12px; border-radius: 7px;
+  transition: color .16s var(--ease-out), background .16s var(--ease-out); }
 .topnav .links a:hover { color: var(--ink); background: var(--surface); text-decoration: none; }
 .topnav .links a.active { color: var(--accent); font-weight: 500; }
 .topnav .status { font-size: 12px; padding: 4px 11px; border-radius: 999px;
@@ -63,7 +77,9 @@ a:hover { text-decoration: underline; }
 
 /* ---------- 卡片 ---------- */
 .card { background: var(--panel); border: 1px solid var(--line-soft);
-        border-radius: var(--radius-lg); padding: 22px; margin-bottom: 18px; }
+        border-radius: var(--radius-lg); padding: 22px; margin-bottom: 18px;
+        transition: box-shadow .2s var(--ease-out), border-color .2s var(--ease-out), transform .2s var(--ease-out); }
+.card:hover { border-color: var(--line); box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.05); }
 .card-head { display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 16px; gap: 12px; }
 .card-title { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
@@ -75,15 +91,17 @@ a:hover { text-decoration: underline; }
 .field label { font-size: 12px; color: var(--muted); font-weight: 500; }
 input, select { font-family: inherit; font-size: 14px; color: var(--ink);
   padding: 8px 11px; border: 1px solid var(--line); border-radius: var(--radius);
-  background: #fff; outline: none; transition: border-color .14s ease, box-shadow .14s ease; }
+  background: #fff; outline: none;
+  transition: border-color .16s var(--ease-out), box-shadow .16s var(--ease-out); }
 input:focus, select:focus { border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(0,113,227,.15); }
+/* 按钮必须具备按压反馈：scale(0.97) 让界面"听得到"点击 */
 button.act { background: var(--accent); color: #fff; border: none; cursor: pointer;
   padding: 9px 18px; border-radius: var(--radius); font-family: inherit; font-size: 14px; font-weight: 500;
-  transition: background .14s ease; }
+  transition: background .16s var(--ease-out), transform .12s var(--ease-out); }
 button.act:hover { background: var(--accent-hover); }
-button.act:active { background: #0064c8; }
-button.act[disabled] { opacity: .55; cursor: progress; }
+button.act:active { background: #0064c8; transform: scale(0.97); }
+button.act[disabled] { opacity: .55; cursor: progress; transform: none; }
 .muted { color: var(--muted); font-size: 13px; }
 .sub { font-size: 12.5px; color: var(--muted); margin: 8px 0 2px; }
 
@@ -93,7 +111,7 @@ table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13p
 th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
 th { color: var(--muted); font-weight: 600; font-size: 12px;
      background: var(--surface); border-bottom: 1px solid var(--line); }
-tbody tr { transition: background .1s ease; }
+tbody tr { transition: background .14s var(--ease-out); }
 tbody tr:hover { background: var(--accent-soft-2); }
 td.mono, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
@@ -122,20 +140,26 @@ td.mono, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 /* ---------- 持仓快捷选择（单票页） ---------- */
 .icon-btn { background: #fff; border: 1px solid var(--line); color: var(--muted);
   width: 34px; height: 34px; border-radius: 8px; cursor: pointer; font-size: 15px;
-  display: inline-flex; align-items: center; justify-content: center; transition: all .14s ease; }
-.icon-btn:hover { color: var(--ink); border-color: var(--accent); }
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: transform .16s var(--ease-out), border-color .16s var(--ease-out),
+              color .16s var(--ease-out), background .16s var(--ease-out); }
+.icon-btn:active { transform: scale(0.94); }
 .watch-bar { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin-top: 10px; }
 .chip { display: inline-flex; align-items: baseline; gap: 5px; padding: 4px 11px; border-radius: 999px;
   background: var(--surface); border: 1px solid var(--line); color: var(--ink); font-size: 13px;
-  cursor: pointer; transition: all .14s ease; }
+  cursor: pointer;
+  transition: transform .16s var(--ease-out), border-color .16s var(--ease-out),
+              background .16s var(--ease-out), color .16s var(--ease-out); }
 .chip small { color: var(--faint); font-family: var(--mono); font-size: 11px; }
-.chip:hover { border-color: var(--accent); background: var(--accent-soft); color: #0058b9; }
+.chip:active { transform: scale(0.97); }
 
 /* 设置弹窗 */
 .modal-mask { position: fixed; inset: 0; background: rgba(15,23,42,.42);
-  display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
+  display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px;
+  animation: maskIn 180ms ease both; }
 .modal { background: #fff; border-radius: 12px; width: min(420px, 92vw); max-height: 80vh;
-  display: flex; flex-direction: column; box-shadow: 0 12px 40px rgba(0,0,0,.22); }
+  display: flex; flex-direction: column; box-shadow: 0 12px 40px rgba(0,0,0,.22);
+  transform-origin: center; animation: modalIn 240ms var(--ease-out) both; }
 .modal-head { display: flex; align-items: center; justify-content: space-between;
   padding: 14px 16px; border-bottom: 1px solid var(--line); font-weight: 600; font-size: 15px; }
 .modal-body { padding: 14px 16px; overflow-y: auto; }
@@ -143,12 +167,14 @@ td.mono, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   border-top: 1px solid var(--line); }
 .watch-opts { display: flex; flex-direction: column; gap: 4px; }
 .wopt { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px;
-  font-size: 14px; cursor: pointer; }
+  font-size: 14px; cursor: pointer; transition: background .14s var(--ease-out); }
 .wopt:hover { background: var(--surface); }
 .wopt small { color: var(--faint); font-family: var(--mono); font-size: 11px; margin-left: 2px; }
 button.ghost { background: #fff; border: 1px solid var(--line); color: var(--muted);
-  padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13.5px; }
+  padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13.5px;
+  transition: transform .12s var(--ease-out), border-color .16s var(--ease-out), color .16s var(--ease-out); }
 button.ghost:hover { border-color: var(--accent); color: var(--ink); }
+button.ghost:active { transform: scale(0.97); }
 button.ghost.sm { padding: 4px 9px; font-size: 12px; border-radius: 6px; }
 
 /* ---------- 预警条 ---------- */
@@ -176,8 +202,10 @@ button.ghost.sm { padding: 4px 9px; font-size: 12px; border-radius: 6px; }
 .subtabs { display: flex; gap: 6px; }
 .subtab { border: 1px solid var(--line); background: #fff; color: var(--muted);
   font-family: inherit; font-size: 13px; padding: 7px 15px; border-radius: var(--radius);
-  cursor: pointer; transition: .14s ease; }
-.subtab:hover { background: var(--surface); color: var(--ink); }
+  cursor: pointer;
+  transition: transform .14s var(--ease-out), background .16s var(--ease-out),
+              color .16s var(--ease-out), border-color .16s var(--ease-out); }
+.subtab:active { transform: scale(0.98); }
 .subtab.active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 500; }
 
 /* ---------- 股票代码下钻链接 ---------- */
@@ -191,7 +219,7 @@ tbody tr.has-link:hover { background: var(--accent-soft-2); }
   backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
 .loading-box { display: flex; flex-direction: column; align-items: center; gap: 14px; }
 .spinner { width: 42px; height: 42px; border: 4px solid var(--accent-soft);
-  border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+  border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
 .loading-msg { font-size: 14px; font-weight: 600; color: var(--ink); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -216,3 +244,28 @@ tbody tr.has-link:hover { background: var(--accent-soft-2); }
 .news-title { font-size: 14px; font-weight: 500; color: var(--ink); display: block; }
 .news-title:hover { color: var(--accent); text-decoration: none; }
 .news-meta { font-size: 12px; color: var(--faint); margin-top: 3px; }
+
+/* ---------- 入场动画（首屏轻微淡入上移，由 app.js 触发 stagger） ----------
+   用 animation 而非 transition：避免内联 animation-delay 拖慢卡片的 hover 过渡 */
+.reveal { opacity: 0; }
+.reveal.in { animation: rise .42s var(--ease-out) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+@keyframes maskIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modalIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+
+/* ---------- 触屏设备：hover 变换会误触，仅对精确指针开启位移/缩放 hover ---------- */
+@media (hover: hover) and (pointer: fine) {
+  .icon-btn:hover { border-color: var(--accent); color: var(--ink); transform: translateY(-1px); }
+  .chip:hover { border-color: var(--accent); background: var(--accent-soft); color: #0058b9; transform: translateY(-1px); }
+  .card:hover { transform: translateY(-1px); }
+}
+
+/* ---------- 尊重用户的减少动效偏好：保留颜色/透明度，移除位移与循环动画 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  .modal, .modal-mask { animation: none !important; }
+  .reveal { opacity: 1 !important; transform: none !important; animation: none !important; }
+}

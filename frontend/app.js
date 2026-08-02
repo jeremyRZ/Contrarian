@@ -59,3 +59,27 @@ function openAnalyze(code) {
     if (a.dataset.page === page) a.classList.add('active');
   });
 })();
+
+// 首屏入场：.page-head 与 .card 轻微淡入上移，stagger 55ms（克制、不挡交互）
+// 尊重 prefers-reduced-motion：用户要求减少动效时直接跳过
+(function revealOnLoad() {
+  function run() {
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) return;
+    const items = document.querySelectorAll('.page-head, .card');
+    if (!items.length) return;
+    items.forEach((el, i) => {
+      el.classList.add('reveal');
+      el.style.animationDelay = Math.min(i * 55, 360) + 'ms';
+    });
+    // 双 rAF 确保起始样式已应用，再触发 rise 动画
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      items.forEach(el => el.classList.add('in'));
+    }));
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run);
+  } else {
+    run();
+  }
+})();
