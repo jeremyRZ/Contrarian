@@ -11,7 +11,7 @@ from typing import Optional
 
 import pandas as pd
 
-from . import reverse_signals
+from . import reverse_signals, strategy_config
 from .. import notify
 
 # 港股龙头观察池（约 45 只，覆盖科技/金融/消费/能源/医药）
@@ -71,6 +71,136 @@ def _clean_nan(obj):
     return obj
 
 
+# 实盘扫描用的趋势特征缓存（sma/rsi2 由 K 线计算，避免每只股票重复拉取）
+_TREND_CACHE: dict = {}  # code -> (timestamp, {sma50, sma200, rsi2})
+
+
+def _latest_trend(client, code: str, window: int = 250) -> dict:
+    """返回该标的最新 sma50/sma200/rsi2（由近期 K 线计算）。失败/缺失返回 {}。"""
+    import time
+    now = time.time()
+    cached = _TREND_CACHE.get(code)
+    if cached and now - cached[0] < 3600:
+        return cached[1]
+    try:
+        from . import bt_backtest
+        trend = bt_backtest.latest_trend(client, code, window)
+    except Exception:  # noqa: BLE001
+        trend = {}
+    _TREND_CACHE[code] = (now, trend)
+    return trend
+
+
+def evaluate_signals(f: dict, cfg: dict) -> dict:
+    """纯函数：给定单日特征快照，返回 {score, signals[]}。
+
+    无 IO、可重放 —— 实盘扫描（screen）与历史回测（backtest）共用同一套逻辑，
+    保证回测验证的是生产环境真实使用的信号。
+    f 字段：price, change_rate, prev_close_price, turnover_rate, amplitude,
+            pe, hi52, lo52, pos_pct, is_leader, hstech_crash,
+            sma50, sma200, rsi2（后三者可选，缺省时对应信号不触发）
+    cfg：来自 strategy_config 的策略参数（阈值/权重/开关）。
+    """
+    s = cfg.get("strategies", {})
+    signals: list = []
+    score = 0.0
+    price = f.get("price")
+    chg = f.get("change_rate") or 0.0
+    turn = f.get("turnover_rate") or 0.0
+    pe = f.get("pe")
+    hi = f.get("hi52")
+    lo = f.get("lo52")
+    pos_pct = f.get("pos_pct")
+
+    # 趋势过滤器：下跌类信号需处于上升趋势（价格>均线）才计入，避免接飞刀。
+    # 这是把胜率从 ~45% 拉到 65%+ 的关键（Connors RSI(2) 实证）。
+    tf = cfg.get("trend_filter", {})
+    tf_on = tf.get("enabled", False)
+    tf_period = int(tf.get("period", 200))
+    tf_apply = set(tf.get("apply",
+                    ["deep_drop", "vol_breakout", "low_pe_high_div", "hstech_link", "panic_drop"]))
+    tf_sma = f.get("sma200") if tf_period >= 100 else f.get("sma50")
+    tf_sma_v = None
+    if tf_sma is not None and not (isinstance(tf_sma, float) and math.isnan(tf_sma)):
+        tf_sma_v = tf_sma
+    uptrend = (price is not None and tf_sma_v is not None and price > tf_sma_v)
+
+    def dip_ok(key: str) -> bool:
+        """该下跌类信号是否被趋势过滤器放行。"""
+        return (not tf_on) or (key not in tf_apply) or uptrend
+
+    # 1. 深度超跌反弹：距52周高点回撤 > drop_pct 且盈利
+    drop_val = ((hi - price) / hi * 100) if (price and hi and hi > 0) else None
+    blk = s.get("deep_drop", {})
+    if blk.get("enabled", True) and dip_ok("deep_drop"):
+        if price and hi and lo and hi > lo and hi > 0:
+            if drop_val > blk.get("drop_pct", 25.0) and (pe is None or pe > 0):
+                signals.append("深度超跌反弹")
+                score += blk.get("weight", 3.0)
+    # 2. 放量突破：上涨且换手/量能活跃
+    blk = s.get("vol_breakout", {})
+    if blk.get("enabled", True) and dip_ok("vol_breakout"):
+        if chg > blk.get("chg_pct", 2.0) and turn > blk.get("turn", 1.5):
+            signals.append("放量突破")
+            score += blk.get("weight", 3.0)
+    # 3. 低估值高股息：PE<pe 且接近52周低位
+    blk = s.get("low_pe_high_div", {})
+    if blk.get("enabled", True) and dip_ok("low_pe_high_div"):
+        if pe and pe < blk.get("pe", 10.0) and (pos_pct is not None and pos_pct < blk.get("pos_pct", 30.0)):
+            signals.append("低估值高股息")
+            score += blk.get("weight", 3.0)
+    # 4. 恒科急跌联动低吸：指数急跌时龙头跟跌即低吸
+    blk = s.get("hstech_link", {})
+    if blk.get("enabled", True) and dip_ok("hstech_link"):
+        if f.get("hstech_crash") and f.get("is_leader") and chg < 0:
+            signals.append("恒科急跌联动低吸")
+            score += blk.get("weight", 2.0)
+    # 5. 异常放量急跌(逆向)：日内大跌且放量
+    blk = s.get("panic_drop", {})
+    if blk.get("enabled", True) and dip_ok("panic_drop"):
+        if chg < blk.get("chg_pct", -5.0) and turn > blk.get("turn", 2.0):
+            signals.append("异常放量急跌(逆向)")
+            score += blk.get("weight", 2.0)
+    # 6. 龙头观察池（标签，不参与趋势过滤，也不单独触发回测成交）
+    blk = s.get("leader_pool", {})
+    if blk.get("enabled", True):
+        if f.get("is_leader"):
+            signals.append("龙头观察池")
+            score += blk.get("weight", 1.0)
+    # 7. RSI(2) Connors 逆向低吸：上升趋势中短期超卖（价格>均线 且 RSI2<阈值）
+    blk = s.get("rsi2_connor", {})
+    if blk.get("enabled", False):
+        r2 = f.get("rsi2")
+        if r2 is not None and uptrend and r2 < blk.get("rsi2_oversold", 10):
+            signals.append("RSI2 逆向低吸")
+            score += blk.get("weight", 2.0)
+
+    score = min(10.0, round(score, 1))
+    # 信号名 → 权重（与 cfg 同步，供推送「分数来源」拆解）
+    _name_w = {
+        "深度超跌反弹": s.get("deep_drop", {}).get("weight", 3.0),
+        "放量突破": s.get("vol_breakout", {}).get("weight", 3.0),
+        "低估值高股息": s.get("low_pe_high_div", {}).get("weight", 3.0),
+        "恒科急跌联动低吸": s.get("hstech_link", {}).get("weight", 2.0),
+        "异常放量急跌(逆向)": s.get("panic_drop", {}).get("weight", 2.0),
+        "龙头观察池": s.get("leader_pool", {}).get("weight", 1.0),
+        "RSI2 逆向低吸": s.get("rsi2_connor", {}).get("weight", 2.0),
+    }
+    signal_details = [{"name": nm, "weight": _name_w.get(nm, 0.0)} for nm in signals]
+    reason_inputs = {
+        "drop_pct": round(drop_val, 1) if drop_val is not None else None,
+        "rsi2": round(float(r2), 1) if r2 is not None else None,
+        "uptrend": bool(uptrend),
+        "hstech_crash": bool(f.get("hstech_crash")),
+        "pe": pe,
+        "pos_pct": round(float(pos_pct), 1) if pos_pct is not None else None,
+        "chg": chg,
+        "turn": turn,
+    }
+    return {"score": score, "signals": signals,
+            "signal_details": signal_details, "reason_inputs": reason_inputs}
+
+
 def _batch_snapshot(client, codes):
     parts = []
     for i in range(0, len(codes), 100):
@@ -123,20 +253,31 @@ def _cash_state(cash_ratio: Optional[float], thresholds: dict, cash_full_stop: b
 def screen(client, codes: Optional[list] = None, top_n: int = 20,
            hstech_code: str = "HK.800700", thresholds: Optional[dict] = None,
            cash_full_stop: bool = True, cash_ratio: Optional[float] = None,
-           with_reverse: bool = True):
+           with_reverse: bool = True, cfg: Optional[dict] = None):
     """
     买入机会扫描。返回 (dict, error)。
     dict: {results[], cash_ratio, cash_state, push_threshold, stop_push, hstech_drop, count}
+    cfg: 策略参数（来自 strategy_config）；为空时自动加载 strategies.yaml。
     """
-    thresholds = thresholds or DEFAULT_THRESHOLDS
+    cfg = cfg or strategy_config.load_config()
+    thresholds = thresholds or cfg.get("push", DEFAULT_THRESHOLDS)
     watch = codes if codes else LEADERS
     snap = _batch_snapshot(client, watch)
     if snap is None:
         return None, "快照获取失败（FutuOpenD 未连接或代码无效）"
 
-    # 恒科联动信号：指数急跌时龙头低吸
+    # 恒科联动信号：指数急跌时龙头低吸（阈值取自配置）
     hstech = _hstech_drop(client, hstech_code)
-    hstech_crash = (hstech is not None and hstech <= -2.0)
+    hstech_th = cfg.get("strategies", {}).get("hstech_link", {}).get("hstech_drop", -2.0)
+    hstech_crash = (hstech is not None and hstech <= hstech_th)
+
+    # 趋势特征（sma/rsi2）：仅在趋势过滤器或 RSI2 开启时按需拉取，带缓存
+    need_trend = (cfg.get("trend_filter", {}).get("enabled", False)
+                  or cfg.get("strategies", {}).get("rsi2_connor", {}).get("enabled", False))
+    trend_map: dict = {}
+    if need_trend:
+        for _c in watch:
+            trend_map[_c] = _latest_trend(client, _c, 250)
 
     # 现金比例（仓位感知）
     if cash_ratio is None:
@@ -184,41 +325,33 @@ def screen(client, codes: Optional[list] = None, top_n: int = 20,
         if chg is None:
             chg = 0.0
 
-        signals = []
-        score = 0.0
-
-        # 1. 深度超跌反弹：距52周高点回撤 >25% 且盈利
-        drop = None
-        if price and hi and hi > lo and hi > 0:
-            drop = (hi - price) / hi * 100
-            if drop > 25 and (pe is None or pe > 0):
-                signals.append("深度超跌反弹")
-                score += 3
-        # 2. 放量突破：上涨且换手/量能活跃
-        if (chg or 0) > 2 and (turn or 0) > 1.5:
-            signals.append("放量突破")
-            score += 3
-        # 3. 低估值高股息（近似）：PE<10 且接近52周低位
         pos_pct = None
         if price and hi and lo and hi > lo:
             pos_pct = (price - lo) / (hi - lo) * 100
-        if pe and pe < 10 and (pos_pct is not None and pos_pct < 30):
-            signals.append("低估值高股息")
-            score += 3
-        # 4. 恒科急跌联动低吸：指数急跌时龙头跟跌即低吸机会
-        if hstech_crash and code in leaders_set and (chg or 0) < 0:
-            signals.append("恒科急跌联动低吸")
-            score += 2
-        # 5. 恐慌急跌（逆向）：日内大跌且放量
-        if (chg or 0) < -5 and (turn or 0) > 2:
-            signals.append("异常放量急跌(逆向)")
-            score += 2
-        # 6. 龙头观察池
-        if code in leaders_set:
-            signals.append("龙头观察池")
-            score += 1
+        # 统一走 evaluate_signals 纯函数（实盘与回测共用）
+        tr = trend_map.get(code, {})
+        feats = {
+            "code": code,
+            "name": str(row[name_c]) if name_c else code,
+            "price": price,
+            "change_rate": chg,
+            "prev_close_price": prev_close,
+            "turnover_rate": turn,
+            "amplitude": amp,
+            "pe": pe,
+            "hi52": hi,
+            "lo52": lo,
+            "pos_pct": pos_pct,
+            "is_leader": code in leaders_set,
+            "hstech_crash": hstech_crash,
+            "sma50": tr.get("sma50"),
+            "sma200": tr.get("sma200"),
+            "rsi2": tr.get("rsi2"),
+        }
+        ev = evaluate_signals(feats, cfg)
+        signals = ev["signals"]
+        score = ev["score"]
 
-        score = min(10.0, round(score, 1))
         results.append({
             "code": code,
             "name": str(row[name_c]) if name_c else code,
@@ -229,6 +362,9 @@ def screen(client, codes: Optional[list] = None, top_n: int = 20,
             "week52_position_pct": round(pos_pct, 1) if pos_pct is not None else None,
             "score": score,
             "signals": signals,
+            "signal_details": ev.get("signal_details", []),
+            "reason_inputs": ev.get("reason_inputs", {}),
+            "reason": _build_reason(ev.get("reason_inputs", {}), signals),
         })
 
     results = _clean_nums(results)
@@ -290,20 +426,103 @@ def screen(client, codes: Optional[list] = None, top_n: int = 20,
     }), None
 
 
+def _build_reason(ri: dict, signals: list) -> str:
+    """根据特征与命中信号，生成一句话 contrarian 逻辑（用于推送「原因」）。
+
+    ri: evaluate_signals 返回的 reason_inputs（drop_pct/rsi2/uptrend/pe/pos_pct/chg/turn）。
+    """
+    if not signals:
+        return ""
+    parts = []
+    uptrend = ri.get("uptrend")
+    for sig in signals:
+        if sig == "深度超跌反弹":
+            d = ri.get("drop_pct")
+            parts.append(f"距52周高点回撤{d:.0f}%（超跌区）" if d is not None else "进入52周超跌区")
+        elif sig == "RSI2 逆向低吸":
+            r = ri.get("rsi2")
+            parts.append(f"RSI2={r:.0f} 极度超卖（<5）" if r is not None else "RSI2 极度超卖")
+        elif sig == "恒科急跌联动低吸":
+            parts.append("恒科指数急跌触发，个股跟跌错杀")
+        elif sig == "放量突破":
+            c = ri.get("chg")
+            parts.append(f"放量上涨{c:+.1f}%、换手放大，突破态势" if c is not None else "放量突破")
+        elif sig == "异常放量急跌(逆向)":
+            c = ri.get("chg")
+            parts.append(f"日内大跌{c:+.1f}%且放量，逆向博反弹" if c is not None else "放量大跌逆向博反弹")
+        elif sig == "低估值高股息":
+            pe = ri.get("pe")
+            p = ri.get("pos_pct")
+            parts.append(f"PE={pe} 低估且处52周低位{p:.0f}%，高股息防御"
+                         if (pe is not None and p is not None) else "低估值高股息防御")
+        elif sig == "龙头观察池":
+            parts.append("龙头标签（非触发信号）")
+    base = "；".join(p for p in parts if p)
+    if uptrend:
+        return f"上升趋势中：{base} → 趋势内回调/低吸，非接飞刀"
+    return f"{base}（注：处下跌趋势，接飞刀风险高，谨慎）"
+
+
+# 回测背书静态兜底（来源：/backtest/sweep 验证 2026-08-03，forward=10/stop=0.04/rsi2=5）
+_BACKTEST_EVIDENCE_FALLBACK = {
+    "深度超跌反弹": (59.0, 0.95),
+    "放量突破": (51.5, 1.28),
+    "低估值高股息": (80.0, 5.61),
+    "恒科急跌联动低吸": (54.3, 0.82),
+    "异常放量急跌(逆向)": (40.4, 0.67),
+    "RSI2 逆向低吸": (61.1, 1.19),
+}
+
+
+def _load_backtest_stats() -> Optional[dict]:
+    """取回测缓存的 per_strategy 统计；无缓存返回 None（回退静态表）。局部 import 避免循环依赖。"""
+    try:
+        from .. import bt_backtest
+        return bt_backtest.get_cached_backtest_stats()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _backtest_evidence(signals: list) -> str:
+    """为命中信号拼回测背书文本：『策略 历史胜率X%/盈利因子Y』。"""
+    stats = _load_backtest_stats()
+    out = []
+    for sig in signals:
+        if sig == "龙头观察池":
+            continue
+        st = (stats or {}).get(sig)
+        if st and st.get("win_rate") is not None:
+            note = "（样本不足）" if (st.get("n") or 0) < 20 else ""
+            out.append(f"{sig} 历史胜率{st['win_rate']}%/盈利因子{st['profit_factor']}{note}")
+        else:
+            fb = _BACKTEST_EVIDENCE_FALLBACK.get(sig)
+            if fb:
+                out.append(f"{sig} 回测胜率约{fb[0]}%/盈利因子{fb[1]}(参考)")
+    return "；".join(out) if out else "—"
+
+
 def _signal_markdown(r: dict, result: dict) -> str:
-    """构建单只 6 策略买入信号的企业微信 markdown（4096 字节保护）。"""
+    """构建单只 6 策略买入信号的企业微信 markdown（4096 字节保护）。
+
+    含：分数来源拆解 + 一句话原因 + 回测背书 + 止损（与回测一致的 -4%）。
+    """
     cash = result.get("cash_state", "")
     cash_ratio = result.get("cash_ratio")
     cr = f"{cash_ratio:.0f}%" if isinstance(cash_ratio, (int, float)) else "—"
-    sigs = "、".join(r.get("signals", [])) or "—"
+    sd = r.get("signal_details") or []
+    src = " + ".join(f"{d['name']}{d['weight']:+.1f}" for d in sd) if sd else "—"
+    reason = r.get("reason") or "—"
+    ev = _backtest_evidence(r.get("signals", []))
     lines = [
         "🔵 **6大策略买入信号**",
         f"> {r.get('name', '')}({r.get('code', '')})",
         f"> 现价: {r.get('price')}  涨跌: {r.get('change_rate')}%",
         f"> 基础分: {r.get('score') or 0}  反向加分: +{r.get('reverse') or 0}  **总分: {r.get('total_score') or 0}**",
-        f"> 命中: {sigs}",
+        f"> 分数来源: {src}",
+        f"> 原因: {reason}",
+        f"> 回测背书: {ev}",
         f"> 仓位: {cash}(现金{cr})",
-        "💡 首批建仓≤目标仓位1/3，正股止损参考 -8%",
+        "💡 首批建仓≤1/3，止损 -4%（与回测一致）",
     ]
     text = "\n".join(lines)
     if len(text.encode("utf-8")) > 4000:

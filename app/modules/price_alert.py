@@ -34,6 +34,7 @@ def add_runtime(entry: dict) -> dict:
         "alarm_px": _num(entry.get("alarm_px")) or 0.0,
         "stop_px": _num(entry.get("stop_px")) or 0.0,
         "tp_px": _num(entry.get("tp_px")) or 0.0,
+        "note": str(entry.get("note", "")).strip(),
     }
     RUNTIME_LIST.append(item)
     return item
@@ -49,16 +50,19 @@ def _evaluate(code: str, name: str, price: float, change_rate: float, cfg: dict)
     """返回该代码当前应触发的信号列表 [(key, level, msg)]。"""
     fired = _FIRED.setdefault(code, set())
     triggered = []
+    note = cfg.get("note") or ""
+    def _msg(base: str) -> str:
+        return f"{base}{('｜' + note) if note else ''}"
     # 止盈目标（向上）
     if cfg.get("tp_px") and price >= cfg["tp_px"]:
-        triggered.append((f"{code}:tp", "tp", f"到达止盈目标 {cfg['tp_px']}，现价 {price}"))
+        triggered.append((f"{code}:tp", "tp", _msg(f"到达止盈目标 {cfg['tp_px']}，现价 {price}")))
     # 止损（向下，最高优先级）
     if cfg.get("stop_px") and price <= cfg["stop_px"]:
-        triggered.append((f"{code}:stop", "stop", f"跌破止损价 {cfg['stop_px']}，现价 {price}"))
+        triggered.append((f"{code}:stop", "stop", _msg(f"跌破止损价 {cfg['stop_px']}，现价 {price}")))
     elif cfg.get("alarm_px") and price <= cfg["alarm_px"]:
-        triggered.append((f"{code}:alarm", "alarm", f"触及警告价 {cfg['alarm_px']}，现价 {price}"))
+        triggered.append((f"{code}:alarm", "alarm", _msg(f"触及警告价 {cfg['alarm_px']}，现价 {price}")))
     elif cfg.get("warn_px") and price >= cfg["warn_px"]:
-        triggered.append((f"{code}:warn", "warn", f"到达减仓预警价 {cfg['warn_px']}，现价 {price}"))
+        triggered.append((f"{code}:warn", "warn", _msg(f"到达预警价 {cfg['warn_px']}，现价 {price}")))
     # 日内异常跌幅
     if (change_rate or 0) <= -5:
         triggered.append((f"{code}:drop", "alarm", f"日内异常跌幅 {change_rate}%"))
@@ -121,6 +125,7 @@ def evaluate_all(client, config: dict):
             "alarm_px": cfg.get("alarm_px") or None,
             "stop_px": cfg.get("stop_px") or None,
             "tp_px": cfg.get("tp_px") or None,
+            "note": cfg.get("note") or "",
             "active_signals": active,
             "would_push": would_push,
         })

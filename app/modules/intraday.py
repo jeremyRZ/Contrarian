@@ -32,6 +32,8 @@ THRESHOLD_DEFAULT = -2.0          # 急跌阈值（涨跌%）
 REVERSE_CAP = 20                 # 单轮反向信号打分上限（控制 API 压力）
 TOP_PUSH = 15                    # 推送 markdown 最多展示候选数
 MAX_BYTES = 3800                 # 微信 markdown 单条上限（留余量）
+# 恒科联动策略回测背书（来源 /backtest/sweep 2026-08-03，forward=10/stop=0.04/rsi2=5）
+HSTECH_EVIDENCE = "📊 恒科联动低吸历史回测：胜率54%/盈利因子0.82（持有10日/止损4%）"
 
 
 def _num(v):
@@ -311,6 +313,9 @@ def _build_markdown(idx: dict, crash: bool, threshold: float,
             break
     if shown < len(top):
         lines.append(f"（其余 {len(top) - shown} 只省略）")
+    if candidates:
+        lines.append("")
+        lines.append(HSTECH_EVIDENCE)
     return "\n".join(lines).rstrip("\n")
 
 

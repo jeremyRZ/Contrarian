@@ -26,7 +26,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .futu_client import build_client_from_config, load_config
-from .modules import valuation, screener, monitor, ipo, missed_scan, price_alert, analyze, buybacks, news, southbound, reverse_signals, capital_flow, southbound_risk, fundamentals, filters, dividend, earnings, divergence, daily_report, intraday
+from .modules import valuation, screener, monitor, ipo, missed_scan, price_alert, analyze, buybacks, news, southbound, reverse_signals, capital_flow, southbound_risk, fundamentals, filters, dividend, earnings, divergence, daily_report, intraday, backtest, strategy_config, decision
 from .modules.screener import LEADERS
 from . import scheduler, intraday_scheduler, notify
 
@@ -134,6 +134,122 @@ def get_strategies_scan(top_n: int = 50):
     return _wrap(result, err)
 
 
+# ---------- 回测验证（阶段1） ----------
+@app.get("/backtest/report")
+def get_backtest_report(codes: str = "", forward_days: int = 20,
+                        window_days: int = 250, hstech_code: str = "HK.800700",
+                        refresh: int = 0, no_fee: int = 0):
+    """6 大策略信号历史回测。codes 逗号分隔；为空用龙头池(LEADERS)。refresh=1 强制重算。
+    no_fee=1 时不计交易成本（对比视角）。"""
+    code_list = [c.strip() for c in codes.split(",") if c.strip()] or None
+    cfg = strategy_config.load_config()
+    if refresh:
+        backtest._REPORT_CACHE.clear()
+    rep = backtest.cached_report(
+        code_list, cfg, build_client_from_config(CONFIG),
+        window_days, forward_days, hstech_code, no_fee=bool(no_fee),
+    )
+    return _wrap(rep, None)
+
+
+@app.post("/backtest/run")
+def post_backtest_run(request: Request):
+    """异步触发回测重算（清空缓存后重跑）。body 可选 {codes, forward_days, window_days}。"""
+    try:
+        data = json.loads(request.body().decode() or "{}")
+    except Exception:  # noqa: BLE001
+        data = {}
+    codes = data.get("codes") or None
+    if isinstance(codes, str):
+        codes = [c.strip() for c in codes.split(",") if c.strip()] or None
+    forward_days = int(data.get("forward_days", 20))
+    window_days = int(data.get("window_days", 250))
+    hstech_code = data.get("hstech_code", "HK.800700")
+    no_fee = bool(int(data.get("no_fee", 0)))
+    backtest._REPORT_CACHE.clear()
+    cfg = strategy_config.load_config()
+    rep = backtest.run_backtest(
+        codes, cfg, build_client_from_config(CONFIG),
+        window_days, forward_days, hstech_code, no_fee=no_fee,
+    )
+    return _wrap(rep, None)
+
+
+@app.get("/backtest/debug")
+def get_backtest_debug(code: str = "HK.00700", window_days: int = 250,
+                       hstech_code: str = "HK.800700"):
+    """信号诊断：逐根 bar 统计各信号触发频次与评分分布，定位无成交原因。"""
+    cfg = strategy_config.load_config()
+    rep = backtest.debug_signals(code, cfg, build_client_from_config(CONFIG),
+                                 window_days, hstech_code)
+    return _wrap(rep, None)
+
+
+@app.get("/backtest/sweep")
+def get_backtest_sweep(codes: str = "", window_days: int = 250,
+                       hstech_code: str = "HK.800700",
+                       forward: str = "5,10,20", stop: str = "0.04,0.08",
+                       rsi2: str = "5,10", focus: str = "RSI2 逆向低吸"):
+    """参数寻优：持有天数 × 止损 × RSI2 阈值 网格回测，按期望值排序。"""
+    code_list = [c.strip() for c in codes.split(",") if c.strip()] or None
+    cfg = strategy_config.load_config()
+    fl = [int(x) for x in forward.split(",") if x.strip()]
+    sl = [float(x) for x in stop.split(",") if x.strip()]
+    rl = [float(x) for x in rsi2.split(",") if x.strip()]
+    rep = backtest.sweep(code_list, cfg, build_client_from_config(CONFIG),
+                         window_days, hstech_code, fl, sl, rl, focus)
+    return _wrap(rep, None)
+
+
+@app.get("/_debug/kline")
+def debug_kline(code: str = "HK.00700", max_count: int = 5):
+    """保留占位（已废弃）：回测特征重建见 app/modules/backtest.py。"""
+    return _wrap(None, "debug endpoint deprecated")
+
+
+@app.get("/decision")
+def get_decision(code: str):
+    """LLM 决策层（M3）：回测门控 → 差异化判断。"""
+    res = decision.decide(code, client(), CONFIG)
+    return _wrap(res, None)
+
+
+@app.get("/strategies/config")
+def get_strategies_config():
+    """返回当前策略参数（strategies.yaml 与默认值合并）。"""
+    return _wrap(strategy_config.load_config(), None)
+
+
+@app.post("/strategies/config")
+async def post_strategies_config(request: Request):
+    """保存策略参数（M4）：校验后落盘 strategies.yaml，并清空回测缓存以生效。
+
+    body 为部分配置（会与默认值深合并），例如：
+    {"strategies": {"deep_drop": {"drop_pct": 30}}, "push": {"light": 6.5}}
+    """
+    try:
+        body = json.loads((await request.body()) or b"{}")
+    except Exception as e:  # noqa: BLE001
+        return _wrap(None, "配置解析失败：" + str(e))
+    if not isinstance(body, dict):
+        return _wrap(None, "配置必须是 JSON 对象")
+    try:
+        saved = strategy_config.save_config(body)
+    except ValueError as e:
+        return _wrap(None, "配置校验失败：" + str(e))
+    # 参数变更后清空回测缓存，下次回测/决策用新参数
+    backtest._REPORT_CACHE.clear()
+    return _wrap(saved, None)
+
+
+@app.post("/strategies/config/reset")
+def post_strategies_config_reset():
+    """恢复策略参数默认并落盘，清空回测缓存。"""
+    saved = strategy_config.reset_config()
+    backtest._REPORT_CACHE.clear()
+    return _wrap(saved, None)
+
+
 @app.get("/missed-scan")
 def get_missed_scan(top_n: int = 5, pool: str = ""):
     ms = CONFIG.get("missed_scan", {})
@@ -234,6 +350,114 @@ def get_analyze(code: str):
         if rev:
             result["reverse"] = rev
     return _wrap(result, err)
+
+
+@app.get("/_debug/signal")
+def debug_signal(code: str = "HK.01810"):
+    """临时诊断：单票特征帧 + 6策略信号 + 趋势/关键点位（进程内，复用回测逻辑）。"""
+    import math
+    import numpy as np
+    import pandas as pd
+
+    def _f(v):
+        return None if (v is None or (isinstance(v, float) and math.isnan(v))) else float(v)
+
+    cl = client()
+    frame, err = backtest.build_feature_frame(cl, code, 450, None)
+    if err or frame is None or frame.empty:
+        return _wrap(None, f"K线错误: {err}")
+    last = frame.iloc[-1]
+    prev = frame.iloc[-2]
+    closes = frame["close"].astype(float)
+    sma50 = _f(last["sma50"]); sma200 = _f(last["sma200"]); rsi2 = _f(last["rsi2"])
+    hi52 = _f(last["hi52"]); lo52 = _f(last["lo52"]); pos = _f(last["pos_pct"])
+    pe_k = _f(last["pe"])
+
+    def slope(series, n=5):
+        s = series.dropna().iloc[-n:]
+        if len(s) < 2 or s.iloc[0] == 0:
+            return None
+        return (s.iloc[-1] - s.iloc[0]) / s.iloc[0] * 100
+
+    sma50_slope = slope(frame["sma50"])
+    sma200_slope = slope(frame["sma200"])
+
+    def rsi(series, n=14):
+        d = series.diff()
+        g = d.clip(lower=0).rolling(n).mean()
+        l = (-d.clip(upper=0)).rolling(n).mean()
+        rs = g / l
+        return float((100 - 100 / (1 + rs)).iloc[-1])
+
+    rsi14 = rsi(closes)
+
+    snap, serr = cl.market_snapshot([code])
+    price = prev_close = turnover = amp = pe_snap = None
+    up = "n/a"
+    if snap is not None and not snap.empty:
+        r = snap.iloc[0]
+        price = _f(r.get("last_price"))
+        prev_close = _f(r.get("prev_close_price"))
+        turnover = _f(r.get("turnover_rate"))
+        amp = _f(r.get("amplitude"))
+        pe_snap = _f(r.get("pe_ratio")) if "pe_ratio" in r.index else None
+        up = str(r.get("update_time", ""))
+    if price is None:
+        price = _f(last["close"])
+    if prev_close is None:
+        prev_close = _f(prev["close"])
+    chg = (price - prev_close) / prev_close * 100 if prev_close else 0.0
+    turnover = turnover if turnover is not None else (_f(last["turnover"]) or 0.0) * 100.0
+    amp = amp if amp is not None else ((_f(last["high"]) - _f(last["low"])) / prev_close * 100 if prev_close else None)
+    pe = pe_snap if pe_snap is not None else pe_k
+
+    hs_snap, _ = cl.market_snapshot(["HK.800700"])
+    hs_chg = None
+    if hs_snap is not None and not hs_snap.empty:
+        hr = hs_snap.iloc[0]
+        hpc = _f(hr.get("prev_close_price")); hlp = _f(hr.get("last_price"))
+        if hpc:
+            hs_chg = (hlp - hpc) / hpc * 100
+    cfg = strategy_config.load_config()
+    hs_th = cfg["strategies"]["hstech_link"]["hstech_drop"]
+    hstech_crash = (hs_chg is not None and hs_chg <= hs_th)
+
+    is_leader = code in LEADERS
+    f = {
+        "price": price, "change_rate": chg, "prev_close_price": prev_close,
+        "turnover_rate": turnover, "amplitude": amp, "pe": pe,
+        "hi52": hi52, "lo52": lo52, "pos_pct": pos,
+        "is_leader": is_leader, "hstech_crash": hstech_crash,
+        "sma50": sma50, "sma200": sma200, "rsi2": rsi2,
+    }
+    ev = screener.evaluate_signals(f, cfg)
+    uptrend = (price is not None and sma200 is not None and price > sma200)
+    vol5 = float(frame["volume"].astype(float).tail(5).mean())
+    vol_today = _f(last["volume"]) or 0.0
+    recent10 = [round(float(c), 2) for c in closes.tail(10).tolist()]
+    support = min(lo52, float(closes.tail(20).min()))
+    resist = max(float(closes.tail(20).max()), sma50)
+    return _wrap({
+        "code": code, "is_leader": is_leader, "update_time": up,
+        "price": price, "prev_close": prev_close, "change_rate": round(chg, 2),
+        "turnover_rate": round(turnover, 2), "amplitude": round(amp, 2) if amp else None,
+        "pe": pe,
+        "ma50": sma50, "ma50_slope": round(sma50_slope, 2) if sma50_slope is not None else None,
+        "ma200": sma200, "ma200_slope": round(sma200_slope, 2) if sma200_slope is not None else None,
+        "price_vs_ma50": round((price - sma50) / sma50 * 100, 2) if sma50 else None,
+        "price_vs_ma200": round((price - sma200) / sma200 * 100, 2) if sma200 else None,
+        "rsi14": round(rsi14, 1), "rsi2": rsi2,
+        "week52_high": hi52, "week52_low": lo52, "week52_position_pct": pos,
+        "uptrend": uptrend, "hstech_change": round(hs_chg, 2) if hs_chg is not None else None,
+        "hstech_crash": hstech_crash,
+        "score": ev["score"], "signals": ev["signals"],
+        "signal_details": ev.get("signal_details"),
+        "reason": screener._build_reason(ev.get("reason_inputs", {}), ev["signals"]),
+        "vol_ratio_today_vs5d": round(vol_today / vol5, 2) if vol5 else None,
+        "recent10_close": recent10,
+        "support": round(support, 2), "resist": round(resist, 2),
+        "today_low": _f(last["low"]), "today_high": _f(last["high"]),
+    }, None)
 
 
 @app.get("/buybacks")
@@ -354,21 +578,44 @@ async def post_watchlist(request: Request):
     return {"ok": True, "data": items}
 
 
-# ---------- 富途自选股（只读） ----------
+# ---------- 富途自选股（可增删） ----------
 @app.get("/futu-watchlist")
-def get_futu_watchlist():
-    """读取富途自选股（「全部」分组，只读）。富途 API 不允许通过接口修改系统分组。"""
-    wl, err = client().get_watchlist()
+def get_futu_watchlist(group: str = ""):
+    """读取富途自选股（用户自建分组，支持增删）。group 可覆盖目标分组。
+
+    注意：get_user_security_group() 在当前 FutuOpenD 环境下会阻塞，故此处不拉取分组列表，
+    仅管理单一配置分组（futu.watchlist_group）；系统分组（如「全部」）不可写，写入会返回错误。
+    """
+    target = group or client().watchlist_group
+    wl, err = client().get_watchlist(group=target)
     if err:
         return _wrap(None, err)
-    # 额外返回分组信息
-    groups, gerr = client().get_watchlist_groups()
     return _wrap({
         "stocks": [{"code": c, "name": n} for c, n in (wl or [])],
-        "groups": groups or [],
-        "readonly": True,
-        "note": "富途自选股为只读（API 不支持修改系统分组），增删请使用本地观察池或在富途客户端操作。",
+        "group": target,
+        "readonly": False,
+        "note": "已管理用户分组「%s」，可用 POST /futu-watchlist 增删。" % target,
     }, None)
+
+
+@app.post("/futu-watchlist")
+async def post_futu_watchlist(request: Request):
+    """增删富途自选股。body: {code, name?, action?: 'add'|'remove', group?}。"""
+    try:
+        data = await request.json()
+    except Exception:  # noqa: BLE001
+        data = {}
+    code = str(data.get("code", "")).strip()
+    if not code:
+        return JSONResponse(status_code=200, content={"ok": False, "error": "缺少 code"})
+    action = str(data.get("action", "add")).lower()
+    group = str(data.get("group", "")).strip() or None
+    ok, err = client().modify_watchlist(code, action=action, group=group)
+    if not ok:
+        gname = group or client().watchlist_group
+        return _wrap(None, "富途自选修改失败：" + (err or "未知错误") +
+                     "（若提示分组不存在，请先在富途客户端创建用户分组「%s」）" % gname)
+    return _wrap({"code": code, "action": action, "group": group or client().watchlist_group}, None)
 
 
 @app.post("/ipo")
@@ -501,10 +748,24 @@ def _strategy_run():
     )
 
 
+def _price_alert_run():
+    """注入调度器的价格报警函数：交易时段每轮检查 config.price_alert.list，到价则推企业微信。"""
+    res, err = price_alert.evaluate_all(client(), CONFIG)
+    if res and res.get("alerts_to_push"):
+        pushed = notify.notify_alerts(
+            [{"code": a["code"], "name": a["name"], "level": a["level"], "msg": a["msg"]}
+             for a in res["alerts_to_push"]],
+            _webhook(),
+            prefix=f"{CONFIG.get('system', {}).get('notify_prefix', '')} 价格报警",
+        )
+        return {"pushed": pushed, "scan_type": "price_alert"}
+    return {"pushed": 0, "scan_type": "price_alert"}
+
+
 @app.on_event("startup")
 def _start_intraday_scheduler():
-    """启动盘中调度（交易时段守护线程，默认 09:30–16:00 / 30 分钟）：急跌联动 + 6 大策略扫描并发。"""
-    intraday_scheduler.start(CONFIG.get("intraday", {}) or {}, [_intraday_run, _strategy_run])
+    """启动盘中调度（交易时段守护线程，默认 09:30–16:00 / 30 分钟）：急跌联动 + 6 大策略扫描 + 价格报警并发。"""
+    intraday_scheduler.start(CONFIG.get("intraday", {}) or {}, [_intraday_run, _strategy_run, _price_alert_run])
 
 
 # 托管前端（/ 必须在 API 路由之后）

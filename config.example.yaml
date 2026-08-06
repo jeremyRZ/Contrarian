@@ -6,6 +6,7 @@ futu:
   port: 11111          # FutuOpenD 监听端口（默认 11111）
   trd_env: "REAL"      # REAL（真实）+ SIMULATE（模拟）
   acc_id: ""           # 富途交易账户 ID（在富途 App 内查看，留空则自动取首个账户）
+  watchlist_group: "Contrarian"  # 富途自选增删目标分组（必须是你在富途客户端自建的用户分组，API 无法创建分组）
 
 ipo:
   # 打新模块联网取数超时（秒）

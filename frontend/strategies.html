@@ -16,6 +16,7 @@
       <a href="analyze.html" data-page="analyze">单票深度</a>
       <a href="intraday.html" data-page="intraday">盘中急跌联动</a>
       <a href="strategies.html" data-page="strategies">6大策略</a>
+      <a href="backtest.html" data-page="backtest">回测验证</a>
       <a href="ipo.html" data-page="ipo">新股打新</a>
     </div>
     <div id="conn" class="status bad">检测中…</div>
@@ -57,6 +58,24 @@
         也可由盘中调度在交易时段每 30 分钟自动扫描并推送（指纹去重，最短 4 小时）。
       </div>
       <div id="push_msg" class="muted" style="margin-top:10px"></div>
+    </section>
+
+    <!-- 策略参数配置（M4：可视化调参，无需改代码） -->
+    <section class="card">
+      <div class="card-head">
+        <div class="card-title">⚙ 策略参数配置 <span class="sub">可视化调参 · 落盘 strategies.yaml</span></div>
+        <div>
+          <button class="act ghost sm" onclick="resetConfig()">恢复默认</button>
+          <button class="act ghost sm" onclick="saveConfig(false)" style="margin-left:6px">保存</button>
+          <button class="act sm" onclick="saveConfig(true)" style="margin-left:6px">保存并回测</button>
+        </div>
+      </div>
+      <div id="cfg_msg" class="muted" style="margin:4px 0 10px"></div>
+      <div id="cfg_editor" class="muted">加载配置中…</div>
+      <div class="hint-bar" style="margin-top:12px">
+        改阈值/权重/开关后立即生效（保存会清空回测缓存）；「保存并回测」将参数写入并跳转到回测验证页重算。
+        LLM 门控胜率门槛与开关在此调整；LLM 密钥(api_key)在主配置 config.yaml.llm 中设置。
+      </div>
     </section>
 
     <!-- 扫描结果 -->
@@ -200,8 +219,147 @@ async function loadStatus() {
 
 runScan = async function () { await loadScan(); };
 
+/* ===== M4 策略参数配置编辑器 ===== */
+const CFG_STRATEGY_FIELDS = {
+  deep_drop:      {label: "深度超跌反弹", fields: ["drop_pct"]},
+  vol_breakout:   {label: "放量突破",     fields: ["chg_pct", "turn"]},
+  low_pe_high_div:{label: "低估值高股息", fields: ["pe", "pos_pct"]},
+  hstech_link:    {label: "恒科急跌联动低吸", fields: ["hstech_drop"]},
+  panic_drop:     {label: "异常放量急跌(逆向)", fields: ["chg_pct", "turn"]},
+  leader_pool:    {label: "龙头观察池",   fields: []},
+  rsi2_connor:    {label: "RSI2 逆向低吸", fields: ["rsi2_oversold"]},
+};
+const CFG_FIELD_LABEL = {
+  drop_pct: "回撤阈值%", chg_pct: "涨跌幅%", turn: "换手阈值%",
+  pe: "PE上限", pos_pct: "52周位置%", hstech_drop: "恒科急跌阈值%",
+  rsi2_oversold: "RSI2超卖阈值",
+  weight: "权重", enabled: "启用",
+};
+const CFG_REVERSE = {
+  southbound: "南向持股", buyback: "回购", news: "新闻情绪", capital_flow: "资金流向",
+  valuation: "估值分位", institution: "机构增减", dividend: "股息", earnings: "财报窗口",
+};
+
+function _cfgNum(v) { const n = parseFloat(v); return isNaN(n) ? null : n; }
+
+function renderConfigEditor(cfg) {
+  const el = $("cfg_editor");
+  let h = "";
+  // 6 大策略
+  h += '<div class="cfg-sec-title">6 大策略（开关 · 权重 · 阈值）</div>';
+  for (const [key, meta] of Object.entries(CFG_STRATEGY_FIELDS)) {
+    const blk = (cfg.strategies && cfg.strategies[key]) || {};
+    h += '<div class="cfg-row">';
+    h += `<label class="cfg-toggle"><input type="checkbox" data-g="strategies" data-k="${key}" data-f="enabled" ${blk.enabled !== false ? "checked" : ""}/> ${meta.label}</label>`;
+    h += `<span class="cfg-inl">权重<input class="inp mono" style="width:64px" type="number" step="0.5" data-g="strategies" data-k="${key}" data-f="weight" value="${blk.weight ?? 1}"></span>`;
+    meta.fields.forEach(f => {
+      h += `<span class="cfg-inl">${CFG_FIELD_LABEL[f]}<input class="inp mono" style="width:70px" type="number" step="0.1" data-g="strategies" data-k="${key}" data-f="${f}" value="${blk[f] ?? ""}"></span>`;
+    });
+    h += '</div>';
+  }
+  // 趋势过滤器（下跌类信号须处于上升浪，剔除接飞刀 —— 胜率提升关键）
+  const tf = cfg.trend_filter || {};
+  h += '<div class="cfg-sec-title">趋势过滤器（下跌类信号须处上升浪）</div><div class="cfg-row">';
+  h += `<label class="cfg-toggle"><input type="checkbox" data-g="trend_filter" data-k="__" data-f="enabled" ${tf.enabled !== false ? "checked" : ""}/> 启用（价格&gt;均线才计数，剔除接飞刀）</label>`;
+  h += `<span class="cfg-inl">均线周期<input class="inp mono" style="width:70px" type="number" step="1" data-g="trend_filter" data-k="__" data-f="period" value="${tf.period ?? 200}"></span>`;
+  h += '</div>';
+  // 回测引擎参数
+  const bt = cfg.backtest || {};
+  h += '<div class="cfg-sec-title">回测引擎参数（backtrader 真实成交）</div><div class="cfg-row">';
+  h += `<span class="cfg-inl">持有天数<input class="inp mono" style="width:64px" type="number" step="1" data-g="backtest" data-k="__" data-f="forward_days" value="${bt.forward_days ?? 20}"></span>`;
+  h += `<span class="cfg-inl">止损%<input class="inp mono" style="width:64px" type="number" step="0.5" data-g="backtest" data-k="__" data-f="stop_pct" value="${bt.stop_pct ?? 8}"></span>`;
+  h += '</div>';
+  // 反向 8 块权重
+  h += '<div class="cfg-sec-title">八档反向信号权重</div><div class="cfg-row">';
+  const rw = cfg.reverse_weights || {};
+  for (const [k, label] of Object.entries(CFG_REVERSE)) {
+    h += `<span class="cfg-inl">${label}<input class="inp mono" style="width:60px" type="number" step="0.1" data-g="reverse_weights" data-k="${k}" value="${rw[k] ?? ""}"></span>`;
+  }
+  h += '</div>';
+  // 推送门槛
+  h += '<div class="cfg-sec-title">推送门槛（仓位感知）</div><div class="cfg-row">';
+  const p = cfg.push || {};
+  h += `<span class="cfg-inl">轻仓≥<input class="inp mono" style="width:64px" type="number" step="0.1" data-g="push" data-k="light" value="${p.light ?? 6}"></span>`;
+  h += `<span class="cfg-inl">中仓≥<input class="inp mono" style="width:64px" type="number" step="0.1" data-g="push" data-k="mid" value="${p.mid ?? 7}"></span>`;
+  h += '</div>';
+  // LLM
+  const llm = cfg.llm || {};
+  h += '<div class="cfg-sec-title">LLM 决策层（回测门控）</div><div class="cfg-row">';
+  h += `<label class="cfg-toggle"><input type="checkbox" data-g="llm" data-k="enabled" data-f="_on" ${llm.enabled !== false ? "checked" : ""}/> 启用 LLM 决策</label>`;
+  h += `<span class="cfg-inl">回测胜率门槛%<input class="inp mono" style="width:70px" type="number" step="1" data-g="llm" data-k="min_win_rate" value="${llm.min_win_rate ?? 45}"></span>`;
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+function collectConfig() {
+  const out = {strategies: {}, reverse_weights: {}, push: {}, llm: {}, trend_filter: {}, backtest: {}};
+  document.querySelectorAll('#cfg_editor [data-g]').forEach(inp => {
+    const g = inp.dataset.g, k = inp.dataset.k, f = inp.dataset.f;
+    // llm 启用用 _on 别名
+    if (g === "llm" && f === "_on") { out.llm.enabled = inp.checked; return; }
+    // 趋势过滤器 / 回测参数：扁平存放到 out[g][f]
+    if (g === "trend_filter" || g === "backtest") {
+      const blk = out[g];
+      if (inp.type === "checkbox") blk[f] = inp.checked;
+      else { const v = _cfgNum(inp.value); if (v !== null) blk[f] = v; }
+      return;
+    }
+    if (inp.type === "checkbox") {
+      const blk = (out[g] = out[g] || {});
+      (blk[k] = blk[k] || {})[f] = inp.checked;
+      return;
+    }
+    const v = _cfgNum(inp.value);
+    if (v === null) return;  // 空值不覆盖
+    const blk = (out[g] = out[g] || {});
+    (blk[k] = blk[k] || {})[f] = v;
+  });
+  return out;
+}
+
+async function loadConfigEditor() {
+  try {
+    const j = await (await fetch("/strategies/config?_=" + Date.now())).json();
+    if (!j.ok) { $("cfg_editor").innerHTML = '<span class="err">' + esc(j.error || "加载失败") + '</span>'; return; }
+    renderConfigEditor(j.data || {});
+  } catch (e) { $("cfg_editor").innerHTML = '<span class="err">请求异常</span>'; }
+}
+
+async function saveConfig(andBacktest) {
+  const btnMsg = $("cfg_msg");
+  btnMsg.textContent = "保存中…";
+  const payload = collectConfig();
+  try {
+    const r = await fetch("/strategies/config", {
+      method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload),
+    });
+    const j = await r.json();
+    if (!j.ok) { btnMsg.innerHTML = '<span class="err">✗ ' + esc(j.error || "保存失败") + '</span>'; return; }
+    btnMsg.innerHTML = '<span class="ok">✓ 已保存并生效（回测缓存已清空）</span>';
+    if (andBacktest) {
+      btnMsg.innerHTML += ' 正在跳转回测…';
+      setTimeout(() => { window.location.href = "backtest.html?refresh=1"; }, 600);
+    }
+  } catch (e) { btnMsg.innerHTML = '<span class="err">✗ 网络错误</span>'; }
+}
+
+async function resetConfig() {
+  const btnMsg = $("cfg_msg");
+  btnMsg.textContent = "恢复默认中…";
+  try {
+    const r = await fetch("/strategies/config/reset", {method: "POST"});
+    const j = await r.json();
+    if (!j.ok) { btnMsg.innerHTML = '<span class="err">✗ ' + esc(j.error || "恢复失败") + '</span>'; return; }
+    renderConfigEditor(j.data || {});
+    btnMsg.innerHTML = '<span class="ok">✓ 已恢复默认</span>';
+  } catch (e) { btnMsg.innerHTML = '<span class="err">✗ 网络错误</span>'; }
+}
+
+
+
 loadStatus();
 loadScan();
+loadConfigEditor();
 setInterval(loadStatus, 30000);
 </script>
 </body>

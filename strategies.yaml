@@ -1,0 +1,45 @@
+strategies:
+  deep_drop:
+    enabled: true
+    weight: 3.0
+    drop_pct: 25.0
+  vol_breakout:
+    enabled: true
+    weight: 3.0
+    chg_pct: 2.0
+    turn: 1.5
+  low_pe_high_div:
+    enabled: true
+    weight: 3.0
+    pe: 10.0
+    pos_pct: 30.0
+  hstech_link:
+    enabled: true
+    weight: 2.0
+    hstech_drop: -2.0
+  panic_drop:
+    enabled: true
+    weight: 2.0
+    chg_pct: -5.0
+    turn: 2.0
+  leader_pool:
+    enabled: true
+    weight: 1.0
+reverse_weights:
+  southbound: 2.0
+  buyback: 2.0
+  news: 1.5
+  capital_flow: 1.5
+  valuation: 2.0
+  institution: 1.5
+  dividend: 1.5
+  earnings: 0.5
+push:
+  light: 6.0
+  mid: 7.0
+llm:
+  enabled: true
+  min_win_rate: 45.0
+backtest_accept:
+  min_win_rate: 45.0
+  min_sample: 20

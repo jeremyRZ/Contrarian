@@ -37,11 +37,13 @@ def _reachable(host: str, port: int, timeout: float = 2.0) -> bool:
 
 class FutuClient:
     def __init__(self, host: str = "127.0.0.1", port: int = 11111,
-                 trd_env: str = "REAL", acc_id: Optional[str] = None):
+                 trd_env: str = "REAL", acc_id: Optional[str] = None,
+                 watchlist_group: str = "Contrarian"):
         self.host = host
         self.port = port
         self.trd_env = trd_env
         self.acc_id = acc_id
+        self.watchlist_group = watchlist_group
         self._quote = None
         self._trade = None
         self.connected = False
@@ -141,13 +143,18 @@ class FutuClient:
             return None, str(e)
 
     def history_kline(self, code: str, ktype=ft.KLType.K_DAY,
-                      max_count: int = 250) -> Tuple[Optional[object], Optional[str]]:
+                      max_count: int = 250, start: Optional[str] = None,
+                      end: Optional[str] = None) -> Tuple[Optional[object], Optional[str]]:
         ok, msg = self._ensure_quote()
         if not ok:
             return None, msg
         try:
-            res = self._quote.request_history_kline(
-                code, ktype=ktype, max_count=max_count)
+            kwargs = {"ktype": ktype, "max_count": max_count}
+            if start:
+                kwargs["start"] = start
+            if end:
+                kwargs["end"] = end
+            res = self._quote.request_history_kline(code, **kwargs)
             # futu-api 10.x 返回 3 元组 (ret, data, err)；老版本返回 2 元组
             if len(res) == 3:
                 ret, data, err = res
@@ -348,20 +355,19 @@ class FutuClient:
             return None, str(e)
 
     # ---------- 自选股（watchlist） ----------
-    # 注意：富途 OpenAPI 的 get_user_security_group() 返回的所有分组均为 SYSTEM 类型，
-    # modify_user_security() 对系统分组返回「不支持系统分组」，故**只读不可写**。
-    # 增删操作需用户在富途客户端手动完成；本模块提供读取能力供前端展示/参考。
+    # 富途自选股支持通过 modify_user_security 增删，但**仅对用户自建分组有效**；
+    # 系统分组（「全部」等）不可写。本模块默认管理一个用户自建分组
+    # （watchlist_group，可在 config.yaml 的 futu.watchlist_group 配置，默认 "Contrarian"），
+    # 需用户先在富途客户端创建同名用户分组。
 
-    # 默认读取的分组名（「全部」= 富途客户端自选页汇总）
-    WATCHLIST_GROUP = "全部"
-
-    def get_watchlist(self) -> Tuple[Optional[list], Optional[str]]:
+    def get_watchlist(self, group: Optional[str] = None) -> Tuple[Optional[list], Optional[str]]:
         """读取富途自选股列表。返回 ([(code, name), ...], error)。"""
         ok, msg = self._ensure_quote()
         if not ok:
             return None, msg
+        g = group or self.watchlist_group
         try:
-            ret, data = self._quote.get_user_security(self.WATCHLIST_GROUP)
+            ret, data = self._quote.get_user_security(g)
             if ret != ft.RET_OK:
                 return None, str(data)
             if data is None or data.empty:
@@ -396,6 +402,26 @@ class FutuClient:
         except Exception as e:  # noqa: BLE001
             return None, str(e)
 
+    def modify_watchlist(self, code: str, action: str = "add",
+                         group: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+        """在富途自选分组中增删一只股票。
+
+        action: 'add' / 'remove'。仅对用户自建分组有效。
+        返回 (ok, error_or_none)。分组不存在时富途会返回错误，由调用方提示用户先建分组。
+        """
+        ok, msg = self._ensure_quote()
+        if not ok:
+            return False, msg
+        g = group or self.watchlist_group
+        op = ft.ModifyUserSecurityOp.ADD if str(action).lower() != "remove" else ft.ModifyUserSecurityOp.DEL
+        try:
+            ret, data = self._quote.modify_user_security(g, op, [code])
+            if ret != ft.RET_OK:
+                return False, str(data)
+            return True, None
+        except Exception as e:  # noqa: BLE001
+            return False, str(e)
+
 
 def build_client_from_config(cfg: Optional[dict] = None) -> FutuClient:
     cfg = cfg or load_config()
@@ -405,4 +431,5 @@ def build_client_from_config(cfg: Optional[dict] = None) -> FutuClient:
         port=int(f.get("port", 11111)),
         trd_env=f.get("trd_env", "REAL"),
         acc_id=f.get("acc_id") or None,
+        watchlist_group=f.get("watchlist_group", "Contrarian"),
     )

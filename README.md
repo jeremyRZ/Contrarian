@@ -208,7 +208,8 @@ Contrarian/
 | GET | `/earnings` | 财报窗口信号 |
 | GET | `/holdings` | 持仓正股（已自动剔除停牌/无报价） |
 | GET/POST | `/watchlist` | 本地观察池读取 / 增删 |
-| GET | `/futu-watchlist` | 富途自选股（只读） |
+| GET | `/futu-watchlist` | 富途自选股（用户自建分组，可增删；`group` 可覆盖目标分组） |
+| POST | `/futu-watchlist` | 富途自选股增删：body `{code, name?, action?: 'add'\|'remove', group?}` |
 | GET | `/intraday/scan` | 盘中恒科急跌联动低吸扫描（手动触发 + 可选推送） |
 | GET | `/intraday/status` | 盘中调度器运行状态与配置 |
 | POST | `/intraday/config` | 运行时调度配置（开关 / 间隔 / 阈值，持久化） |
@@ -232,7 +233,7 @@ Contrarian/
 
 | 限制 | 说明 |
 |------|------|
-| 富途自选股只读 | FutuOpenD 所有自选分组均为 SYSTEM 类型，API 不支持增删；「★自选」按钮仅显示状态 |
+| 富途自选股增删 | 仅对用户自建分组有效（`futu.watchlist_group`，默认 `Contrarian`）；系统分组「全部」不可写。需先在富途客户端创建同名用户分组，API 无法创建分组。「★自选」按钮可点击增删 |
 | 财报日历 | 东方财富港股业绩日历常返回空；财报窗口以「月份启发式」为主信号（恒可用），精确窗口仅作增强 |
 | 本地部署 | 默认绑定 `127.0.0.1`，仅本机访问；远程需自行加反向代理与鉴权 |
 | 非投资建议 | 所有评分与信号仅为个人研究辅助，不构成任何买卖建议 |

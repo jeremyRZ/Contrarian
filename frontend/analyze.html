@@ -19,6 +19,7 @@
       <a href="analyze.html" data-page="analyze">单票深度</a>
       <a href="intraday.html" data-page="intraday">盘中急跌联动</a>
       <a href="strategies.html" data-page="strategies">6大策略</a>
+      <a href="backtest.html" data-page="backtest">回测验证</a>
       <a href="ipo.html" data-page="ipo">新股打新</a>
     </div>
     <div id="conn" class="status bad">检测中…</div>
@@ -39,7 +40,7 @@
         <div class="toolbar-sep"></div>
         <button class="toolbar-btn" id="an_watch_btn" onclick="addToWatch()" title="加入本地观察池">⭐ 观察池</button>
         <button class="toolbar-btn" id="an_alert_btn" onclick="openAlertDialog()" title="设置价格预警">🔔 预警</button>
-        <button class="toolbar-btn" id="an_fw_btn" onclick="checkFutuWatchlist()" title="查看富途自选股状态">★ 自选</button>
+        <button class="toolbar-btn" id="an_fw_btn" onclick="toggleFutuWatch()" title="加入/移出富途自选">☆ 加自选</button>
         <span id="an_op_hint" class="muted" style="font-size:12px"></span>
       </div>
       <div id="cf_watch" class="watch-bar muted" style="margin-top:8px">读取我的正股持仓中…</div>
@@ -74,6 +75,14 @@
     <section class="card">
       <div class="card-title">基本面反向信号<span class="sub">估值分位 + 机构增减持（错杀核心）</span></div>
       <div id="an_fund" class="muted">加载中…</div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <div class="card-title">🤖 猎手观点<span class="sub">LLM 决策层 · 回测门控后触发</span></div>
+        <div id="dec_badge" class="pill warn">—</div>
+      </div>
+      <div id="an_dec" class="muted">加载中…</div>
     </section>
   </main>
 
@@ -138,6 +147,7 @@ async function runAnalyze() {
   </div></div>`;
   renderReverseBreakdown(d.reverse);
   await loadExtra(code);
+  refreshFutuWatchState();   // 同步富途自选状态（★/☆）
   } finally { hideLoading(); }
 }
 
@@ -145,18 +155,20 @@ async function runAnalyze() {
 // 加 _=Date.now() 防止浏览器缓存导致切换股票后仍显示旧数据
 async function loadExtra(code) {
   const _ = Date.now();
-  const [sb, bb, nw, cf, fund] = await Promise.all([
+  const [sb, bb, nw, cf, fund, dec] = await Promise.all([
     fetch('/southbound?code=' + encodeURIComponent(code) + '&_=' + _).then(r=>r.json()).catch(()=>({ok:false,error:'网络错误'})),
     fetch('/buybacks?code=' + encodeURIComponent(code) + '&_=' + _).then(r=>r.json()).catch(()=>({ok:false,error:'网络错误'})),
     fetch('/news?code=' + encodeURIComponent(code) + '&_=' + _).then(r=>r.json()).catch(()=>({ok:false,error:'网络错误'})),
     fetch('/capital-flow?code=' + encodeURIComponent(code) + '&_=' + _).then(r=>r.json()).catch(()=>({ok:false,error:'网络错误'})),
     fetch('/fundamentals?code=' + encodeURIComponent(code) + '&_=' + _).then(r=>r.json()).catch(()=>({ok:false,error:'网络错误'})),
+    fetch('/decision?code=' + encodeURIComponent(code) + '&_=' + _).then(r=>r.json()).catch(()=>({ok:false,error:'网络错误'})),
   ]);
   renderSouthbound(sb);
   renderBuybacks(bb);
   renderNews(nw);
   renderCapitalFlow(cf);
   renderFundamentals(fund);
+  renderDecision(dec);
 }
 
 function renderSouthbound(j) {
@@ -324,6 +336,53 @@ function renderFundamentals(j) {
   el.innerHTML = h || '<span class="muted">暂无数据</span>';
 }
 
+function renderDecision(j) {
+  const el = $('an_dec');
+  const badge = $('dec_badge');
+  if (!j.ok) {
+    if (badge) badge.outerHTML = '<div id="dec_badge" class="pill risk">异常</div>';
+    el.innerHTML = '<span class="muted">决策层异常：'+esc(j.error||'')+'</span>';
+    return;
+  }
+  const d = j.data || {};
+  const bt = d.backtest || {};
+  const btTxt = (bt.win_rate==null) ? '' :
+    `回测 ${bt.n} 笔 · 胜率 ${bt.win_rate}% · 均收益 ${bt.avg_ret}% · ${bt.confidence||''}`;
+
+  if (d.gated) {
+    if (badge) badge.outerHTML = '<div id="dec_badge" class="pill warn">未触发</div>';
+    let h = '<div class="kv"><span>门控原因</span><span class="muted">'+esc(d.reason||'未触发 LLM')+'</span></div>';
+    if (btTxt) h += '<div class="kv"><span>回测参考</span><span class="muted">'+esc(btTxt)+'</span></div>';
+    h += '<div class="hint-bar" style="margin-top:10px">LLM 仅在「回测验证通过（胜率≥门槛）」时调用，避免对未验证信号浪费算力或编造结论。配置 config.llm.api_key 后启用。</div>';
+    el.innerHTML = h;
+    return;
+  }
+
+  // 已调用 LLM，展示差异化判断
+  const v = d.verdict || '—';
+  const vcls = v.indexOf('低吸')>=0 ? 'good' : (v.indexOf('回避')>=0 ? 'risk' : 'warn');
+  if (badge) badge.outerHTML = '<div id="dec_badge" class="pill '+vcls+'">'+esc(v)+'</div>';
+  let h = '';
+  h += '<div class="kv"><span>模型</span><span class="muted">'+esc(d.model||'—')+(d.confidence?(' · 置信 '+esc(d.confidence)):'')+'</span></div>';
+  if (btTxt) h += '<div class="kv"><span>回测依据</span><span class="muted">'+esc(btTxt)+'</span></div>';
+
+  const ps = d.per_signal || [];
+  if (ps.length) {
+    h += '<div style="margin:10px 0 4px;font-weight:600;color:#555">信号级差异化判断</div>';
+    h += ps.map(x=>(
+      '<div class="kv"><span>'+esc(x.signal||'')+'</span><span>'+esc(x.view||'')+
+      (x.action?(' <b>→ '+esc(x.action)+'</b>'):'')+'</span></div>'
+    )).join('');
+  }
+  if (d.rationale) h += '<div class="kv"><span>综合逻辑</span><span>'+esc(d.rationale)+'</span></div>';
+  if (d.risk) h += '<div class="kv"><span>主要风险</span><span class="risk-text">'+esc(d.risk)+'</span></div>';
+  if (d.position_suggestion) h += '<div class="kv"><span>仓位建议</span><span>'+esc(d.position_suggestion)+'</span></div>';
+  if (!d.parse_ok && d.decision) {
+    h += '<div class="muted" style="margin-top:8px;white-space:pre-wrap">'+esc(d.decision)+'</div>';
+  }
+  el.innerHTML = h || '<span class="muted">无可展示决策</span>';
+}
+
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 // 错杀反向信号「构成分解图」：每档一行横向条形图（红=利好加分 / 绿=利空扣分），
@@ -422,6 +481,7 @@ function renderReverseBreakdown(rev) {
   const p = new URLSearchParams(location.search);
   const code = p.get('code');
   loadHoldings();
+  refreshFutuWatchState();
   if (code) { $('an_code').value = code; runAnalyze(); }
 })();
 
@@ -561,29 +621,57 @@ async function submitAlert() {
   setTimeout(() => { hint.textContent = ''; }, 2500);
 }
 
-/* ===== 富途自选股（只读状态查询） ===== */
-async function checkFutuWatchlist() {
+/* ===== 富途自选股（增删开关） ===== */
+let FW_IN = false;
+async function refreshFutuWatchState() {
   const code = $('an_code').value.trim();
-  if (!code) return;
-  const hint = $('an_op_hint');
-  hint.textContent = '查询自选股…';
+  const btn = $('an_fw_btn');
+  if (!btn || !code) return;
   try {
     const r = await fetch('/futu-watchlist?_=' + Date.now());
     const j = await r.json();
-    if (!j.ok) { hint.textContent = '✗ ' + (j.error || '查询失败'); return; }
-    const d = j.data;
-    const stocks = (d.stocks || []);
-    const inWatch = stocks.some(s => s.code === code);
-    const names = stocks.map(s => s.name).join('、');
-    if (inWatch) {
-      hint.textContent = '★ 已在富途自选股中（共' + stocks.length + '只）';
+    if (!j.ok) { FW_IN = false; setFwBtn(false); return; }
+    const d = j.data || {};
+    const stocks = d.stocks || [];
+    FW_IN = stocks.some(s => s.code === code);
+    setFwBtn(FW_IN, d.group);
+  } catch (e) {
+    FW_IN = false; setFwBtn(false);
+  }
+}
+function setFwBtn(inGroup, group) {
+  const btn = $('an_fw_btn');
+  if (!btn) return;
+  if (inGroup) {
+    btn.textContent = '★ 已自选';
+    btn.title = '点击移出富途自选' + (group ? '（' + group + '）' : '');
+  } else {
+    btn.textContent = '☆ 加自选';
+    btn.title = '点击加入富途自选' + (group ? '（' + group + '）' : '');
+  }
+}
+async function toggleFutuWatch() {
+  const code = $('an_code').value.trim();
+  if (!code) return;
+  const hint = $('an_op_hint');
+  hint.textContent = '处理中…';
+  const action = FW_IN ? 'remove' : 'add';
+  try {
+    const r = await fetch('/futu-watchlist', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, name: (typeof CF_CUR !== 'undefined' && CF_CUR && CF_CUR.name) || code, action }),
+    });
+    const j = await r.json();
+    if (j.ok) {
+      hint.textContent = (action === 'add') ? '✓ 已加入富途自选' : '✓ 已移出富途自选';
     } else {
-      hint.textContent = '☆ 未在富途自选中（自选共' + stocks.length + '只，请到富途客户端添加）';
+      hint.textContent = '✗ ' + (j.error || '失败');
     }
+    await refreshFutuWatchState();
   } catch (e) {
     hint.textContent = '✗ 网络错误';
   }
-  setTimeout(() => { hint.textContent = ''; }, 5000);
+  setTimeout(() => { hint.textContent = ''; }, 2500);
 }
 </script>
 </body>

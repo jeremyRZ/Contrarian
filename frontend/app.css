@@ -292,3 +292,35 @@ tbody tr.has-link:hover { background: var(--accent-soft-2); }
   .modal, .modal-mask { animation: none !important; }
   .reveal { opacity: 1 !important; transform: none !important; animation: none !important; }
 }
+
+/* ---------- 回测页：输入框与胜率条 ---------- */
+.inp {
+  font-family: inherit; font-size: 14px; color: var(--ink);
+  background: var(--bg-soft); border: 1px solid var(--line);
+  border-radius: 10px; padding: 7px 10px; outline: none;
+  transition: border-color .18s var(--ease-out), box-shadow .18s var(--ease-out);
+}
+.inp:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.bar {
+  display: inline-block; width: 90px; height: 8px; border-radius: 999px;
+  background: var(--line); overflow: hidden; vertical-align: middle; margin-right: 6px;
+}
+.bar-fill { height: 100%; border-radius: 999px; transition: width .35s var(--ease-out); }
+
+/* ===== M4 策略参数配置编辑器 ===== */
+.cfg-sec-title {
+  font-weight: 600; color: var(--ink); font-size: 13.5px;
+  margin: 16px 0 8px; padding-bottom: 6px; border-bottom: 1px dashed var(--line);
+}
+.cfg-sec-title:first-child { margin-top: 0; }
+.cfg-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  padding: 7px 0; border-bottom: 1px solid var(--line-soft);
+}
+.cfg-row:last-child { border-bottom: none; }
+.cfg-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); cursor: pointer; min-width: 150px; }
+.cfg-inl { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--muted); }
+.cfg-inl .inp { width: auto; padding: 4px 8px; font-size: 13px; border-radius: 8px; }
+.chk { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink); cursor: pointer; }
+.chk input { width: 15px; height: 15px; accent-color: var(--up); }
+
