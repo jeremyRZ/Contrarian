@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import math
+from datetime import datetime
 from typing import Optional
 
 import pandas as pd
@@ -143,11 +144,11 @@ def evaluate_signals(f: dict, cfg: dict) -> dict:
         if chg > blk.get("chg_pct", 2.0) and turn > blk.get("turn", 1.5):
             signals.append("放量突破")
             score += blk.get("weight", 3.0)
-    # 3. 低估值高股息：PE<pe 且接近52周低位
+    # 3. 低 PE 且接近 52 周低位；股息是独立数据源，不在此技术快照中冒充。
     blk = s.get("low_pe_high_div", {})
     if blk.get("enabled", True) and dip_ok("low_pe_high_div"):
         if pe and pe < blk.get("pe", 10.0) and (pos_pct is not None and pos_pct < blk.get("pos_pct", 30.0)):
-            signals.append("低估值高股息")
+            signals.append("低PE低位")
             score += blk.get("weight", 3.0)
     # 4. 恒科急跌联动低吸：指数急跌时龙头跟跌即低吸
     blk = s.get("hstech_link", {})
@@ -168,9 +169,9 @@ def evaluate_signals(f: dict, cfg: dict) -> dict:
             signals.append("龙头观察池")
             score += blk.get("weight", 1.0)
     # 7. RSI(2) Connors 逆向低吸：上升趋势中短期超卖（价格>均线 且 RSI2<阈值）
+    r2 = f.get("rsi2")
     blk = s.get("rsi2_connor", {})
     if blk.get("enabled", False):
-        r2 = f.get("rsi2")
         if r2 is not None and uptrend and r2 < blk.get("rsi2_oversold", 10):
             signals.append("RSI2 逆向低吸")
             score += blk.get("weight", 2.0)
@@ -180,7 +181,7 @@ def evaluate_signals(f: dict, cfg: dict) -> dict:
     _name_w = {
         "深度超跌反弹": s.get("deep_drop", {}).get("weight", 3.0),
         "放量突破": s.get("vol_breakout", {}).get("weight", 3.0),
-        "低估值高股息": s.get("low_pe_high_div", {}).get("weight", 3.0),
+        "低PE低位": s.get("low_pe_high_div", {}).get("weight", 3.0),
         "恒科急跌联动低吸": s.get("hstech_link", {}).get("weight", 2.0),
         "异常放量急跌(逆向)": s.get("panic_drop", {}).get("weight", 2.0),
         "龙头观察池": s.get("leader_pool", {}).get("weight", 1.0),
@@ -199,6 +200,58 @@ def evaluate_signals(f: dict, cfg: dict) -> dict:
     }
     return {"score": score, "signals": signals,
             "signal_details": signal_details, "reason_inputs": reason_inputs}
+
+
+def _apply_score_layers(row: dict, reverse: Optional[dict]) -> dict:
+    """Normalize evidence to 0-10 and disclose coverage and quality limitations."""
+    technical = max(0.0, min(10.0, float(row.get("score") or 0.0)))
+    reverse = reverse or {}
+    raw_reverse = float(reverse.get("score") or 0.0)
+    mispricing = max(0.0, min(10.0, raw_reverse))
+    details = reverse.get("details") or {}
+    expected = ("southbound", "buyback", "news", "capital_flow", "valuation",
+                "institution", "dividend", "earnings")
+    errors = [key for key in expected if (details.get(key) or {}).get("error")]
+    available = sum(1 for key in expected if key in details and key not in errors)
+    confidence = round(available / len(expected) * 100, 1)
+
+    reasons = []
+    status = "unknown"
+    valuation = details.get("valuation") or {}
+    dividend = details.get("dividend") or {}
+    institution = details.get("institution") or {}
+    capital_flow = details.get("capital_flow") or {}
+    if dividend.get("omitted"):
+        status = "fail"
+        reasons.append("股息停派")
+    elif institution.get("score", 0) < 0 or capital_flow.get("score", 0) < -0.5:
+        status = "fail"
+        reasons.append("机构或主力资金持续转弱")
+    elif not valuation.get("error") and (
+        valuation.get("pe_percentile") is not None
+        or valuation.get("pb_percentile") is not None
+    ):
+        status = "pass"
+        reasons.append("估值与资金证据未触发质量否决")
+    else:
+        reasons.append("缺少足够的盈利质量/现金流数据")
+
+    composite = round(technical * 0.55 + mispricing * 0.45, 1)
+    row.update({
+        "technical_score": round(technical, 1),
+        "mispricing_score": round(mispricing, 1),
+        "reverse": round(raw_reverse, 1),
+        "total_score": max(0.0, min(10.0, composite)),
+        "data_confidence": confidence,
+        "data_status": {
+            "available": available,
+            "total": len(expected),
+            "errors": errors,
+            "as_of": datetime.now().astimezone().isoformat(timespec="seconds"),
+        },
+        "quality_gate": {"status": status, "passed": status == "pass", "reasons": reasons},
+    })
+    return row
 
 
 def _batch_snapshot(client, codes):
@@ -374,36 +427,36 @@ def screen(client, codes: Optional[list] = None, top_n: int = 20,
     # 控制 API 调用量；其余候选 reverse=0，不影响排序。
     # with_reverse=False 时（如定时推送场景）跳过反向调用，控制 API 频率。
     if with_reverse:
-        REVERSE_CAP = 15
-        top_codes = [r["code"] for r in results[:REVERSE_CAP]]
+        # Reverse evidence affects ranking, so every candidate must be evaluated;
+        # pre-filtering by technical score would make strong mispricing candidates invisible.
+        REVERSE_CAP = len(results)
+        top_codes = [r["code"] for r in results]
         rev_map = {}
         if top_codes:
             try:
-                rev_map = reverse_signals.reverse_score_batch(client, top_codes, days=60, num=10)
+                rev_map = reverse_signals.reverse_score_batch(
+                    client, top_codes, days=60, num=10, cfg=cfg
+                )
             except Exception:  # noqa: BLE001
                 rev_map = {}
         for r in results[:REVERSE_CAP]:
             rev, _ = rev_map.get(r["code"], (None, None))
             if rev:
-                r["reverse"] = rev["score"]
                 r["reverse_signals"] = rev["signals"]
                 r["reverse_details"] = rev["details"]
             else:
-                r["reverse"] = 0.0
                 r["reverse_signals"] = []
                 r["reverse_details"] = {}
-            r["total_score"] = round(r["score"] + r["reverse"], 1)
+            _apply_score_layers(r, rev)
         for r in results[REVERSE_CAP:]:
-            r["reverse"] = 0.0
             r["reverse_signals"] = []
             r["reverse_details"] = {}
-            r["total_score"] = r["score"]
+            _apply_score_layers(r, None)
     else:
         for r in results:
-            r["reverse"] = 0.0
             r["reverse_signals"] = []
             r["reverse_details"] = {}
-            r["total_score"] = r["score"]
+            _apply_score_layers(r, None)
 
     # 按「基础分 + 反向加分」总分重排，使错杀反向信号影响排序
     results.sort(key=lambda x: (x["total_score"] is None, x["total_score"] or 0),
@@ -413,8 +466,18 @@ def screen(client, codes: Optional[list] = None, top_n: int = 20,
     # 推送门槛纳入总分：基础分达标 或 反向信号强化后总分达标，均触发买入机会通知。
     # 这样「技术面基础分略低但南向/回购/新闻强烈反向看好」的错杀候选也能进入推送。
     for r in top:
-        r["push"] = (not stop_push) and (
-            (r["score"] or 0) >= push_th or (r["total_score"] or 0) >= push_th)
+        technical_trigger = (r["technical_score"] or 0) >= push_th
+        research_trigger = (
+            (r["total_score"] or 0) >= push_th
+            and r["data_confidence"] >= 50
+            and r["quality_gate"]["status"] != "fail"
+        )
+        r["push"] = (not stop_push) and (technical_trigger or research_trigger)
+        r["trigger_source"] = (
+            "technical_backtested" if technical_trigger
+            else "multi_source_unvalidated" if research_trigger
+            else None
+        )
     return _clean_nan({
         "results": top,
         "cash_ratio": cash_ratio,
@@ -450,11 +513,11 @@ def _build_reason(ri: dict, signals: list) -> str:
         elif sig == "异常放量急跌(逆向)":
             c = ri.get("chg")
             parts.append(f"日内大跌{c:+.1f}%且放量，逆向博反弹" if c is not None else "放量大跌逆向博反弹")
-        elif sig == "低估值高股息":
+        elif sig == "低PE低位":
             pe = ri.get("pe")
             p = ri.get("pos_pct")
-            parts.append(f"PE={pe} 低估且处52周低位{p:.0f}%，高股息防御"
-                         if (pe is not None and p is not None) else "低估值高股息防御")
+            parts.append(f"PE={pe} 且处52周低位{p:.0f}%"
+                         if (pe is not None and p is not None) else "低PE且接近52周低位")
         elif sig == "龙头观察池":
             parts.append("龙头标签（非触发信号）")
     base = "；".join(p for p in parts if p)
@@ -467,7 +530,7 @@ def _build_reason(ri: dict, signals: list) -> str:
 _BACKTEST_EVIDENCE_FALLBACK = {
     "深度超跌反弹": (59.0, 0.95),
     "放量突破": (51.5, 1.28),
-    "低估值高股息": (80.0, 5.61),
+    "低PE低位": (80.0, 5.61),
     "恒科急跌联动低吸": (54.3, 0.82),
     "异常放量急跌(逆向)": (40.4, 0.67),
     "RSI2 逆向低吸": (61.1, 1.19),
@@ -508,7 +571,7 @@ def _signal_markdown(r: dict, result: dict) -> str:
     """
     cash = result.get("cash_state", "")
     cash_ratio = result.get("cash_ratio")
-    cr = f"{cash_ratio:.0f}%" if isinstance(cash_ratio, (int, float)) else "—"
+    cr = f"{cash_ratio * 100:.0f}%" if isinstance(cash_ratio, (int, float)) else "—"
     sd = r.get("signal_details") or []
     src = " + ".join(f"{d['name']}{d['weight']:+.1f}" for d in sd) if sd else "—"
     reason = r.get("reason") or "—"
@@ -544,7 +607,7 @@ def run_scheduled_scan(client, codes: Optional[list] = None, webhook: str = "",
         return {"scan_type": "six_strategy", "scanned": 0, "pushed": 0,
                 "signals": [], "note": "webhook 未配置，跳过推送"}
     result, err = screen(client, codes=codes, top_n=50, hstech_code=hstech_code,
-                         cash_full_stop=cash_full_stop, with_reverse=False)
+                         cash_full_stop=cash_full_stop, with_reverse=True)
     if err or not result:
         return {"scan_type": "six_strategy", "scanned": 0, "pushed": 0,
                 "signals": [], "error": err or "no result"}

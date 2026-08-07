@@ -15,17 +15,39 @@ from . import reverse_signals
 REVERSE_CANDIDATE_CAP = 12
 
 
+def _pool_codes(client, pool: str):
+    """解析扫描池。leaders 使用固定龙头池；all 使用富途港股正股基础列表。"""
+    if pool == "leaders":
+        return list(screener.LEADERS), None
+    if pool != "all":
+        return None, f"未知扫描池: {pool}"
+    basic, err = client.stock_basicinfo()
+    if err:
+        return None, err
+    if basic is None or basic.empty:
+        return None, "港股基础列表为空"
+    cols = {str(c).lower(): c for c in basic.columns}
+    code_col = cols.get("code")
+    if not code_col:
+        return None, "港股基础列表缺少 code 字段"
+    codes = [str(v).strip() for v in basic[code_col].tolist() if str(v).startswith("HK.")]
+    return list(dict.fromkeys(codes)), None
+
+
 def missed_scan(client, pool: str = "leaders", top_n: int = 5,
-                min_drop_pct: float = 20.0, hstech_code: str = "HK.800000"):
+                min_drop_pct: float = 20.0, hstech_code: str = "HK.800700"):
     """
     错杀观察扫描。返回 (list_of_result, error)。
     result: {code,name,price,change_rate,pe,week52_position_pct,score,signals,conviction,reverse}
 
     错杀质量：盈利 + 至少一个错杀信号；conviction = 基础分 + 超跌加分(2) + 反向信号分(0~6)。
     """
+    codes, pool_err = _pool_codes(client, pool)
+    if pool_err:
+        return None, pool_err
     # 先取较宽的评分结果（不限 top_n），再做错杀过滤
     data, err = screener.screen(
-        client, codes=None if pool == "leaders" else None,
+        client, codes=codes,
         top_n=200, hstech_code=hstech_code,
     )
     if err:
@@ -35,14 +57,16 @@ def missed_scan(client, pool: str = "leaders", top_n: int = 5,
     filtered = []
     for r in base:
         pe = r.get("pe")
-        is_profitable = (pe is None or pe > 0)  # 内在价值没问题（盈利或无法判断）
+        is_profitable = pe is not None and pe > 0
+        drop_pct = (r.get("reason_inputs") or {}).get("drop_pct")
+        meets_drop = drop_pct is not None and drop_pct >= float(min_drop_pct)
         is_oversold = (
             "深度超跌反弹" in r["signals"]
             or "异常放量急跌(逆向)" in r["signals"]
             or "恒科急跌联动低吸" in r["signals"]
         )
         # 错杀质量：盈利 + 至少一个错杀信号
-        if is_profitable and is_oversold:
+        if is_profitable and is_oversold and meets_drop:
             item = dict(r)
             item["reverse"] = 0.0
             item["reverse_signals"] = []

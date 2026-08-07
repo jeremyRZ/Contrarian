@@ -25,7 +25,7 @@
   <main class="page">
     <div class="page-head">
       <h1>6 大策略规则式扫描</h1>
-      <p>深度超跌反弹 · 放量突破 · 低估值高股息 · 恒科急跌联动 · 恐慌急跌 · 龙头观察池 —— 10 分制综合评分 + 仓位感知推送</p>
+      <p>深度超跌反弹 · 放量突破 · 低PE低位 · 恒科急跌联动 · 恐慌急跌 · 龙头观察池 —— 技术、错价、可信度分层评分 + 仓位感知推送</p>
     </div>
 
     <!-- 仓位状态 -->
@@ -223,7 +223,7 @@ runScan = async function () { await loadScan(); };
 const CFG_STRATEGY_FIELDS = {
   deep_drop:      {label: "深度超跌反弹", fields: ["drop_pct"]},
   vol_breakout:   {label: "放量突破",     fields: ["chg_pct", "turn"]},
-  low_pe_high_div:{label: "低估值高股息", fields: ["pe", "pos_pct"]},
+  low_pe_high_div:{label: "低PE低位", fields: ["pe", "pos_pct"]},
   hstech_link:    {label: "恒科急跌联动低吸", fields: ["hstech_drop"]},
   panic_drop:     {label: "异常放量急跌(逆向)", fields: ["chg_pct", "turn"]},
   leader_pool:    {label: "龙头观察池",   fields: []},
@@ -266,27 +266,27 @@ function renderConfigEditor(cfg) {
   // 回测引擎参数
   const bt = cfg.backtest || {};
   h += '<div class="cfg-sec-title">回测引擎参数（backtrader 真实成交）</div><div class="cfg-row">';
-  h += `<span class="cfg-inl">持有天数<input class="inp mono" style="width:64px" type="number" step="1" data-g="backtest" data-k="__" data-f="forward_days" value="${bt.forward_days ?? 20}"></span>`;
-  h += `<span class="cfg-inl">止损%<input class="inp mono" style="width:64px" type="number" step="0.5" data-g="backtest" data-k="__" data-f="stop_pct" value="${bt.stop_pct ?? 8}"></span>`;
+  h += `<span class="cfg-inl">持有天数<input class="inp mono" style="width:64px" type="number" step="1" data-g="backtest" data-k="__" data-f="forward_days" value="${bt.forward_days ?? 10}"></span>`;
+  h += `<span class="cfg-inl">止损%<input class="inp mono" style="width:64px" type="number" step="0.5" data-g="backtest" data-k="__" data-f="stop_pct" value="${((bt.stop_pct ?? 0.08) * 100).toFixed(1)}"></span>`;
   h += '</div>';
   // 反向 8 块权重
   h += '<div class="cfg-sec-title">八档反向信号权重</div><div class="cfg-row">';
   const rw = cfg.reverse_weights || {};
   for (const [k, label] of Object.entries(CFG_REVERSE)) {
-    h += `<span class="cfg-inl">${label}<input class="inp mono" style="width:60px" type="number" step="0.1" data-g="reverse_weights" data-k="${k}" value="${rw[k] ?? ""}"></span>`;
+    h += `<span class="cfg-inl">${label}<input class="inp mono" style="width:60px" type="number" step="0.1" data-g="reverse_weights" data-k="${k}" data-f="value" value="${rw[k] ?? ""}"></span>`;
   }
   h += '</div>';
   // 推送门槛
   h += '<div class="cfg-sec-title">推送门槛（仓位感知）</div><div class="cfg-row">';
   const p = cfg.push || {};
-  h += `<span class="cfg-inl">轻仓≥<input class="inp mono" style="width:64px" type="number" step="0.1" data-g="push" data-k="light" value="${p.light ?? 6}"></span>`;
-  h += `<span class="cfg-inl">中仓≥<input class="inp mono" style="width:64px" type="number" step="0.1" data-g="push" data-k="mid" value="${p.mid ?? 7}"></span>`;
+  h += `<span class="cfg-inl">轻仓≥<input class="inp mono" style="width:64px" type="number" step="0.1" data-g="push" data-k="light" data-f="value" value="${p.light ?? 6}"></span>`;
+  h += `<span class="cfg-inl">中仓≥<input class="inp mono" style="width:64px" type="number" step="0.1" data-g="push" data-k="mid" data-f="value" value="${p.mid ?? 7}"></span>`;
   h += '</div>';
   // LLM
   const llm = cfg.llm || {};
   h += '<div class="cfg-sec-title">LLM 决策层（回测门控）</div><div class="cfg-row">';
   h += `<label class="cfg-toggle"><input type="checkbox" data-g="llm" data-k="enabled" data-f="_on" ${llm.enabled !== false ? "checked" : ""}/> 启用 LLM 决策</label>`;
-  h += `<span class="cfg-inl">回测胜率门槛%<input class="inp mono" style="width:70px" type="number" step="1" data-g="llm" data-k="min_win_rate" value="${llm.min_win_rate ?? 45}"></span>`;
+  h += `<span class="cfg-inl">回测胜率门槛%<input class="inp mono" style="width:70px" type="number" step="1" data-g="llm" data-k="min_win_rate" data-f="value" value="${llm.min_win_rate ?? 45}"></span>`;
   h += '</div>';
   el.innerHTML = h;
 }
@@ -297,11 +297,20 @@ function collectConfig() {
     const g = inp.dataset.g, k = inp.dataset.k, f = inp.dataset.f;
     // llm 启用用 _on 别名
     if (g === "llm" && f === "_on") { out.llm.enabled = inp.checked; return; }
+    if (g === "reverse_weights" || g === "push" || g === "llm") {
+      const v = _cfgNum(inp.value);
+      if (v !== null) out[g][k] = v;
+      return;
+    }
     // 趋势过滤器 / 回测参数：扁平存放到 out[g][f]
     if (g === "trend_filter" || g === "backtest") {
       const blk = out[g];
       if (inp.type === "checkbox") blk[f] = inp.checked;
-      else { const v = _cfgNum(inp.value); if (v !== null) blk[f] = v; }
+      else {
+        let v = _cfgNum(inp.value);
+        if (g === "backtest" && f === "stop_pct" && v !== null) v /= 100;
+        if (v !== null) blk[f] = v;
+      }
       return;
     }
     if (inp.type === "checkbox") {

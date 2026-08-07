@@ -21,6 +21,7 @@ import yaml
 logger = logging.getLogger("hk-intraday-sched")
 
 _started = False
+_thread = None
 _cfg: dict = {}
 _run_fns = []
 _stop = threading.Event()
@@ -63,6 +64,8 @@ def _load_cfg(base: dict) -> dict:
 
 
 def _within_window(now: datetime, start: str, end: str) -> bool:
+    if now.weekday() >= 5:
+        return False
     try:
         sh, sm = (int(x) for x in str(start).split(":"))
         eh, em = (int(x) for x in str(end).split(":"))
@@ -72,20 +75,34 @@ def _within_window(now: datetime, start: str, end: str) -> bool:
     lo = timedelta(hours=sh, minutes=sm)
     hi = timedelta(hours=eh, minutes=em)
     cur = timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
-    return lo <= cur <= hi
+    # 港股持续交易时段为上午 09:30-12:00、下午 13:00-16:00。
+    lunch_start = timedelta(hours=12)
+    lunch_end = timedelta(hours=13)
+    return lo <= cur <= hi and not (lunch_start <= cur < lunch_end)
 
 
-def _next_open(now: datetime, start: str) -> datetime:
+def _next_session_start(now: datetime, start: str) -> datetime:
+    """返回下一次港股连续交易时段开始时间（工作日；不含交易所假期）。"""
     try:
         sh, sm = (int(x) for x in str(start).split(":"))
     except (ValueError, AttributeError):
         sh, sm = 9, 30
-    target = now.replace(hour=sh, minute=sm, second=0, microsecond=0)
-    while True:
-        if target > now and target.weekday() < 5:  # 0=周一 … 4=周五
-            return target
+    morning = now.replace(hour=sh, minute=sm, second=0, microsecond=0)
+    afternoon = now.replace(hour=13, minute=0, second=0, microsecond=0)
+    if now.weekday() < 5:
+        if now < morning:
+            return morning
+        if now < afternoon and now.time() >= now.replace(hour=12, minute=0).time():
+            return afternoon
+    target = morning + timedelta(days=1)
+    while target.weekday() >= 5:
         target += timedelta(days=1)
-        target = target.replace(hour=sh, minute=sm, second=0, microsecond=0)
+    return target
+
+
+def _next_open(now: datetime, start: str) -> datetime:
+    """兼容旧调用名。"""
+    return _next_session_start(now, start)
 
 
 def _chunk_sleep(total: float, step: float = 5.0) -> None:
@@ -116,17 +133,18 @@ def _save_config(updates: dict) -> bool:
 
 def start(base_cfg: dict, run_fns) -> None:
     """启动调度守护线程（仅一次）。run_fns: 可调用列表，每个无参、返回 scan 结果 dict。"""
-    global _started, _cfg, _run_fns
+    global _started, _thread, _cfg, _run_fns
     if _started:
         return
     _started = True
+    _stop.clear()
     _cfg = _load_cfg(base_cfg)
     if callable(run_fns):
         run_fns = [run_fns]
     _run_fns = list(run_fns or [])
     _refresh_state_meta()
-    t = threading.Thread(target=_loop, name="intraday-sched", daemon=True)
-    t.start()
+    _thread = threading.Thread(target=_loop, name="intraday-sched", daemon=True)
+    _thread.start()
     logger.info("[IntradaySched] 启动，窗口 %s，间隔 %d 分钟，急跌阈值 %.1f%%，扫描函数 %d 个",
                 _state["window"], _cfg.get("interval_min", 30),
                 _cfg.get("threshold", -2.0), len(_run_fns))
@@ -153,9 +171,24 @@ def set_enabled(on: bool) -> dict:
     _cfg["enabled"] = bool(on)
     _state["enabled"] = bool(on)
     _save_config({"enabled": bool(on)})
-    if bool(on):
-        _stop.clear()
     return status()
+
+
+def stop(timeout: float = 5.0) -> None:
+    """停止盘中调度线程；用于应用 lifespan 关闭和测试隔离。"""
+    global _started, _thread
+    if not _started:
+        return
+    _stop.set()
+    if _thread is not None and _thread.is_alive():
+        _thread.join(timeout=max(0.0, timeout))
+    if _thread is not None and _thread.is_alive():
+        logger.warning("[IntradaySched] 停止超时，等待当前扫描自行退出")
+        return
+    _thread = None
+    _started = False
+    _state["running"] = False
+    _state["next_run"] = None
 
 
 def set_interval(minutes: int) -> dict:
@@ -216,7 +249,7 @@ def _loop() -> None:
                 _chunk_sleep(interval * 60)
             else:
                 _state["running"] = False
-                nxt = _next_open(now, start_s)
+                nxt = _next_session_start(now, start_s)
                 _state["next_run"] = nxt.timestamp()
                 secs = max(0.0, (nxt - now).total_seconds())
                 logger.info("[IntradaySched] 非交易时段，睡眠至 %s", nxt)

@@ -26,7 +26,27 @@ from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, Tuple
 
-from . import southbound, buybacks, news, capital_flow, fundamentals, dividend, earnings, filters
+from . import southbound, buybacks, news, capital_flow, fundamentals, dividend, earnings, filters, strategy_config
+
+
+_REVERSE_KEYS = (
+    "southbound", "buyback", "news", "capital_flow", "valuation",
+    "institution", "dividend", "earnings",
+)
+
+
+def _weighted_reverse_score(details: dict, cfg: Optional[dict] = None) -> float:
+    """Scale each component by configured weight relative to its documented default."""
+    active = cfg or strategy_config.load_config()
+    weights = active.get("reverse_weights", {})
+    defaults = strategy_config.DEFAULT_STRATEGY_CONFIG["reverse_weights"]
+    total = 0.0
+    for key in _REVERSE_KEYS:
+        raw = float((details.get(key) or {}).get("score") or 0.0)
+        base_weight = float(defaults.get(key, 1.0))
+        configured = float(weights.get(key, base_weight))
+        total += raw * configured / base_weight if base_weight else 0.0
+    return round(max(-1.0, min(10.0, total)), 1)
 
 
 def _within(date_str: Optional[str], days: int) -> bool:
@@ -42,6 +62,7 @@ def _within(date_str: Optional[str], days: int) -> bool:
 def reverse_score(client, code: str, days: int = 60, num: int = 10,
                   prefetch: Optional[dict] = None,
                   include_sources: bool = False,
+                  cfg: Optional[dict] = None,
                   ) -> Tuple[Optional[dict], Optional[str]]:
     """计算单票的反向信号评分。返回 (dict, error)。
 
@@ -368,8 +389,9 @@ def reverse_score(client, code: str, days: int = 60, num: int = 10,
     except Exception as e:  # noqa: BLE001
         details["earnings"] = {"error": str(e), "score": 0.0}
 
-    score = round(max(-1.0, min(10.0, score)), 1)
-    result = {"score": score, "signals": signals, "details": details}
+    raw_score = round(max(-1.0, min(10.0, score)), 1)
+    score = _weighted_reverse_score(details, cfg)
+    result = {"score": score, "raw_score": raw_score, "signals": signals, "details": details}
     if include_sources:
         # 仅单票聚合接口启用；批量扫描保持轻量响应。
         result["sources"] = sources
@@ -401,7 +423,7 @@ def _prefetch(client, codes: list, max_workers: int = 8) -> dict:
 
 
 def reverse_score_batch(client, codes: list, days: int = 60, num: int = 10,
-                         max_workers: int = 8) -> dict:
+                         max_workers: int = 8, cfg: Optional[dict] = None) -> dict:
     """批量计算多票反向信号（用于扫描，显著降低墙钟延迟）。
 
     1) 并行预拉取南向持股 + 估值（每代码各一次）；
@@ -411,7 +433,7 @@ def reverse_score_batch(client, codes: list, days: int = 60, num: int = 10,
     prefetch = _prefetch(client, codes, max_workers)
     out: dict = {}
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        futs = {ex.submit(reverse_score, client, c, days, num, prefetch): c for c in codes}
+        futs = {ex.submit(reverse_score, client, c, days, num, prefetch, False, cfg): c for c in codes}
         for f in as_completed(futs):
             c = futs[f]
             try:

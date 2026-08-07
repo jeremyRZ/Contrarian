@@ -130,6 +130,8 @@ button.act[disabled] { opacity: .55; cursor: progress; transform: none; }
 /* ---------- 表格（数据密集、紧凑专业） ---------- */
 table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13px;
         font-variant-numeric: tabular-nums; }
+#s_result, #missed_result, #bt_table { overflow-x: auto; }
+#s_result table, #missed_result table, #bt_table table { min-width: 860px; }
 th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
 th { color: var(--muted); font-weight: 600; font-size: 12px;
      background: var(--surface); border-bottom: 1px solid var(--line); }
@@ -323,4 +325,3 @@ tbody tr.has-link:hover { background: var(--accent-soft-2); }
 .cfg-inl .inp { width: auto; padding: 4px 8px; font-size: 13px; border-radius: 8px; }
 .chk { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink); cursor: pointer; }
 .chk input { width: 15px; height: 15px; accent-color: var(--up); }
-

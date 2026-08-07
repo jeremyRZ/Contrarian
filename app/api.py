@@ -19,6 +19,7 @@ import json
 import os
 import threading
 import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,7 +35,24 @@ BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
 CONFIG = load_config()
 
-app = FastAPI(title="Contrarian 港股错杀猎手", version="1.8.1")
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """统一管理后台调度线程与 Futu 连接。"""
+    _startup_scheduler()
+    _start_intraday_scheduler()
+    try:
+        yield
+    finally:
+        intraday_scheduler.stop()
+        scheduler.stop_scheduler()
+        global _client
+        if _client is not None:
+            _client.close()
+            _client = None
+
+
+app = FastAPI(title="Contrarian 港股错杀猎手", version="1.8.1", lifespan=_lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
@@ -60,7 +78,6 @@ def _webhook() -> str:
     return CONFIG.get("wecom", {}).get("webhook", "")
 
 
-@app.on_event("startup")
 def _startup_scheduler():
     """启动每日持仓资金面背离报告调度（默认 16:30 HK 收盘后推送）。"""
     sch = CONFIG.get("schedule", {})
@@ -80,9 +97,11 @@ def _startup_scheduler():
 @app.get("/health")
 def health():
     ok, msg = client().connect()
+    futu_cfg = CONFIG.get("futu", {}) or {}
     return {"ok": ok, "connected": ok, "message": msg,
             "system": CONFIG.get("system", {}),
-            "futu": CONFIG.get("futu", {})}
+            "futu": {k: futu_cfg.get(k) for k in ("host", "port", "trd_env", "watchlist_group")
+                     if k in futu_cfg}}
 
 
 @app.get("/valuation")
@@ -103,7 +122,7 @@ def get_screener(top_n: int = 20, codes: str = ""):
     sc = CONFIG.get("screener", {})
     result, err = screener.screen(
         client(), codes=code_list, top_n=top_n,
-        hstech_code=sc.get("hstech_code", "HK.800000"),
+        hstech_code=sc.get("hstech_code", "HK.800700"),
         cash_full_stop=sc.get("cash_full_stop", True),
     )
     return _wrap(result, err)
@@ -136,7 +155,7 @@ def get_strategies_scan(top_n: int = 50):
 
 # ---------- 回测验证（阶段1） ----------
 @app.get("/backtest/report")
-def get_backtest_report(codes: str = "", forward_days: int = 20,
+def get_backtest_report(codes: str = "", forward_days: int = 10,
                         window_days: int = 250, hstech_code: str = "HK.800700",
                         refresh: int = 0, no_fee: int = 0):
     """6 大策略信号历史回测。codes 逗号分隔；为空用龙头池(LEADERS)。refresh=1 强制重算。
@@ -144,7 +163,7 @@ def get_backtest_report(codes: str = "", forward_days: int = 20,
     code_list = [c.strip() for c in codes.split(",") if c.strip()] or None
     cfg = strategy_config.load_config()
     if refresh:
-        backtest._REPORT_CACHE.clear()
+        backtest.clear_caches()
     rep = backtest.cached_report(
         code_list, cfg, build_client_from_config(CONFIG),
         window_days, forward_days, hstech_code, no_fee=bool(no_fee),
@@ -153,20 +172,20 @@ def get_backtest_report(codes: str = "", forward_days: int = 20,
 
 
 @app.post("/backtest/run")
-def post_backtest_run(request: Request):
+async def post_backtest_run(request: Request):
     """异步触发回测重算（清空缓存后重跑）。body 可选 {codes, forward_days, window_days}。"""
     try:
-        data = json.loads(request.body().decode() or "{}")
+        data = await request.json()
     except Exception:  # noqa: BLE001
         data = {}
     codes = data.get("codes") or None
     if isinstance(codes, str):
         codes = [c.strip() for c in codes.split(",") if c.strip()] or None
-    forward_days = int(data.get("forward_days", 20))
+    forward_days = int(data.get("forward_days", 10))
     window_days = int(data.get("window_days", 250))
     hstech_code = data.get("hstech_code", "HK.800700")
     no_fee = bool(int(data.get("no_fee", 0)))
-    backtest._REPORT_CACHE.clear()
+    backtest.clear_caches()
     cfg = strategy_config.load_config()
     rep = backtest.run_backtest(
         codes, cfg, build_client_from_config(CONFIG),
@@ -232,7 +251,7 @@ async def post_strategies_config(request: Request):
     except ValueError as e:
         return _wrap(None, "配置校验失败：" + str(e))
     # 参数变更后清空回测缓存，下次回测/决策用新参数
-    backtest._REPORT_CACHE.clear()
+    backtest.clear_caches()
     return _wrap(saved, None)
 
 
@@ -240,7 +259,7 @@ async def post_strategies_config(request: Request):
 def post_strategies_config_reset():
     """恢复策略参数默认并落盘，清空回测缓存。"""
     saved = strategy_config.reset_config()
-    backtest._REPORT_CACHE.clear()
+    backtest.clear_caches()
     return _wrap(saved, None)
 
 
@@ -253,8 +272,6 @@ def get_missed_scan(top_n: int = 5, pool: str = ""):
         min_drop_pct=ms.get("min_drop_pct", 20.0),
         hstech_code=CONFIG.get("screener", {}).get("hstech_code", "HK.800700"),
     )
-    if result and _webhook():
-        notify.notify_missed(result, _webhook())
     return _wrap(result, err)
 
 
@@ -262,17 +279,20 @@ def get_missed_scan(top_n: int = 5, pool: str = ""):
 def get_monitor():
     tech = CONFIG.get("monitor", {}).get("technical", True)
     result, err = monitor.monitor_positions(client(), technical=tech)
-    if result and result.get("alerts"):
-        notify.notify_alerts(result["alerts"], _webhook(),
-                             prefix=f"{CONFIG.get('system', {}).get('notify_prefix', '')} 持仓预警")
     return _wrap(result, err)
 
 
 @app.get("/daily-divergence")
-def get_daily_divergence(push: bool = True):
-    """每日持仓资金面背离报告。push=true 且已配置 wecom.webhook 时推送企业微信。"""
-    webhook = _webhook() if push else ""
-    rep = daily_report.run_daily_report(client(), webhook)
+def get_daily_divergence():
+    """只读生成每日持仓资金面背离报告。"""
+    rep = daily_report.run_daily_report(client(), "")
+    return _wrap(rep, rep.get("error"))
+
+
+@app.post("/daily-divergence/push")
+def post_daily_divergence_push():
+    """显式生成并推送每日持仓资金面背离报告。"""
+    rep = daily_report.run_daily_report(client(), _webhook())
     return _wrap(rep, rep.get("error"))
 
 
@@ -313,14 +333,7 @@ def get_holdings():
 
 @app.get("/price-alerts")
 def get_price_alerts():
-    result, err = price_alert.evaluate_all(client(), CONFIG)
-    if result and result.get("alerts_to_push") and _webhook():
-        notify.notify_alerts(
-            [{"code": a["code"], "name": a["name"], "level": a["level"], "msg": a["msg"]}
-             for a in result["alerts_to_push"]],
-            _webhook(),
-            prefix=f"{CONFIG.get('system', {}).get('notify_prefix', '')} 价格报警",
-        )
+    result, err = price_alert.evaluate_all(client(), CONFIG, mark_fired=False)
     return _wrap(result, err)
 
 
@@ -580,9 +593,8 @@ def ipo_auto(code: str):
 
 
 # ---------- 盘中急跌联动 ----------
-@app.get("/intraday/scan")
-def get_intraday_scan(push: bool = False, threshold: float = None, codes: str = ""):
-    """手动触发恒科急跌联动低吸扫描。push=true 且急跌触发时已配置 webhook 则推送企业微信。"""
+def _run_intraday_scan(push: bool, threshold: float = None, codes: str = ""):
+    """运行盘中扫描；由只读查询和显式推送端点共同复用。"""
     cfg = dict(CONFIG.get("intraday", {}) or {})
     if threshold is not None:
         try:
@@ -597,6 +609,18 @@ def get_intraday_scan(push: bool = False, threshold: float = None, codes: str = 
     webhook = _webhook() if push else ""
     rep = intraday.run_intraday(client(), webhook, cfg, codes=cl, code_meta=meta)
     return _wrap(rep, rep.get("error"))
+
+
+@app.get("/intraday/scan")
+def get_intraday_scan(threshold: float = None, codes: str = ""):
+    """只读触发恒科急跌联动低吸扫描。"""
+    return _run_intraday_scan(False, threshold, codes)
+
+
+@app.post("/intraday/scan/push")
+def post_intraday_scan_push(threshold: float = None, codes: str = ""):
+    """显式扫描并在触发时推送企业微信。"""
+    return _run_intraday_scan(True, threshold, codes)
 
 
 @app.get("/intraday/status")
@@ -692,7 +716,6 @@ def _price_alert_run():
     return {"pushed": 0, "scan_type": "price_alert"}
 
 
-@app.on_event("startup")
 def _start_intraday_scheduler():
     """启动盘中调度（交易时段守护线程，默认 09:30–16:00 / 30 分钟）：急跌联动 + 6 大策略扫描 + 价格报警并发。"""
     intraday_scheduler.start(CONFIG.get("intraday", {}) or {}, [_intraday_run, _strategy_run, _price_alert_run])

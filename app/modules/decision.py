@@ -3,7 +3,7 @@
 衔接契约（前一阶段输出 → 本阶段输入）：
 - 输入：/analyze 的实时特征（price/chg/pe/pb/52w/technical/conclusion/signals）
         + reverse_signals 的错杀反向信号构成
-        + backtest.cached_report([code]) 的回测可信度（整体胜率/样本/徽章）
+        + 最近一次宽股票池技术回测的可信度（整体胜率/样本/徽章）
 - 门控：仅当「回测整体胜率 ≥ config.llm.min_win_rate 且 可信度 ≠ 样本不足」
         才调用 LLM，避免对未验证信号浪费 token，也防止 LLM 在无效信号上瞎编。
 - 输出：结构化 decision（verdict / per_signal / rationale / risk / position），
@@ -172,10 +172,8 @@ def decide(code: str, client=None, cfg: Optional[dict] = None,
     else:
         rev = reverse_result
 
-    # 3) 回测（仅本标的，进程内缓存；cfg=None → 内部加载 strategy_config）
-    bt = backtest.cached_report([code], None, client,
-                                window_days=250, forward_days=20,
-                                hstech_code="HK.800700")
+    # 3) 仅采用宽股票池的技术回测作为证据。单票样本通常过少，也会污染全局证据缓存。
+    bt = backtest.get_cached_evidence_report() or {}
     bt_brief = {
         "win_rate": (bt.get("overall") or {}).get("win_rate"),
         "avg_ret": (bt.get("overall") or {}).get("avg_ret"),

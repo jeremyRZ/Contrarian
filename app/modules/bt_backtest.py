@@ -4,8 +4,8 @@ backtrader 回测引擎（M2' 全量改写）
 - 用 backtrader 作为真实成交级回测引擎：逐标的跑一个 Cerebro，
   策略在 each bar 调 screener.evaluate_signals（与实盘同一套信号逻辑），
   命中买入信号（score>=推送门槛）即开多，按 Connors 规则出场（价格>5日线 /
-  持有 forward_days / 单笔止损），并对每笔成交建模港股成本（佣金+印花税）。
-- 每笔成交按触发它的信号做归因，分组统计每策略的胜率/盈亏比/最大回撤/夏普/样本数
+  持有 forward_days / 单笔止损），并对每笔成交建模港股佣金、法定费用与滑点。
+- 每笔成交按触发它的信号做归因，分组统计每策略的胜率/盈亏比/最差单笔回撤/收益波动比/样本数
   与可信度徽章，输出与原 backtest 报告结构兼容的 BacktestReport。
 - 数据：复用 futu_client.history_kline 拉日 K，重建 OHLCV + 特征列
   (turnover 小数→百分比、hi52/lo52 滚动、sma50/sma200、RSI(2))。
@@ -19,6 +19,7 @@ from __future__ import annotations
 import math
 import statistics
 from datetime import datetime, timedelta
+from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
 from typing import Optional
 
 import numpy as np
@@ -33,7 +34,7 @@ from . import screener, strategy_config
 STRATEGY_LABELS = {
     "deep_drop": "深度超跌反弹",
     "vol_breakout": "放量突破",
-    "low_pe_high_div": "低估值高股息",
+    "low_pe_high_div": "低PE低位",
     "hstech_link": "恒科急跌联动低吸",
     "panic_drop": "异常放量急跌(逆向)",
     "leader_pool": "龙头观察池",
@@ -43,6 +44,7 @@ LEADER_LABEL = "龙头观察池"
 
 # 进程级缓存
 _REPORT_CACHE: dict = {}
+_LAST_REPORT: Optional[dict] = None
 # K 线特征帧缓存 (code, lookback) -> DataFrame
 _FRAME_CACHE: dict = {}
 
@@ -55,17 +57,47 @@ WARMUP = 200
 # 港股成本建模
 # ---------------------------------------------------------------------------
 class HKCommission(bt.CommissionInfo):
-    """港股佣金（双边）+ 卖出印花税（单边）。返回绝对金额。"""
+    """港股股票双边交易成本，按每次成交返回绝对金额。"""
 
-    params = (("rate", 0.0005), ("stamp", 0.001))
+    params = (
+        ("rate", 0.0005),
+        ("min_commission", 0.0),
+        ("stamp", 0.001),
+        ("sfc_levy", 0.000027),
+        ("afrc_levy", 0.0000015),
+        ("trading_fee", 0.0000565),
+        ("settlement_fee", 0.000042),
+    )
+
+    @staticmethod
+    def _cent(value: Decimal) -> Decimal:
+        return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     # 注意：backtrader 的钩子是 _getcommission(size, price, pseudoexec)，
     # 重写 getcommission 会导致下单时 TypeError（内部以 pseudoexec 调用）。
     def _getcommission(self, size, price, pseudoexec):
-        c = abs(size) * price * self.p.rate
-        if size < 0:  # 卖出：加印花税 0.1%
-            c += abs(size) * price * self.p.stamp
-        return c
+        notional = Decimal(str(abs(size) * price))
+        brokerage = max(
+            self._cent(notional * Decimal(str(self.p.rate))),
+            Decimal(str(self.p.min_commission)),
+        )
+        # 港股股票印花税买卖双方均收，逐张成交单向上取整至港元。
+        stamp = (notional * Decimal(str(self.p.stamp))).quantize(
+            Decimal("1"), rounding=ROUND_CEILING
+        )
+        statutory = sum(
+            (
+                self._cent(notional * Decimal(str(rate)))
+                for rate in (
+                    self.p.sfc_levy,
+                    self.p.afrc_levy,
+                    self.p.trading_fee,
+                    self.p.settlement_fee,
+                )
+            ),
+            Decimal("0"),
+        )
+        return float(brokerage + stamp + statutory)
 
 
 # ---------------------------------------------------------------------------
@@ -147,9 +179,16 @@ def build_feature_frame(client, code: str, lookback: int, crash_map: Optional[di
     pos_pct,sma50,sma200,rsi2,hstech_crash]，供 FeatureData 按位置映射。
     turnover 小数→百分比，对齐实盘快照量程；hi52/lo52 取 lookback 内滚动极值。
     """
-    key = (code, lookback)
+    # 每个自然日重新拉取，避免进程常驻后永远使用旧 K 线。恒科 crash_map 不进入
+    # 基础缓存，而是在返回副本时注入，避免阈值变化复用旧特征。
+    key = (code, lookback, datetime.now().strftime("%Y-%m-%d"))
     if key in _FRAME_CACHE:
-        return _FRAME_CACHE[key], None
+        base = _FRAME_CACHE[key]
+        out = base.copy()
+        if crash_map:
+            out["hstech_crash"] = [bool(crash_map.get(d.strftime("%Y-%m-%d"), False))
+                                     for d in out.index]
+        return out, None
     df, err, dates = _fetch_kline(client, code, lookback)
     if err or df is None or df.empty:
         return None, err
@@ -162,8 +201,7 @@ def build_feature_frame(client, code: str, lookback: int, crash_map: Optional[di
         return None, f"K线{raw_rows}根但日期缺失({len(dates)})"
     close = df["close"]
     look = min(lookback, 250)
-    hi52 = close.rolling(look, min_periods=20).max()
-    lo52 = close.rolling(look, min_periods=20).min()
+    hi52, lo52 = _rolling_52week_range(df, look)
     sma50 = close.rolling(50, min_periods=50).mean()
     sma200 = close.rolling(200, min_periods=200).mean()
     rsi2 = _rsi(close, 2)
@@ -184,15 +222,25 @@ def build_feature_frame(client, code: str, lookback: int, crash_map: Optional[di
     out["sma50"] = sma50
     out["sma200"] = sma200
     out["rsi2"] = rsi2
-    if crash_map:
-        out["hstech_crash"] = [bool(crash_map.get(d, False)) for d in dates]
-    else:
-        out["hstech_crash"] = False
+    out["hstech_crash"] = False
     out = out[out["close"].notna()].sort_index()
     if out.empty:
         return None, f"K线{raw_rows}根但收盘价全为空(字段解析失败)"
     _FRAME_CACHE[key] = out
+    if crash_map:
+        out = out.copy()
+        out["hstech_crash"] = [bool(crash_map.get(d.strftime("%Y-%m-%d"), False))
+                                 for d in out.index]
     return out, None
+
+
+def _rolling_52week_range(df: pd.DataFrame, lookback: int = 250):
+    """Use actual intraday highs/lows; close-only ranges understate drawdowns."""
+    look = min(int(lookback), 250)
+    return (
+        df["high"].rolling(look, min_periods=20).max(),
+        df["low"].rolling(look, min_periods=20).min(),
+    )
 
 
 def latest_trend(client, code: str, window: int = 250) -> dict:
@@ -228,7 +276,7 @@ class ContrarianBacktestStrategy(bt.Strategy):
       因分数不够门槛而永远无样本）。
     """
 
-    params = (("cfg", None), ("forward_days", 20), ("stop_pct", 0.08),
+    params = (("cfg", None), ("forward_days", 10), ("stop_pct", 0.08),
               ("is_leader", False), ("warmup", WARMUP), ("push_threshold", 6.0),
               ("mode", "combo"), ("target_label", None))
 
@@ -247,6 +295,21 @@ class ContrarianBacktestStrategy(bt.Strategy):
         self.sig_freq: dict = {}
         self.max_score = 0.0
         self.order_status: dict = {}
+        self.equity_curve: list = []
+
+    def _record_equity(self) -> None:
+        if not len(self.data):
+            return
+        day = self.data.datetime.date(0).isoformat()
+        point = (day, float(self.broker.getvalue()))
+        if self.equity_curve and self.equity_curve[-1][0] == day:
+            self.equity_curve[-1] = point
+        else:
+            self.equity_curve.append(point)
+
+    def prenext(self):
+        """指标预热期不属于策略观察窗口，不纳入组合收益统计。"""
+        pass
 
     def _feats(self) -> dict:
         price = self.data.close[0]
@@ -281,9 +344,10 @@ class ContrarianBacktestStrategy(bt.Strategy):
         }
 
     def next(self):
-        if self.order:
-            return
         if len(self) < self.p.warmup:  # 预热：等均线有效
+            return
+        self._record_equity()
+        if self.order:
             return
         self.bars_scanned += 1
         f = self._feats()
@@ -355,11 +419,142 @@ class ContrarianBacktestStrategy(bt.Strategy):
 # ---------------------------------------------------------------------------
 # 统计
 # ---------------------------------------------------------------------------
+def _aggregate_equal_weight_curves(
+        curves: dict[str, pd.Series], initial_capital: float = 100000.0,
+        sleeve_initial_capital: float = 100000.0) -> pd.Series:
+    """把独立单票资金袖套聚合为固定等权组合净值。"""
+    clean = []
+    for series in curves.values():
+        if series is None or series.empty:
+            continue
+        s = pd.to_numeric(series, errors="coerce").dropna().sort_index()
+        s = s[~s.index.duplicated(keep="last")]
+        if not s.empty:
+            clean.append(s / float(sleeve_initial_capital))
+    if not clean:
+        return pd.Series(dtype=float)
+    normalized = pd.concat(clean, axis=1).sort_index()
+    # 尚未开始交易的袖套按现金净值 1.0 处理；上市后的休市日沿用上一净值。
+    normalized = normalized.ffill().fillna(1.0)
+    return normalized.mean(axis=1) * float(initial_capital)
+
+
+def _portfolio_metrics(equity: pd.Series, risk_free_rate: float = 0.0) -> dict:
+    """从日频组合净值计算真实组合风险指标；百分比字段以 0-100 返回。"""
+    values = pd.to_numeric(equity, errors="coerce").dropna().sort_index()
+    values = values[~values.index.duplicated(keep="last")]
+    returns = values.pct_change().dropna()
+    if len(values) < 2 or returns.empty or values.iloc[0] <= 0:
+        return {
+            "metric_scope": "portfolio_daily", "observations": 0,
+            "total_return": None, "annual_return": None,
+            "annual_volatility": None, "max_drawdown": None,
+            "sharpe": None, "sortino": None, "calmar": None,
+            "var_95": None, "cvar_95": None, "max_drawdown_duration": 0,
+        }
+
+    ann_factor = 252.0
+    total_return = float(values.iloc[-1] / values.iloc[0] - 1.0)
+    growth = max(float(values.iloc[-1] / values.iloc[0]), 0.0)
+    annual_return = growth ** (ann_factor / len(returns)) - 1.0 if growth > 0 else -1.0
+    daily_vol = float(returns.std(ddof=1)) if len(returns) > 1 else 0.0
+    annual_vol = daily_vol * math.sqrt(ann_factor)
+    annual_excess = float(returns.mean()) * ann_factor - float(risk_free_rate)
+    sharpe = annual_excess / annual_vol if annual_vol > 0 else None
+
+    downside = np.minimum(returns.to_numpy(dtype=float), 0.0)
+    downside_dev = float(np.sqrt(np.mean(np.square(downside))) * math.sqrt(ann_factor))
+    sortino = annual_excess / downside_dev if downside_dev > 0 else None
+
+    drawdowns = values / values.cummax() - 1.0
+    max_drawdown = abs(float(drawdowns.min()))
+    calmar = annual_return / max_drawdown if max_drawdown > 0 else None
+
+    var_cutoff = float(np.percentile(returns.to_numpy(dtype=float), 5.0))
+    tail = returns[returns <= var_cutoff]
+    var_95 = max(0.0, -var_cutoff)
+    cvar_95 = max(0.0, -float(tail.mean())) if not tail.empty else var_95
+
+    max_duration = current_duration = 0
+    for in_drawdown in (drawdowns < 0):
+        current_duration = current_duration + 1 if in_drawdown else 0
+        max_duration = max(max_duration, current_duration)
+
+    def _pct(value: float) -> float:
+        return round(value * 100.0, 2)
+
+    return {
+        "metric_scope": "portfolio_daily",
+        "observations": int(len(returns)),
+        "total_return": _pct(total_return),
+        "annual_return": _pct(annual_return),
+        "annual_volatility": _pct(annual_vol),
+        "max_drawdown": _pct(max_drawdown),
+        "sharpe": (round(sharpe, 3) if sharpe is not None else None),
+        "sortino": (round(sortino, 3) if sortino is not None else None),
+        "calmar": (round(calmar, 3) if calmar is not None else None),
+        "var_95": _pct(var_95),
+        "cvar_95": _pct(cvar_95),
+        "max_drawdown_duration": int(max_duration),
+    }
+
+
+def _temporal_validation(equity: pd.Series, risk_free_rate: float = 0.0,
+                         train_ratio: float = 0.8, rolling_days: int = 63) -> dict:
+    """Chronological holdout and rolling stability diagnostics without future leakage."""
+    values = pd.to_numeric(equity, errors="coerce").dropna().sort_index()
+    if len(values) < 10:
+        return {
+            "method": "chronological_holdout",
+            "status": "insufficient_data",
+            "is_pristine_oos": False,
+            "limitations": ["样本不足", "当前参数曾由历史网格选择，不能宣称为纯样本外结果"],
+        }
+    split = min(len(values) - 2, max(2, int(len(values) * train_ratio)))
+    train = values.iloc[:split]
+    # Include the boundary equity so the first holdout daily return is retained.
+    test = values.iloc[split - 1:]
+    windows = []
+    if len(values) >= rolling_days:
+        step = max(1, rolling_days // 3)
+        for start in range(0, len(values) - rolling_days + 1, step):
+            segment = values.iloc[start:start + rolling_days]
+            metrics = _portfolio_metrics(segment, risk_free_rate)
+            windows.append({
+                "start": segment.index[0].strftime("%Y-%m-%d"),
+                "end": segment.index[-1].strftime("%Y-%m-%d"),
+                "total_return": metrics.get("total_return"),
+                "max_drawdown": metrics.get("max_drawdown"),
+                "sharpe": metrics.get("sharpe"),
+            })
+    positive = sum(1 for item in windows if (item.get("total_return") or 0) > 0)
+    return {
+        "method": "chronological_holdout",
+        "status": "diagnostic",
+        "split_date": values.index[split].strftime("%Y-%m-%d"),
+        "train": _portfolio_metrics(train, risk_free_rate),
+        "holdout": _portfolio_metrics(test, risk_free_rate),
+        "rolling_days": rolling_days,
+        "rolling_windows": windows,
+        "positive_window_rate": (
+            round(positive / len(windows) * 100, 1) if windows else None
+        ),
+        "is_pristine_oos": False,
+        "limitations": [
+            "当前参数曾由历史网格选择，留出段仅用于时间稳定性诊断",
+            "股票池为当前观察池，仍存在幸存者偏差",
+            "反向数据源没有可靠历史快照，未纳入回测",
+        ],
+    }
+
+
 def _stats(returns: list, draws: list) -> dict:
     n = len(returns)
     if n == 0:
         return {"n": 0, "win_rate": None, "avg_ret": None, "profit_factor": None,
                 "payoff": None, "max_drawdown": None, "sharpe": None,
+                "max_adverse_excursion": None, "trade_return_ratio": None,
+                "metric_scope": "trade",
                 "confidence": "样本不足(无统计意义)", "note": "无信号样本"}
     wins = [r for r in returns if r > 0]
     losses = [r for r in returns if r <= 0]
@@ -372,21 +567,25 @@ def _stats(returns: list, draws: list) -> dict:
     sum_win = sum(wins)
     sum_loss = sum(-x for x in losses)
     pf = round(sum_win / sum_loss, 2) if sum_loss > 0 else None
-    avg_dd = round(statistics.mean(draws), 2) if draws else None
+    worst_trade_dd = round(max(draws), 2) if draws else None
     std = statistics.stdev(returns) if n > 1 else 0.0
-    sharpe = round(avg_ret / std, 2) if std > 0 else None
+    trade_return_ratio = round(avg_ret / std, 2) if std > 0 else None
     conf = ("相对可信" if n >= 20 else "弱可信") if n >= 8 else "样本不足(无统计意义)"
     return {"n": n, "win_rate": win_rate, "avg_ret": avg_ret,
             "profit_factor": pf, "payoff": payoff,
-            "max_drawdown": avg_dd, "sharpe": sharpe,
-            "confidence": conf}
+            # 当前引擎逐标的独立运行，无法从聚合交易列表重建组合资金曲线，
+            # 因此不伪造组合最大回撤或年化夏普；只报告可由交易样本直接计算的指标。
+            "max_drawdown": None, "sharpe": None,
+            "max_adverse_excursion": worst_trade_dd,
+            "trade_return_ratio": trade_return_ratio,
+            "metric_scope": "trade", "confidence": conf}
 
 
 # ---------------------------------------------------------------------------
 # 入口
 # ---------------------------------------------------------------------------
 def run_backtest(codes: Optional[list] = None, cfg: Optional[dict] = None,
-                 client=None, window_days: int = 250, forward_days: int = 20,
+                 client=None, window_days: int = 250, forward_days: int = 10,
                  hstech_code: str = "HK.800700", no_fee: bool = False) -> dict:
     """运行回测，返回 BacktestReport（结构与原 backtest 报告兼容）。"""
     from .. import futu_client
@@ -395,11 +594,21 @@ def run_backtest(codes: Optional[list] = None, cfg: Optional[dict] = None,
     cfg = cfg or strategy_config.load_config()
     codes = codes or screener.LEADERS
     bt_cfg = cfg.get("backtest", {})
-    fwd = forward_days or int(bt_cfg.get("forward_days", 20))
+    fwd = forward_days or int(bt_cfg.get("forward_days", 10))
     stop = float(bt_cfg.get("stop_pct", 0.08))
-    comm = 0.0 if no_fee else float(bt_cfg.get("commission", 0.0005))
-    stamp = 0.0 if no_fee else float(bt_cfg.get("stamp", 0.001))
-    exec_on_close = bool(bt_cfg.get("exec_on_close", True))
+    def _cost(name: str, default: float) -> float:
+        return 0.0 if no_fee else float(bt_cfg.get(name, default))
+
+    comm = _cost("commission", 0.0005)
+    min_commission = _cost("min_commission", 0.0)
+    stamp = _cost("stamp", 0.001)
+    sfc_levy = _cost("sfc_levy", 0.000027)
+    afrc_levy = _cost("afrc_levy", 0.0000015)
+    trading_fee = _cost("trading_fee", 0.0000565)
+    settlement_fee = _cost("settlement_fee", 0.000042)
+    slippage = _cost("slippage", 0.0005)
+    risk_free_rate = float(bt_cfg.get("risk_free_rate", 0.0))
+    exec_on_close = bool(bt_cfg.get("exec_on_close", False))
     push_th = cfg["push"]["light"]
     hstech_th = cfg["strategies"]["hstech_link"]["hstech_drop"]
     lookback = window_days + WARMUP
@@ -409,15 +618,29 @@ def run_backtest(codes: Optional[list] = None, cfg: Optional[dict] = None,
     per_signal = {lab: {"returns": [], "draws": []} for lab in STRATEGY_LABELS.values()}
     all_ret, all_dd = [], []
     per_code = {}
+    portfolio_curves: dict[str, pd.Series] = {}
 
     def _run_one(frame, code, mode, target_label=None):
         """跑一个 Cerebro，返回 strategy 实例（失败返回 None）。"""
         cerebro = bt.Cerebro(stdstats=False)
         cerebro.adddata(FeatureData(dataname=frame))
         cerebro.broker.setcash(100000.0)
-        cerebro.broker.addcommissioninfo(HKCommission(rate=comm, stamp=stamp))
-        # 信号基于收盘价计算，按收盘价成交（MOC）才与信号口径一致；
-        # 否则次日开盘跳空会系统性吃掉均值回归的利润。
+        cerebro.broker.addcommissioninfo(HKCommission(
+            rate=comm,
+            min_commission=min_commission,
+            stamp=stamp,
+            sfc_levy=sfc_levy,
+            afrc_levy=afrc_levy,
+            trading_fee=trading_fee,
+            settlement_fee=settlement_fee,
+        ))
+        if slippage > 0:
+            cerebro.broker.set_slippage_perc(
+                slippage, slip_open=True, slip_limit=True,
+                slip_match=True, slip_out=False,
+            )
+        # 默认在下一根 K 线开盘成交，避免使用尚未形成的当日收盘信号成交。
+        # exec_on_close 仅保留为显式的乐观情景模拟开关。
         if exec_on_close:
             cerebro.broker.set_coc(True)
         # 90% 仓位：留出佣金/印花税缓冲，避免保证金不足被拒单
@@ -455,6 +678,10 @@ def run_backtest(codes: Optional[list] = None, cfg: Optional[dict] = None,
         except Exception as exc:  # noqa: BLE001
             skipped[code] = f"回测异常: {type(exc).__name__}: {exc}"
             continue
+        if strat.equity_curve:
+            dates = pd.to_datetime([point[0] for point in strat.equity_curve])
+            values = [point[1] for point in strat.equity_curve]
+            portfolio_curves[code] = pd.Series(values, index=dates, dtype=float)
         bars_total += strat.bars_scanned
         for _s, _c in strat.sig_freq.items():
             sig_freq_all[_s] = sig_freq_all.get(_s, 0) + _c
@@ -495,23 +722,54 @@ def run_backtest(codes: Optional[list] = None, cfg: Optional[dict] = None,
             per_strategy[lab]["note"] = "标签类（非入场信号，不单独统计）"
             per_strategy[lab]["confidence"] = "—"
     overall = _stats(all_ret, all_dd)
+    portfolio_equity = _aggregate_equal_weight_curves(portfolio_curves)
+    portfolio = {
+        "model": "equal_weight_sleeves",
+        "initial_capital": 100000.0,
+        "sleeves": len(portfolio_curves),
+        **_portfolio_metrics(portfolio_equity, risk_free_rate=risk_free_rate),
+        "equity_curve": [
+            {"date": index.strftime("%Y-%m-%d"), "equity": round(float(value), 2)}
+            for index, value in portfolio_equity.items()
+        ],
+        "validation": _temporal_validation(portfolio_equity, risk_free_rate),
+    }
 
     return {
         "per_strategy": per_strategy,
         "overall": overall,
+        "portfolio": portfolio,
+        "backtest_scope": {
+            "signal_scope": "technical_only",
+            "production_trigger_covered": "technical_backtested",
+            "reverse_history_included": False,
+            "quality_gate_history_included": False,
+            "note": "反向/错价证据没有点时历史快照，只能标为未验证研究信号，不能借用技术回测背书。",
+        },
         "per_code": per_code,
         "window_days": window_days,
         "forward_days": fwd,
         "push_threshold": push_th,
         "hstech_code": hstech_code,
         "codes_count": len(codes),
-        "codes_used": len(codes) - len(skipped),
+        "codes_used": len(portfolio_curves),
         "bars_tested": bars_total,
         "signal_freq": sig_freq_all,
         "order_stats": order_stats,
         "max_score": max_score_all,
         "skipped": skipped,
         "with_cost": (not no_fee),
+        "cost_model": {
+            "brokerage_rate": comm,
+            "minimum_brokerage": min_commission,
+            "stamp_duty_rate": stamp,
+            "stamp_scope": "both_sides",
+            "sfc_levy_rate": sfc_levy,
+            "afrc_levy_rate": afrc_levy,
+            "trading_fee_rate": trading_fee,
+            "settlement_fee_rate": settlement_fee,
+            "slippage_rate": slippage,
+        },
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
 
@@ -621,12 +879,26 @@ def cached_report(codes, cfg, client, window_days, forward_days, hstech_code,
         "codes": codes, "wd": window_days, "fd": forward_days,
         "hs": hstech_code, "cfg": cfg, "nofee": no_fee,
     }, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    global _LAST_REPORT
     hit = _REPORT_CACHE.get(sig)
     if hit:
+        if codes is None or len(codes) >= 20:
+            _LAST_REPORT = hit
         return hit
     rep = run_backtest(codes, cfg, client, window_days, forward_days, hstech_code, no_fee)
     _REPORT_CACHE[sig] = rep
+    if codes is None or len(codes) >= 20:
+        _LAST_REPORT = rep
     return rep
+
+
+def clear_caches(include_frames: bool = True) -> None:
+    """集中清理回测报告和最近报告；强制刷新时同时清理日 K 特征。"""
+    global _LAST_REPORT
+    _REPORT_CACHE.clear()
+    _LAST_REPORT = None
+    if include_frames:
+        _FRAME_CACHE.clear()
 
 
 def get_cached_backtest_stats() -> Optional[dict]:
@@ -635,10 +907,9 @@ def get_cached_backtest_stats() -> Optional[dict]:
     供推送「回测背书」使用：优先用热缓存（/backtest/report 跑过即热），
     无缓存时返回 None（调用方回退到静态表）。
     """
-    if not _REPORT_CACHE:
+    if not _LAST_REPORT:
         return None
-    # 取任意一个缓存报告的 per_strategy（同一套参数，结果一致）
-    rep = next(iter(_REPORT_CACHE.values()))
+    rep = _LAST_REPORT
     ps = rep.get("per_strategy") or {}
     out = {}
     for name, blk in ps.items():
@@ -650,3 +921,8 @@ def get_cached_backtest_stats() -> Optional[dict]:
             "n": blk.get("n"),
         }
     return out or None
+
+
+def get_cached_evidence_report() -> Optional[dict]:
+    """Return only a broad-universe report suitable for production evidence gates."""
+    return _LAST_REPORT

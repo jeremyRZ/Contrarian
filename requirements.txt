@@ -5,5 +5,6 @@ pandas>=2.0
 numpy>=1.24
 PyYAML>=6.0
 requests>=2.28
+backtrader>=1.9.78.123
 # 注：南向(港股通)市场级净买额与个股持股均直接调用东方财富接口，
 # 已不再依赖 akshare；如后续想用 akshare 加速可保留，但非必需。

@@ -198,7 +198,9 @@ Contrarian/
 | GET | `/analyze?code=HK.00700` | 单票技术面 + 八档反向信号 |
 | GET | `/analyze/full?code=HK.00700` | 单票聚合分析：技术面、反向信号源数据与决策一次返回（前端主入口） |
 | GET | `/monitor` | 持仓风控（自动过滤窝轮/杠杆ETF） |
-| GET | `/daily-divergence` | 每日持仓资金面背离报告（推企业微信） |
+| GET | `/daily-divergence` | 只读生成每日持仓资金面背离报告 |
+| POST | `/daily-divergence/push` | 生成报告并显式推送企业微信 |
+| GET/POST | `/intraday/scan`、`/intraday/scan/push` | 只读盘中扫描 / 显式扫描并推送 |
 | GET/POST | `/price-alerts` | 价格报警检查 / 新增报警 |
 | GET | `/southbound` | 港股通持股（个股或全市场净买额） |
 | GET | `/capital-flow` | 资金流向（大单/超大单） |

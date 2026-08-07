@@ -46,9 +46,10 @@ def list_config(config: dict) -> list:
     return merged
 
 
-def _evaluate(code: str, name: str, price: float, change_rate: float, cfg: dict):
+def _evaluate(code: str, name: str, price: float, change_rate: float, cfg: dict,
+              mark_fired: bool = True):
     """返回该代码当前应触发的信号列表 [(key, level, msg)]。"""
-    fired = _FIRED.setdefault(code, set())
+    fired = _FIRED.setdefault(code, set()) if mark_fired else _FIRED.get(code, set())
     triggered = []
     note = cfg.get("note") or ""
     def _msg(base: str) -> str:
@@ -61,19 +62,20 @@ def _evaluate(code: str, name: str, price: float, change_rate: float, cfg: dict)
         triggered.append((f"{code}:stop", "stop", _msg(f"跌破止损价 {cfg['stop_px']}，现价 {price}")))
     elif cfg.get("alarm_px") and price <= cfg["alarm_px"]:
         triggered.append((f"{code}:alarm", "alarm", _msg(f"触及警告价 {cfg['alarm_px']}，现价 {price}")))
-    elif cfg.get("warn_px") and price >= cfg["warn_px"]:
+    elif cfg.get("warn_px") and price <= cfg["warn_px"]:
         triggered.append((f"{code}:warn", "warn", _msg(f"到达预警价 {cfg['warn_px']}，现价 {price}")))
     # 日内异常跌幅
     if (change_rate or 0) <= -5:
         triggered.append((f"{code}:drop", "alarm", f"日内异常跌幅 {change_rate}%"))
     # 去重：仅返回未推送过的
     fresh = [t for t in triggered if t[0] not in fired]
-    for t in fresh:
-        fired.add(t[0])
+    if mark_fired:
+        for t in fresh:
+            fired.add(t[0])
     return fresh, triggered
 
 
-def evaluate_all(client, config: dict):
+def evaluate_all(client, config: dict, mark_fired: bool = True):
     """
     检查所有报警配置的当前价格状态。返回 (dict, error)。
     dict: {items[], alerts_to_push[], count, push_count}
@@ -112,7 +114,9 @@ def evaluate_all(client, config: dict):
                           "price": None, "change_rate": None,
                           "active_signals": [], "would_push": False, "note": "无行情"})
             continue
-        fresh, all_trig = _evaluate(code, cfg.get("name", code), price, chg, cfg)
+        fresh, all_trig = _evaluate(
+            code, cfg.get("name", code), price, chg, cfg, mark_fired=mark_fired
+        )
         active = [t[2] for t in all_trig]
         would_push = bool(fresh)
         for t in fresh:

@@ -93,19 +93,22 @@ async function runScreener() {
   const el = $('s_result'); const meta = $('s_meta');
   if (!j.ok) { meta.innerHTML=''; el.innerHTML = '<div class="err">'+j.error+'</div>'; return; }
   const d = j.data; const rows = d.results || [];
-  meta.innerHTML = `仓位：<b>${d.cash_state}</b> · 现金比例 ${d.cash_ratio}% · 推送门槛 ${d.push_threshold} 分${d.stop_push?'（满仓停推）':''} · 恒科涨跌 ${d.hstech_drop}%`;
+  const cashPct = d.cash_ratio == null ? '—' : (d.cash_ratio * 100).toFixed(1) + '%';
+  meta.innerHTML = `仓位：<b>${d.cash_state}</b> · 现金比例 ${cashPct} · 推送门槛 ${d.push_threshold} 分${d.stop_push?'（满仓停推）':''} · 恒科涨跌 ${d.hstech_drop}%`;
   if (!rows.length) { el.innerHTML = '<div class="muted">无结果</div>'; return; }
   let html = `<table><thead><tr><th>代码</th><th>名称</th><th>现价</th><th>涨跌%</th>
-    <th>PE</th><th>52周位%</th><th>基础分</th><th>反向+</th><th>总分</th><th>推送</th><th>信号</th></tr></thead><tbody>`;
+    <th>PE</th><th>52周位%</th><th>技术分</th><th>错价分</th><th>综合分</th><th>数据可信度</th><th>质量门槛</th><th>推送</th><th>信号</th></tr></thead><tbody>`;
   rows.forEach(x => {
     const push = x.push ? pill('推','push') : '';
-    const rev = (x.reverse && x.reverse > 0) ? ('<span class="rev-pos">+'+x.reverse+'</span>') : '';
+    const quality = x.quality_gate || {};
+    const qualityPill = quality.status === 'pass' ? pill('通过','good')
+      : quality.status === 'fail' ? pill('否决','risk') : pill('数据不足','warn');
     const revSigs = (x.reverse_signals || []).map(s=>pill(s,'good')).join(' ');
     html += `<tr class="has-link"><td><span class="stock-link" onclick="openAnalyze('${x.code}')">${x.code}</span></td>
       <td><span class="stock-link" onclick="openAnalyze('${x.code}')">${x.name}</span></td><td class="mono">${fmt(x.price, 3)}</td>
       <td class="${cls(x.change_rate)} mono">${fmt(x.change_rate, 2)}</td><td class="mono">${fmt(x.pe, 2)}</td>
-      <td class="mono">${fmt(x.week52_position_pct, 1)}</td><td class="mono">${fmt(x.score, 1)}</td><td class="mono">${rev}</td>
-      <td class="mono"><b>${fmt(x.total_score, 1)}</b></td><td>${push}</td>
+      <td class="mono">${fmt(x.week52_position_pct, 1)}</td><td class="mono">${fmt(x.technical_score, 1)}</td><td class="mono">${fmt(x.mispricing_score, 1)}</td>
+      <td class="mono"><b>${fmt(x.total_score, 1)}</b></td><td class="mono">${fmt(x.data_confidence, 0)}%</td><td>${qualityPill}</td><td>${push}</td>
       <td>${x.signals.map(s=>pill(s,'warn')).join(' ')} ${revSigs}</td></tr>`;
   });
   html += '</tbody></table>';

@@ -48,14 +48,22 @@ DEFAULT_STRATEGY_CONFIG = {
     # LLM 决策层（门控阈值在此，infra 密钥在 config.yaml.llm）
     "llm": {"enabled": True, "min_win_rate": 45.0},
     # 回测引擎参数（backtrader 接管）：持有期 / 止损 / 港股成本建模
-    # 参数经 /backtest/sweep 网格寻优（45只龙头池 / 250日 / 12组）后取整体期望最优组：
-    # forward_days=10 · stop_pct=0.04 · rsi2_oversold=5 → 整体胜率58.1% 期望+0.19% 盈利因子1.10
+    # 默认参数沿用历史网格候选，并已按无前视口径复核：45只龙头池 / 250日 / 次日开盘成交 / 计费，
+    # forward_days=10 · stop_pct=0.04 · rsi2_oversold=5 → combo n=42 / 胜率59.5% / 盈利因子1.59。
+    # 样本量仍有限，不能把该结果等同于组合净值表现。
     "backtest": {
         "forward_days": 10,
         "stop_pct": 0.04,      # 单笔止损 -4%（-8% 会让亏损单拖累赔率）
         "commission": 0.0005,   # 双边佣金 ≈0.05%
-        "stamp": 0.001,        # 卖出印花税 0.1%（港股单边）
-        "exec_on_close": True,  # 按收盘价成交(MOC)，与信号计算口径一致
+        "min_commission": 0.0,  # 经纪最低佣金（按实际账户收费计划配置）
+        "stamp": 0.001,        # 股票印花税 0.1%（买卖双方）
+        "sfc_levy": 0.000027,
+        "afrc_levy": 0.0000015,
+        "trading_fee": 0.0000565,
+        "settlement_fee": 0.000042,
+        "slippage": 0.0005,    # 默认单边 5 bps，可按流动性压力测试
+        "risk_free_rate": 0.0, # 组合风险指标年化无风险利率
+        "exec_on_close": False, # 信号在收盘后确认，默认下一交易日开盘成交，避免前视偏差
     },
     # 回测验收阈值（阶段1 产出据此打可信度徽章）
     "backtest_accept": {"min_win_rate": 45.0, "min_sample": 20},
@@ -125,27 +133,67 @@ def _validate(cfg: dict) -> None:
     if bt is not None:
         if not isinstance(bt, dict):
             raise ValueError("backtest 必须是 dict")
-        for num_key in ("forward_days", "stop_pct", "commission", "stamp"):
+        for num_key in ("forward_days", "stop_pct", "commission", "min_commission",
+                        "stamp", "sfc_levy", "afrc_levy", "trading_fee",
+                        "settlement_fee", "slippage", "risk_free_rate"):
             if num_key in bt and bt[num_key] is not None:
                 try:
                     float(bt[num_key])
                 except (ValueError, TypeError):
                     raise ValueError(f"backtest.{num_key} 必须是数值")
+        if bt.get("forward_days") is not None:
+            forward_days = float(bt["forward_days"])
+            if forward_days < 1 or not forward_days.is_integer():
+                raise ValueError("backtest.forward_days 必须是至少为 1 的整数")
+        if bt.get("stop_pct") is not None and not 0 < float(bt["stop_pct"]) < 1:
+            raise ValueError("backtest.stop_pct 必须在 0 和 1 之间")
+        for cost_key in ("commission", "min_commission", "stamp", "sfc_levy",
+                         "afrc_levy", "trading_fee", "settlement_fee", "slippage"):
+            if bt.get(cost_key) is not None and float(bt[cost_key]) < 0:
+                raise ValueError(f"backtest.{cost_key} 不能为负数")
         if "exec_on_close" in bt and not isinstance(bt["exec_on_close"], bool):
             raise ValueError("backtest.exec_on_close 必须是布尔值")
     p = cfg.get("push", {})
+    if not isinstance(p, dict):
+        raise ValueError("push 必须是 dict")
     for pk in ("light", "mid"):
         if pk in p:
             try:
                 float(p[pk])
             except (ValueError, TypeError):
                 raise ValueError(f"push.{pk} 必须是数值")
+            if not 0 <= float(p[pk]) <= 10:
+                raise ValueError(f"push.{pk} 必须在 0 和 10 之间")
+    rw = cfg.get("reverse_weights", {})
+    if not isinstance(rw, dict):
+        raise ValueError("reverse_weights 必须是 dict")
+    for key, value in rw.items():
+        try:
+            weight = float(value)
+        except (ValueError, TypeError):
+            raise ValueError(f"reverse_weights.{key} 必须是数值")
+        if not 0 <= weight <= 10:
+            raise ValueError(f"reverse_weights.{key} 必须在 0 和 10 之间")
+    llm = cfg.get("llm", {})
+    if not isinstance(llm, dict):
+        raise ValueError("llm 必须是 dict")
+    if "enabled" in llm and not isinstance(llm["enabled"], bool):
+        raise ValueError("llm.enabled 必须是布尔值")
+    if "min_win_rate" in llm:
+        try:
+            min_win_rate = float(llm["min_win_rate"])
+        except (ValueError, TypeError):
+            raise ValueError("llm.min_win_rate 必须是数值")
+        if not 0 <= min_win_rate <= 100:
+            raise ValueError("llm.min_win_rate 必须在 0 和 100 之间")
 
 
 def save_config(cfg: dict) -> dict:
     """校验并落盘 strategies.yaml，返回生效后的完整配置。"""
-    _validate(cfg)
-    merged = _deep_merge(DEFAULT_STRATEGY_CONFIG, cfg)
+    if not isinstance(cfg, dict):
+        raise ValueError("配置必须是 dict")
+    merged = _deep_merge(load_config(), cfg)
+    _validate(merged)
     with open(STRATEGIES_PATH, "w", encoding="utf-8") as f:
         yaml.safe_dump(merged, f, allow_unicode=True, sort_keys=False)
     return merged
@@ -153,4 +201,8 @@ def save_config(cfg: dict) -> dict:
 
 def reset_config() -> dict:
     """恢复默认配置并落盘。"""
-    return save_config(copy.deepcopy(DEFAULT_STRATEGY_CONFIG))
+    defaults = copy.deepcopy(DEFAULT_STRATEGY_CONFIG)
+    _validate(defaults)
+    with open(STRATEGIES_PATH, "w", encoding="utf-8") as f:
+        yaml.safe_dump(defaults, f, allow_unicode=True, sort_keys=False)
+    return defaults

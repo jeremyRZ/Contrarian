@@ -18,4 +18,5 @@ from .bt_backtest import (  # noqa: F401
     debug_signals,
     sweep,
     _hstech_crash_map,
+    clear_caches,
 )

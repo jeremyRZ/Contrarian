@@ -12,6 +12,8 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger("hk-scheduler")
 _started = False
+_thread = None
+_stop = threading.Event()
 
 
 def _next_run_time(hour: int, minute: int) -> float:
@@ -29,27 +31,44 @@ def start_scheduler(run_fn, hour: int = 16, minute: int = 30, enabled: bool = Tr
     run_fn: 无参可调用（执行每日报告推送）；enabled=False 时不启动。
     重复调用只会启动一次（模块级 _started 保护）。
     """
-    global _started
+    global _started, _thread
     if not enabled:
         logger.info("[Scheduler] 已禁用（config.schedule.enabled=false）")
         return
     if _started:
         return
     _started = True
+    _stop.clear()
 
     def loop() -> None:
         logger.info("[Scheduler] 启动，每日 %02d:%02d 推送持仓背离报告", hour, minute)
-        while True:
+        while not _stop.is_set():
             t = _next_run_time(hour, minute)
             sleep_s = t - time.time()
-            if sleep_s > 0:
-                time.sleep(sleep_s)
+            if sleep_s > 0 and _stop.wait(sleep_s):
+                break
             try:
                 run_fn()
             except Exception as e:  # noqa: BLE001
                 logger.error("[Scheduler] 执行每日报告失败: %s", e)
             # 防止同一分钟内被重复触发：多睡 60s
-            time.sleep(60)
+            if _stop.wait(60):
+                break
 
-    t = threading.Thread(target=loop, name="daily-scheduler", daemon=True)
-    t.start()
+    _thread = threading.Thread(target=loop, name="daily-scheduler", daemon=True)
+    _thread.start()
+
+
+def stop_scheduler(timeout: float = 5.0) -> None:
+    """停止每日调度线程；用于应用 lifespan 关闭和测试隔离。"""
+    global _started, _thread
+    if not _started:
+        return
+    _stop.set()
+    if _thread is not None and _thread.is_alive():
+        _thread.join(timeout=max(0.0, timeout))
+    if _thread is not None and _thread.is_alive():
+        logger.warning("[Scheduler] 停止超时，等待当前任务自行退出")
+        return
+    _thread = None
+    _started = False

@@ -44,7 +44,7 @@
         <div class="kv"><span>买入触发门槛</span><span id="bt_th">—</span></div>
       </div>
       <div class="kv" style="margin-top:10px">
-        <label class="chk"><input type="checkbox" id="bt_nofee"> 不计交易成本（对比无摩擦视角）</label>
+        <label class="chk"><input type="checkbox" id="bt_nofee"> 不计交易成本与滑点（对比无摩擦视角）</label>
       </div>
       <div class="hint-bar" style="margin-top:12px">
         首次运行需逐只拉取日 K（富途限频，可能耗时数十秒，结果进程内缓存）。
@@ -65,10 +65,30 @@
         <div class="kv"><span>平均前向收益</span><span id="bt_o_avg">—</span></div>
         <div class="kv"><span>盈利因子（总盈/总亏）</span><span id="bt_o_pf">—</span></div>
         <div class="kv"><span>赔率（均盈/均亏）</span><span id="bt_o_payoff">—</span></div>
-        <div class="kv"><span>平均最大回撤</span><span id="bt_o_dd">—</span></div>
-        <div class="kv"><span>夏普（每笔）</span><span id="bt_o_sharpe">—</span></div>
+        <div class="kv"><span>最差单笔回撤</span><span id="bt_o_dd">—</span></div>
+        <div class="kv"><span>单笔收益/波动</span><span id="bt_o_sharpe">—</span></div>
       </div>
       <div class="muted" id="bt_diag" style="margin-top:10px"></div>
+      <div class="hint-bar" id="bt_validation" style="margin-top:12px">运行后显示时间留出与滚动稳定性诊断。</div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <div class="card-title">组合风险 <span class="sub">日频净值 · 固定等权资金袖套</span></div>
+        <div class="muted" id="bt_p_scope">—</div>
+      </div>
+      <div class="grid2">
+        <div class="kv"><span>累计收益</span><span id="bt_p_total">—</span></div>
+        <div class="kv"><span>年化收益</span><span id="bt_p_ann">—</span></div>
+        <div class="kv"><span>年化波动</span><span id="bt_p_vol">—</span></div>
+        <div class="kv"><span>最大回撤</span><span id="bt_p_dd">—</span></div>
+        <div class="kv"><span>Sharpe</span><span id="bt_p_sharpe">—</span></div>
+        <div class="kv"><span>Sortino</span><span id="bt_p_sortino">—</span></div>
+        <div class="kv"><span>日 VaR 95%</span><span id="bt_p_var">—</span></div>
+        <div class="kv"><span>日 CVaR 95%</span><span id="bt_p_cvar">—</span></div>
+        <div class="kv"><span>最长回撤期</span><span id="bt_p_days">—</span></div>
+      </div>
+      <div class="muted" style="margin-top:10px">每只股票使用独立等额初始资金，再聚合日净值；该口径反映并发持仓与未实现盈亏，但不模拟全局资金争用。</div>
     </section>
 
     <!-- 分策略 -->
@@ -120,8 +140,27 @@ async function runBacktest() {
     $("bt_o_avg").textContent = fmt(o.avg_ret, 2) + "%";
     $("bt_o_pf").textContent = fmt(o.profit_factor, 2);
     $("bt_o_payoff").textContent = fmt(o.payoff, 2);
-    $("bt_o_dd").textContent = fmt(o.max_drawdown, 2) + "%";
-    $("bt_o_sharpe").textContent = fmt(o.sharpe, 2);
+    $("bt_o_dd").textContent = fmt(o.max_adverse_excursion, 2) + "%";
+    $("bt_o_sharpe").textContent = fmt(o.trade_return_ratio, 2);
+    // portfolio: metrics are calculated from the daily aggregate equity curve
+    const p = d.portfolio || {};
+    $("bt_p_scope").textContent = `${p.sleeves || 0} 个资金袖套 · ${p.observations || 0} 个日收益样本`;
+    $("bt_p_total").textContent = fmt(p.total_return, 2) + "%";
+    $("bt_p_ann").textContent = fmt(p.annual_return, 2) + "%";
+    $("bt_p_vol").textContent = fmt(p.annual_volatility, 2) + "%";
+    $("bt_p_dd").textContent = fmt(p.max_drawdown, 2) + "%";
+    $("bt_p_sharpe").textContent = fmt(p.sharpe, 3);
+    $("bt_p_sortino").textContent = fmt(p.sortino, 3);
+    $("bt_p_var").textContent = fmt(p.var_95, 2) + "%";
+    $("bt_p_cvar").textContent = fmt(p.cvar_95, 2) + "%";
+    $("bt_p_days").textContent = p.max_drawdown_duration == null ? "—" : `${p.max_drawdown_duration} 个交易日`;
+    const v = p.validation || {};
+    const holdout = v.holdout || {};
+    const scope = d.backtest_scope || {};
+    $("bt_validation").innerHTML = `验证范围：<b>${scope.signal_scope === 'technical_only' ? '仅技术信号' : '未知'}</b>`
+      + ` · 留出段收益 ${fmt(holdout.total_return, 2)}% · 留出段最大回撤 ${fmt(holdout.max_drawdown, 2)}%`
+      + ` · ${v.rolling_windows ? v.rolling_windows.length : 0} 个滚动窗口，正收益窗口 ${fmt(v.positive_window_rate, 1)}%`
+      + `<br><span class="muted">${(v.limitations || []).join('；')}</span>`;
     // 诊断：成交笔数 / 跳过标的 / 最高综合分
     const nSkip = Object.keys(d.skipped || {}).length;
     const filled = (d.order_stats || {}).Completed || 0;
@@ -144,19 +183,19 @@ async function runBacktest() {
         <td class="mono ${cls(s.avg_ret)}">${fmt(s.avg_ret, 2)}%</td>
         <td class="mono">${fmt(s.profit_factor, 2)}</td>
         <td class="mono">${fmt(s.payoff, 2)}</td>
-        <td class="mono ${cls(s.max_drawdown)}">${fmt(s.max_drawdown, 2)}%</td>
-        <td class="mono">${fmt(s.sharpe, 2)}</td>
+        <td class="mono ${cls(s.max_adverse_excursion)}">${fmt(s.max_adverse_excursion, 2)}%</td>
+        <td class="mono">${fmt(s.trade_return_ratio, 2)}</td>
         <td>${confPill(s.confidence)}</td></tr>`;
     }).join("");
     $("bt_table").innerHTML = `<table><thead><tr><th>策略</th><th>权重</th><th>成交数</th>
-      <th>胜率</th><th>平均收益</th><th>盈利因子</th><th>赔率</th><th>最大回撤</th><th>夏普</th><th>可信度</th></tr></thead>
+      <th>胜率</th><th>平均收益</th><th>盈利因子</th><th>赔率</th><th>最差单笔回撤</th><th>收益/波动</th><th>可信度</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="10" class="muted">无数据</td></tr>'}</tbody></table>`;
   } catch (e) {
     $("bt_table").innerHTML = '<div class="err">请求异常：' + e.message + '</div>';
   } finally { hideLoading(); }
 }
 
-runBacktest();
+if (new URLSearchParams(location.search).get('refresh') === '1') runBacktest();
 </script>
 </body>
 </html>
