@@ -125,10 +125,10 @@ async function runAnalyze() {
   showLoading('正在拉取个股深度数据…');
   try {
   const code = $('an_code').value.trim();
-  const r = await fetch('/analyze?code=' + encodeURIComponent(code) + '&_=' + Date.now()); const j = await r.json();
+  const r = await fetch('/analyze/full?code=' + encodeURIComponent(code) + '&_=' + Date.now()); const j = await r.json();
   const el = $('an_result');
   if (!j.ok) { el.innerHTML = '<div class="err">'+j.error+'</div>'; return; }
-  const d = j.data; const t = d.technical || {};
+  const d = j.data.analysis; const t = d.technical || {};
   CF_CUR = { code, name: d.name, price: d.price };
   el.innerHTML = `
   <div class="grid2"><div>
@@ -146,29 +146,19 @@ async function runAnalyze() {
     <div class="kv"><span>技术信号</span><span>${((d.signals||[]).concat((d.reverse&&d.reverse.signals)||[])).map(s=>pill(s, s.indexOf('(风险)')>=0?'risk':'warn')).join(' ')||'—'}</span></div>
   </div></div>`;
   renderReverseBreakdown(d.reverse);
-  await loadExtra(code);
+  renderExtras(j.data.extras || {});
   refreshFutuWatchState();   // 同步富途自选状态（★/☆）
   } finally { hideLoading(); }
 }
 
-// 并行拉取南向 / 回购 / 新闻 / 资金流向，互不阻塞
-// 加 _=Date.now() 防止浏览器缓存导致切换股票后仍显示旧数据
-async function loadExtra(code) {
-  const _ = Date.now();
-  const [sb, bb, nw, cf, fund, dec] = await Promise.all([
-    fetch('/southbound?code=' + encodeURIComponent(code) + '&_=' + _).then(r=>r.json()).catch(()=>({ok:false,error:'网络错误'})),
-    fetch('/buybacks?code=' + encodeURIComponent(code) + '&_=' + _).then(r=>r.json()).catch(()=>({ok:false,error:'网络错误'})),
-    fetch('/news?code=' + encodeURIComponent(code) + '&_=' + _).then(r=>r.json()).catch(()=>({ok:false,error:'网络错误'})),
-    fetch('/capital-flow?code=' + encodeURIComponent(code) + '&_=' + _).then(r=>r.json()).catch(()=>({ok:false,error:'网络错误'})),
-    fetch('/fundamentals?code=' + encodeURIComponent(code) + '&_=' + _).then(r=>r.json()).catch(()=>({ok:false,error:'网络错误'})),
-    fetch('/decision?code=' + encodeURIComponent(code) + '&_=' + _).then(r=>r.json()).catch(()=>({ok:false,error:'网络错误'})),
-  ]);
-  renderSouthbound(sb);
-  renderBuybacks(bb);
-  renderNews(nw);
-  renderCapitalFlow(cf);
-  renderFundamentals(fund);
-  renderDecision(dec);
+// 聚合接口已经复用反向评分采集到的源数据，此处只负责分发给现有渲染器。
+function renderExtras(extras) {
+  renderSouthbound(extras.southbound || {ok:false,error:'无南向数据'});
+  renderBuybacks(extras.buybacks || {ok:false,error:'无回购数据'});
+  renderNews(extras.news || {ok:false,error:'无新闻数据'});
+  renderCapitalFlow(extras.capital_flow || {ok:false,error:'无资金流数据'});
+  renderFundamentals(extras.fundamentals || {ok:false,error:'无基本面数据'});
+  renderDecision(extras.decision || {ok:false,error:'无决策数据'});
 }
 
 function renderSouthbound(j) {

@@ -40,15 +40,18 @@ def _within(date_str: Optional[str], days: int) -> bool:
 
 
 def reverse_score(client, code: str, days: int = 60, num: int = 10,
-                  prefetch: Optional[dict] = None
+                  prefetch: Optional[dict] = None,
+                  include_sources: bool = False,
                   ) -> Tuple[Optional[dict], Optional[str]]:
     """计算单票的反向信号评分。返回 (dict, error)。
 
     dict: {score:float, signals:[str], details:{southbound,buyback,news,...}}
     prefetch: 可选批量预拉取结果 {southbound:{code:(dict,err)}, valuation:{code:(dict,err)}}，
               用于 screener 批量扫描时避免逐只重复调用（见 reverse_score_batch）。
+    include_sources: 单票聚合页启用，附带评分过程中已取得的完整源数据；批量扫描默认关闭。
     """
     details: dict = {}
+    sources: dict = {}
     signals: list = []
     score = 0.0
 
@@ -59,6 +62,8 @@ def reverse_score(client, code: str, days: int = 60, num: int = 10,
             hd, herr = pf_sb[code]
         else:
             hd, herr = southbound.holding(code)
+        if include_sources:
+            sources["southbound"] = ({"holding": hd} if hd else {"holding_error": herr}, None)
         if hd:
             upd = int(hd.get("contiguous_up_days") or 0)
             dnd = int(hd.get("contiguous_down_days") or 0)
@@ -106,10 +111,14 @@ def reverse_score(client, code: str, days: int = 60, num: int = 10,
             details["southbound"] = {"error": herr, "score": 0.0}
     except Exception as e:  # noqa: BLE001
         details["southbound"] = {"error": str(e), "score": 0.0}
+        if include_sources:
+            sources["southbound"] = (None, str(e))
 
     # 2) 公司回购
     try:
         bb, berr = buybacks.get_buybacks(client, code, num=num)
+        if include_sources:
+            sources["buybacks"] = (bb, berr)
         if berr:
             details["buyback"] = {"error": berr, "score": 0.0}
         elif bb and bb.get("buybacks"):
@@ -144,10 +153,14 @@ def reverse_score(client, code: str, days: int = 60, num: int = 10,
             details["buyback"] = {"score": 0.0}
     except Exception as e:  # noqa: BLE001
         details["buyback"] = {"error": str(e), "score": 0.0}
+        if include_sources:
+            sources["buybacks"] = (None, str(e))
 
     # 3) 新闻情绪（细粒度打分，按时间近度加权）
     try:
         nw, nerr = news.get_news(client, code, num=num)
+        if include_sources:
+            sources["news"] = (nw, nerr)
         if nerr:
             details["news"] = {"error": nerr, "score": 0.0}
         elif nw and nw.get("news"):
@@ -184,12 +197,21 @@ def reverse_score(client, code: str, days: int = 60, num: int = 10,
             details["news"] = {"score": 0.0}
     except Exception as e:  # noqa: BLE001
         details["news"] = {"error": str(e), "score": 0.0}
+        if include_sources:
+            sources["news"] = (None, str(e))
 
     # 4) 资金流向（大单/超大单 = 机构主力，富途逐档）
     #    用近N日主力净流入汇总为主信号（反映持续趋势），最新时段快照为辅。
     try:
         cf_dist, cf_derr = capital_flow.distribution(client, code)
         cf_ser, cf_serr = capital_flow.series(client, code, days=min(int(days), 20))
+        if include_sources:
+            sources["capital_flow"] = ({
+                "distribution": cf_dist,
+                "distribution_error": cf_derr,
+                "flow": cf_ser,
+                "flow_error": cf_serr,
+            }, None)
         if cf_derr and cf_serr:
             details["capital_flow"] = {"error": cf_derr, "score": 0.0}
         else:
@@ -232,10 +254,17 @@ def reverse_score(client, code: str, days: int = 60, num: int = 10,
                 details["capital_flow"] = {"score": 0.0}
     except Exception as e:  # noqa: BLE001
         details["capital_flow"] = {"error": str(e), "score": 0.0}
+        if include_sources:
+            sources["capital_flow"] = (None, str(e))
 
     # 5) 估值分位（错杀核心：好公司被低估 = 反弹空间大）
     try:
         val, val_err = fundamentals.valuation_signal(client, code)
+        if include_sources:
+            sources["fundamentals"] = {
+                "valuation": val,
+                "valuation_error": val_err,
+            }
         if val_err:
             details["valuation"] = {"error": val_err, "score": 0.0}
         elif val:
@@ -254,10 +283,21 @@ def reverse_score(client, code: str, days: int = 60, num: int = 10,
             details["valuation"] = {"score": 0.0}
     except Exception as e:  # noqa: BLE001
         details["valuation"] = {"error": str(e), "score": 0.0}
+        if include_sources:
+            sources["fundamentals"] = {
+                "valuation": None,
+                "valuation_error": str(e),
+            }
 
     # 6) 机构增减持（smart money：机构在买 = 错杀反向利好）
     try:
         inst, inst_err = fundamentals.institution_signal(client, code)
+        if include_sources:
+            sources.setdefault("fundamentals", {})
+            sources["fundamentals"].update({
+                "institution": inst,
+                "institution_error": inst_err,
+            })
         if inst_err:
             details["institution"] = {"error": inst_err, "score": 0.0}
         elif inst:
@@ -276,6 +316,12 @@ def reverse_score(client, code: str, days: int = 60, num: int = 10,
             details["institution"] = {"score": 0.0}
     except Exception as e:  # noqa: BLE001
         details["institution"] = {"error": str(e), "score": 0.0}
+        if include_sources:
+            sources.setdefault("fundamentals", {})
+            sources["fundamentals"].update({
+                "institution": None,
+                "institution_error": str(e),
+            })
 
     # 7) 股息率 / 分红（港股高股息错杀核心维度，富途快照 TTM 字段）
     try:
@@ -323,7 +369,11 @@ def reverse_score(client, code: str, days: int = 60, num: int = 10,
         details["earnings"] = {"error": str(e), "score": 0.0}
 
     score = round(max(-1.0, min(10.0, score)), 1)
-    return {"score": score, "signals": signals, "details": details}, None
+    result = {"score": score, "signals": signals, "details": details}
+    if include_sources:
+        # 仅单票聚合接口启用；批量扫描保持轻量响应。
+        result["sources"] = sources
+    return result, None
 
 
 def _prefetch(client, codes: list, max_workers: int = 8) -> dict:

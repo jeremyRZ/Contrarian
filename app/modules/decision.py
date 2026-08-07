@@ -122,8 +122,12 @@ def _parse_llm(content: str) -> dict:
     return {"verdict": None, "decision": content, "parse_ok": False}
 
 
-def decide(code: str, client=None, cfg: Optional[dict] = None) -> dict:
+def decide(code: str, client=None, cfg: Optional[dict] = None,
+           analysis_result: Optional[dict] = None,
+           reverse_result: Optional[dict] = None) -> dict:
     """端到端决策：分析 → 反向信号 → 回测门控 → （可选）LLM。
+
+    analysis_result / reverse_result 可由聚合接口传入，避免重复调用行情和外部数据源。
 
     配置来源：
     - 回测 / 信号参数来自 strategy_config（strategies.yaml + 默认值）；
@@ -152,7 +156,10 @@ def decide(code: str, client=None, cfg: Optional[dict] = None) -> dict:
     min_win = float(llm_cfg.get("min_win_rate", llm_raw.get("min_win_rate", 45.0)))
 
     # 1) 实时分析
-    a, aerr = analyze.analyze(client, code)
+    if analysis_result is None:
+        a, aerr = analyze.analyze(client, code)
+    else:
+        a, aerr = analysis_result, None
     if not a:
         return {"code": code, "gated": True, "reason": "分析失败：" + str(aerr),
                 "model": None, "verdict": None, "per_signal": [],
@@ -160,7 +167,10 @@ def decide(code: str, client=None, cfg: Optional[dict] = None) -> dict:
                 "decision": None, "parse_ok": False, "backtest": None}
 
     # 2) 错杀反向信号
-    rev, _ = reverse_signals.reverse_score(client, code, days=60, num=10)
+    if reverse_result is None:
+        rev, _ = reverse_signals.reverse_score(client, code, days=60, num=10)
+    else:
+        rev = reverse_result
 
     # 3) 回测（仅本标的，进程内缓存；cfg=None → 内部加载 strategy_config）
     bt = backtest.cached_report([code], None, client,

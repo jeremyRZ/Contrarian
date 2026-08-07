@@ -201,12 +201,6 @@ def get_backtest_sweep(codes: str = "", window_days: int = 250,
     return _wrap(rep, None)
 
 
-@app.get("/_debug/kline")
-def debug_kline(code: str = "HK.00700", max_count: int = 5):
-    """保留占位（已废弃）：回测特征重建见 app/modules/backtest.py。"""
-    return _wrap(None, "debug endpoint deprecated")
-
-
 @app.get("/decision")
 def get_decision(code: str):
     """LLM 决策层（M3）：回测门控 → 差异化判断。"""
@@ -352,111 +346,47 @@ def get_analyze(code: str):
     return _wrap(result, err)
 
 
-@app.get("/_debug/signal")
-def debug_signal(code: str = "HK.01810"):
-    """临时诊断：单票特征帧 + 6策略信号 + 趋势/关键点位（进程内，复用回测逻辑）。"""
-    import math
-    import numpy as np
-    import pandas as pd
+def _embedded(result, error=None):
+    """生成与独立 API 相同的响应形状，供单票聚合接口复用前端渲染器。"""
+    return {"ok": not bool(error), "data": result, "error": error}
 
-    def _f(v):
-        return None if (v is None or (isinstance(v, float) and math.isnan(v))) else float(v)
 
+@app.get("/analyze/full")
+def get_analyze_full(code: str):
+    """单票聚合分析：一次数据采集返回技术面、反向信号、源数据和决策。"""
     cl = client()
-    frame, err = backtest.build_feature_frame(cl, code, 450, None)
-    if err or frame is None or frame.empty:
-        return _wrap(None, f"K线错误: {err}")
-    last = frame.iloc[-1]
-    prev = frame.iloc[-2]
-    closes = frame["close"].astype(float)
-    sma50 = _f(last["sma50"]); sma200 = _f(last["sma200"]); rsi2 = _f(last["rsi2"])
-    hi52 = _f(last["hi52"]); lo52 = _f(last["lo52"]); pos = _f(last["pos_pct"])
-    pe_k = _f(last["pe"])
+    analysis_result, analysis_err = analyze.analyze(cl, code)
+    if not analysis_result:
+        return _wrap(None, analysis_err or "分析失败")
 
-    def slope(series, n=5):
-        s = series.dropna().iloc[-n:]
-        if len(s) < 2 or s.iloc[0] == 0:
-            return None
-        return (s.iloc[-1] - s.iloc[0]) / s.iloc[0] * 100
+    reverse_result, reverse_err = reverse_signals.reverse_score(
+        cl, code, days=60, num=10, include_sources=True,
+    )
+    reverse_result = reverse_result or {"score": 0.0, "signals": [], "details": {}}
+    sources = reverse_result.pop("sources", {})
+    analysis_result["reverse"] = reverse_result
 
-    sma50_slope = slope(frame["sma50"])
-    sma200_slope = slope(frame["sma200"])
+    sb_data, sb_err = sources.get("southbound", (None, reverse_err))
+    bb_data, bb_err = sources.get("buybacks", (None, reverse_err))
+    nw_data, nw_err = sources.get("news", (None, reverse_err))
+    cf_data, cf_err = sources.get("capital_flow", (None, reverse_err))
+    fund_data = sources.get("fundamentals") or {}
 
-    def rsi(series, n=14):
-        d = series.diff()
-        g = d.clip(lower=0).rolling(n).mean()
-        l = (-d.clip(upper=0)).rolling(n).mean()
-        rs = g / l
-        return float((100 - 100 / (1 + rs)).iloc[-1])
-
-    rsi14 = rsi(closes)
-
-    snap, serr = cl.market_snapshot([code])
-    price = prev_close = turnover = amp = pe_snap = None
-    up = "n/a"
-    if snap is not None and not snap.empty:
-        r = snap.iloc[0]
-        price = _f(r.get("last_price"))
-        prev_close = _f(r.get("prev_close_price"))
-        turnover = _f(r.get("turnover_rate"))
-        amp = _f(r.get("amplitude"))
-        pe_snap = _f(r.get("pe_ratio")) if "pe_ratio" in r.index else None
-        up = str(r.get("update_time", ""))
-    if price is None:
-        price = _f(last["close"])
-    if prev_close is None:
-        prev_close = _f(prev["close"])
-    chg = (price - prev_close) / prev_close * 100 if prev_close else 0.0
-    turnover = turnover if turnover is not None else (_f(last["turnover"]) or 0.0) * 100.0
-    amp = amp if amp is not None else ((_f(last["high"]) - _f(last["low"])) / prev_close * 100 if prev_close else None)
-    pe = pe_snap if pe_snap is not None else pe_k
-
-    hs_snap, _ = cl.market_snapshot(["HK.800700"])
-    hs_chg = None
-    if hs_snap is not None and not hs_snap.empty:
-        hr = hs_snap.iloc[0]
-        hpc = _f(hr.get("prev_close_price")); hlp = _f(hr.get("last_price"))
-        if hpc:
-            hs_chg = (hlp - hpc) / hpc * 100
-    cfg = strategy_config.load_config()
-    hs_th = cfg["strategies"]["hstech_link"]["hstech_drop"]
-    hstech_crash = (hs_chg is not None and hs_chg <= hs_th)
-
-    is_leader = code in LEADERS
-    f = {
-        "price": price, "change_rate": chg, "prev_close_price": prev_close,
-        "turnover_rate": turnover, "amplitude": amp, "pe": pe,
-        "hi52": hi52, "lo52": lo52, "pos_pct": pos,
-        "is_leader": is_leader, "hstech_crash": hstech_crash,
-        "sma50": sma50, "sma200": sma200, "rsi2": rsi2,
-    }
-    ev = screener.evaluate_signals(f, cfg)
-    uptrend = (price is not None and sma200 is not None and price > sma200)
-    vol5 = float(frame["volume"].astype(float).tail(5).mean())
-    vol_today = _f(last["volume"]) or 0.0
-    recent10 = [round(float(c), 2) for c in closes.tail(10).tolist()]
-    support = min(lo52, float(closes.tail(20).min()))
-    resist = max(float(closes.tail(20).max()), sma50)
+    decision_result = decision.decide(
+        code, cl, CONFIG,
+        analysis_result=analysis_result,
+        reverse_result=reverse_result,
+    )
     return _wrap({
-        "code": code, "is_leader": is_leader, "update_time": up,
-        "price": price, "prev_close": prev_close, "change_rate": round(chg, 2),
-        "turnover_rate": round(turnover, 2), "amplitude": round(amp, 2) if amp else None,
-        "pe": pe,
-        "ma50": sma50, "ma50_slope": round(sma50_slope, 2) if sma50_slope is not None else None,
-        "ma200": sma200, "ma200_slope": round(sma200_slope, 2) if sma200_slope is not None else None,
-        "price_vs_ma50": round((price - sma50) / sma50 * 100, 2) if sma50 else None,
-        "price_vs_ma200": round((price - sma200) / sma200 * 100, 2) if sma200 else None,
-        "rsi14": round(rsi14, 1), "rsi2": rsi2,
-        "week52_high": hi52, "week52_low": lo52, "week52_position_pct": pos,
-        "uptrend": uptrend, "hstech_change": round(hs_chg, 2) if hs_chg is not None else None,
-        "hstech_crash": hstech_crash,
-        "score": ev["score"], "signals": ev["signals"],
-        "signal_details": ev.get("signal_details"),
-        "reason": screener._build_reason(ev.get("reason_inputs", {}), ev["signals"]),
-        "vol_ratio_today_vs5d": round(vol_today / vol5, 2) if vol5 else None,
-        "recent10_close": recent10,
-        "support": round(support, 2), "resist": round(resist, 2),
-        "today_low": _f(last["low"]), "today_high": _f(last["high"]),
+        "analysis": analysis_result,
+        "extras": {
+            "southbound": _embedded(sb_data, sb_err),
+            "buybacks": _embedded(bb_data, bb_err),
+            "news": _embedded(nw_data, nw_err),
+            "capital_flow": _embedded(cf_data, cf_err),
+            "fundamentals": _embedded(fund_data),
+            "decision": _embedded(decision_result),
+        },
     }, None)
 
 
