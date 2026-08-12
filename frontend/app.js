@@ -55,6 +55,13 @@ function openAnalyze(code) {
 (function initNav() {
   const page = document.body.dataset.page;
   if (!page) return;
+  const links = document.querySelector('.topnav .links');
+  if (links && !links.querySelector('[data-page="strategy-center"]')) {
+    const a = document.createElement('a');
+    a.href = 'strategy-center.html'; a.dataset.page = 'strategy-center'; a.textContent = '策略中心';
+    const intraday = links.querySelector('[data-page="intraday"]');
+    links.insertBefore(a, intraday || null);
+  }
   document.querySelectorAll('.topnav .links a').forEach(a => {
     if (a.dataset.page === page) a.classList.add('active');
   });

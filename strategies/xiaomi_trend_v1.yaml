@@ -1,0 +1,34 @@
+strategy_id: xiaomi_trend_v1
+status: research_qualified
+symbol: HK.01810
+capital_hkd: 20000
+data_frequency: daily
+direction: long_only
+signal:
+  entry:
+    - close_above_ma60
+    - ma20_above_ma60
+  exit:
+    - close_below_ma20
+    - drawdown_from_position_high_pct: 15
+execution:
+  signal_at: close
+  fill_at: next_open
+  allocation_pct: 50
+  board_lot: 200
+  fee_bps_per_side: 12
+  slippage_bps_per_side: 8
+validation:
+  parameter_selection_end: 2023-12-31
+  untouched_test_start: 2024-01-01
+  untouched_test_end: 2026-08-12
+  test_trades: 30
+  test_return_pct: 28.9729
+  test_profit_factor: 1.9091
+  test_max_drawdown_pct: -14.4996
+  full_history_return_pct: 72.2844
+  full_history_max_drawdown_pct: -18.3768
+notes:
+  - Research result only; not connected to live order execution.
+  - Half of account capital remains cash.
+  - Prices use forward-adjusted Futu daily bars.

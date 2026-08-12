@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>策略中心 · Contrarian</title>
+  <link rel="stylesheet" href="app.css" />
+  <link rel="icon" href="favicon.ico" />
+</head>
+<body data-page="strategy-center">
+  <nav class="topnav">
+    <div class="brand"><img src="logo.png" alt="Contrarian" class="logo-img"></div>
+    <div class="links">
+      <a href="index.html" data-page="hunter">错杀猎手</a>
+      <a href="analyze.html" data-page="analyze">单票深度</a>
+      <a href="strategy-center.html" data-page="strategy-center">策略中心</a>
+      <a href="intraday.html" data-page="intraday">盘中扫描</a>
+      <a href="strategies.html" data-page="strategies">旧策略扫描</a>
+      <a href="backtest.html" data-page="backtest">回测验证</a>
+      <a href="ipo.html" data-page="ipo">新股打新</a>
+    </div>
+    <div id="conn" class="status bad">检测中…</div>
+  </nav>
+
+  <main class="page">
+    <div class="page-head">
+      <h1>策略中心</h1>
+      <p>2 万港币账户 · 小米专属趋势 + 港股通用轮动 · 只读建议，不自动提交真实订单</p>
+    </div>
+
+    <section class="card">
+      <div class="card-head">
+        <div class="card-title">执行状态 <span class="sub" id="generated">—</span></div>
+        <button class="act" onclick="loadCenter(true)">从富途更新</button>
+      </div>
+      <div id="mode_alert" class="alert info">正在读取策略状态…</div>
+      <div id="refresh_errors"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><div class="card-title">小米专属趋势 <span class="sub">HK.01810 · 日线</span></div><span id="xm_action" class="pill">—</span></div>
+      <div class="grid2">
+        <div class="kv"><span>数据日期</span><span id="xm_date">—</span></div>
+        <div class="kv"><span>收盘价</span><span id="xm_price">—</span></div>
+        <div class="kv"><span>MA20 / MA60</span><span id="xm_ma">—</span></div>
+        <div class="kv"><span>建议股数</span><span id="xm_qty">—</span></div>
+        <div class="kv"><span>历史验证</span><span id="xm_test">—</span></div>
+        <div class="kv"><span>最大回撤</span><span id="xm_dd">—</span></div>
+      </div>
+      <div id="xm_reason" class="hint-bar" style="margin-top:14px">—</div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><div class="card-title">港股流动性趋势轮动 <span class="sub">最多4只 · 总仓位60%</span></div><span id="rot_action" class="pill">—</span></div>
+      <div class="grid2">
+        <div class="kv"><span>数据日期</span><span id="rot_date">—</span></div>
+        <div class="kv"><span>正式调仓日</span><span id="rot_review">—</span></div>
+        <div class="kv"><span>恒指 / MA120</span><span id="rot_hsi">—</span></div>
+        <div class="kv"><span>大盘过滤</span><span id="rot_market">—</span></div>
+        <div class="kv"><span>历史验证</span><span id="rot_test">—</span></div>
+        <div class="kv"><span>最大回撤</span><span id="rot_dd">—</span></div>
+      </div>
+      <div id="rot_reason" class="hint-bar" style="margin-top:14px">—</div>
+      <div class="card-title" style="margin:18px 0 8px">当前候选 <span class="sub">买不起一手的股票不会进入建议订单</span></div>
+      <div id="candidate_table" class="muted">—</div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><div class="card-title">港股日内策略</div><span class="pill risk">禁止交易</span></div>
+      <div id="intraday_reason" class="alert danger">样本外尚未通过，平台不会生成日内订单。</div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+  <script>
+  const actionLabel = {BUY:"买入", SELL:"卖出", HOLD:"持有", WAIT:"等待", REVIEW:"待核对", NO_TRADE:"禁止交易"};
+  function actionPill(id, action) {
+    const el = $(id); el.textContent = actionLabel[action] || action;
+    el.className = "pill " + (action === "BUY" || action === "REVIEW" ? "push" : action === "SELL" ? "risk" : "warn");
+  }
+  async function loadCenter(refresh=false) {
+    showLoading(refresh ? "正在从 Futu OpenD 更新日线…" : "正在读取策略状态…");
+    try {
+      const r = await fetch('/strategy-center/status?refresh=' + (refresh ? 1 : 0));
+      const j = await r.json();
+      if (!j.ok) { $('mode_alert').className='alert danger'; $('mode_alert').textContent=j.error || '加载失败'; return; }
+      const d=j.data, xm=d.strategies[0], rot=d.strategies[1];
+      $('generated').textContent='生成于 ' + d.generated_at.replace('T',' ');
+      $('mode_alert').textContent='只读模拟建议：平台不会自动提交真实订单。账户基准 HK$' + d.capital_hkd.toLocaleString();
+      $('refresh_errors').innerHTML=(d.refresh_errors||[]).length ? '<div class="err" style="margin-top:10px">部分行情更新失败：'+d.refresh_errors.join('；')+'</div>' : '';
+      actionPill('xm_action',xm.action); $('xm_date').textContent=xm.as_of; $('xm_price').textContent='HK$'+fmt(xm.price,2);
+      $('xm_ma').textContent=fmt(xm.ma20,2)+' / '+fmt(xm.ma60,2); $('xm_qty').textContent=xm.suggested_qty+' 股';
+      $('xm_test').textContent='+'+fmt(xm.validation.return_pct,2)+'% · PF '+fmt(xm.validation.profit_factor,2); $('xm_dd').textContent=fmt(xm.validation.max_drawdown_pct,2)+'%'; $('xm_reason').textContent=xm.reason;
+      actionPill('rot_action',rot.action); $('rot_date').textContent=rot.as_of; $('rot_review').textContent=rot.is_review_day?'是':'否';
+      $('rot_hsi').textContent=fmt(rot.market.hsi_close,0)+' / '+fmt(rot.market.hsi_ma120,0); $('rot_market').textContent=rot.market.eligible?'通过':'不通过';
+      $('rot_test').textContent='+'+fmt(rot.validation.return_pct,2)+'% · '+rot.validation.distinct_stocks+'只股票'; $('rot_dd').textContent=fmt(rot.validation.max_drawdown_pct,2)+'%'; $('rot_reason').textContent=rot.reason;
+      const rows=rot.candidates||[];
+      $('candidate_table').innerHTML=!rows.length?'当前没有候选股票。':`<table><thead><tr><th>排名</th><th>股票</th><th>收盘价</th><th>120日动量</th><th>每手</th><th>建议股数</th><th>预计金额</th></tr></thead><tbody>${rows.map((x,i)=>`<tr><td>${i+1}</td><td><span class="stock-link" onclick="openAnalyze('${x.code}')">${x.code}</span> ${x.name}</td><td>HK$${fmt(x.price,3)}</td><td class="up">+${fmt(x.momentum_pct,1)}%</td><td>${x.lot_size}</td><td>${x.affordable?x.suggested_qty:'买不起一手'}</td><td>${x.affordable?'HK$'+fmt(x.estimated_amount,0):'—'}</td></tr>`).join('')}</tbody></table>`;
+      $('intraday_reason').textContent=d.intraday.reason+'。当前动作：禁止交易。';
+    } catch(e) { $('mode_alert').className='alert danger'; $('mode_alert').textContent='策略中心请求失败：'+e; }
+    finally { hideLoading(); }
+  }
+  loadCenter(false);
+  </script>
+</body>
+</html>

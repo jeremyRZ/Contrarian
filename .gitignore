@@ -17,3 +17,24 @@ env/
 # 操作系统
 .DS_Store
 Thumbs.db
+# ORB research runtime artifacts and Futu minute-bar cache
+.orb_cache/
+.runtime/
+.universal_daily/
+.universal_daily_60/
+orb_research_results.json
+orb_portfolio_results.json
+xiaomi_orb_results.json
+xiaomi_regime_orb_results.json
+intraday_lab_results.json
+xiaomi_panic_results.json
+swing_lab_results.json
+oversold_robustness.json
+uptrend_oversold.json
+long_trend_results.json
+universal_rotation_results.json
+universal_rotation_v2_results.json
+universal_rotation_v3_results.json
+hk_rotation_v1_results.json
+hk_rotation_v1_trades.csv
+python-*.exe

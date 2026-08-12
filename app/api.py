@@ -27,7 +27,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .futu_client import build_client_from_config, load_config
-from .modules import valuation, screener, monitor, ipo, missed_scan, price_alert, analyze, buybacks, news, southbound, reverse_signals, capital_flow, southbound_risk, fundamentals, filters, dividend, earnings, divergence, daily_report, intraday, backtest, strategy_config, decision
+from .modules import valuation, screener, monitor, ipo, missed_scan, price_alert, analyze, buybacks, news, southbound, reverse_signals, capital_flow, southbound_risk, fundamentals, filters, dividend, earnings, divergence, daily_report, intraday, backtest, strategy_config, decision, strategy_center
 from .modules.screener import LEADERS
 from . import scheduler, intraday_scheduler, notify
 
@@ -231,6 +231,15 @@ def get_decision(code: str):
 def get_strategies_config():
     """返回当前策略参数（strategies.yaml 与默认值合并）。"""
     return _wrap(strategy_config.load_config(), None)
+
+
+@app.get("/strategy-center/status")
+def get_strategy_center_status(refresh: int = 0):
+    """Qualified-strategy dashboard. Read-only; never places an order."""
+    try:
+        return _wrap(strategy_center.get_status(client(), refresh=bool(refresh)), None)
+    except Exception as e:  # noqa: BLE001
+        return _wrap(None, f"策略中心更新失败: {e}")
 
 
 @app.post("/strategies/config")
