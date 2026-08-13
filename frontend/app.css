@@ -29,7 +29,6 @@
   /* 自定义缓动曲线：内置 ease 太弱，用强曲线让动效显得"有意而为" */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -75,6 +74,21 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .page-head { margin-bottom: 26px; }
 .page-head h1 { margin: 0 0 4px; font-size: 28px; font-weight: 600; letter-spacing: -.02em; }
 .page-head p { margin: 0; color: var(--muted); font-size: 14px; }
+.legacy-redirect { max-width: 720px; }
+.decision-card { border-color: var(--line); }
+.evidence-list { border-top: 1px solid var(--line-soft); margin-top: 26px; }
+.evidence-item { border-bottom: 1px solid var(--line-soft); }
+.evidence-item summary { display: flex; align-items: baseline; gap: 10px;
+  padding: 16px 2px; cursor: pointer; list-style: none; }
+.evidence-item summary::-webkit-details-marker { display: none; }
+.evidence-item summary::after { content: ""; width: 7px; height: 7px; margin-left: auto;
+  border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted);
+  transform: rotate(45deg); transition: transform .16s var(--ease-out); }
+.evidence-item[open] summary::after { transform: rotate(225deg); }
+.evidence-item summary span { font-size: 15px; font-weight: 600; }
+.evidence-item summary small { color: var(--faint); font-size: 12.5px; }
+.evidence-item summary:hover span { color: var(--accent); }
+.evidence-body { padding: 0 2px 18px; }
 
 /* ---------- 卡片 ---------- */
 .card { background: var(--panel); border: 1px solid var(--line-soft);
@@ -205,7 +219,7 @@ button.ghost.sm { padding: 4px 9px; font-size: 12px; border-radius: 6px; }
 /* ---------- 预警条 ---------- */
 .alerts { display: flex; flex-direction: column; gap: 8px; }
 .alert { padding: 11px 15px; border-radius: var(--radius); font-size: 13.5px;
-  border-left: 3px solid; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  border: 1px solid transparent; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .alert.danger { background: #fef2f2; border-color: var(--bad); color: #b91c1c; }
 .alert.info { background: rgba(0,122,255,0.07); border-color: var(--accent); color: var(--accent); }
 .alert.ok { background: #e8f5e9; border-color: #34c759; color: #1a8a3a; }
@@ -255,6 +269,9 @@ tbody tr.has-link:hover { background: var(--accent-soft-2); }
   .grid2 { grid-template-columns: 1fr; }
   .page { padding: 26px 16px 48px; }
   .page-head h1 { font-size: 23px; }
+  .evidence-item summary { align-items: center; }
+  .evidence-item summary small { margin-left: auto; }
+  .evidence-item summary::after { flex: none; }
 }
 
 /* ---------- 南向 / 回购 / 新闻（单票深度增强） ---------- */
@@ -307,7 +324,7 @@ tbody tr.has-link:hover { background: var(--accent-soft-2); }
   display: inline-block; width: 90px; height: 8px; border-radius: 999px;
   background: var(--line); overflow: hidden; vertical-align: middle; margin-right: 6px;
 }
-.bar-fill { height: 100%; border-radius: 999px; transition: width .35s var(--ease-out); }
+.bar-fill { height: 100%; border-radius: 999px; }
 
 /* ===== M4 策略参数配置编辑器 ===== */
 .cfg-sec-title {

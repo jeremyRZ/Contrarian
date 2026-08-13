@@ -54,16 +54,27 @@ function openAnalyze(code) {
 // 导航激活态：根据 body 的 data-page 高亮对应链接
 (function initNav() {
   const page = document.body.dataset.page;
-  if (!page) return;
   const links = document.querySelector('.topnav .links');
-  if (links && !links.querySelector('[data-page="strategy-center"]')) {
-    const a = document.createElement('a');
-    a.href = 'strategy-center.html'; a.dataset.page = 'strategy-center'; a.textContent = '策略中心';
-    const intraday = links.querySelector('[data-page="intraday"]');
-    links.insertBefore(a, intraday || null);
-  }
-  document.querySelectorAll('.topnav .links a').forEach(a => {
-    if (a.dataset.page === page) a.classList.add('active');
+  if (!page || !links) return;
+
+  const section = {
+    hunter: 'strategy',
+    analyze: 'analyze',
+    'strategy-center': 'strategy',
+    strategies: 'strategy',
+    intraday: 'strategy',
+    backtest: 'strategy',
+    risk: 'risk'
+  }[page] || page;
+
+  // 一级导航按用户任务组织；原页面仍保留在二级入口，避免功能和旧链接失效。
+  links.innerHTML = `
+    <a href="strategy-center.html" data-section="strategy">今日决策</a>
+    <a href="analyze.html" data-section="analyze">个股</a>
+    <a href="risk.html" data-section="risk">风险控制</a>`;
+
+  links.querySelectorAll('[data-section]').forEach(el => {
+    if (el.dataset.section === section) el.classList.add('active');
   });
 })();
 

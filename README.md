@@ -47,11 +47,11 @@
 
 | 页面 | 说明 |
 |------|------|
-| 错杀猎手 | 核心。综合选股扫描 + 错杀观察池，输出 TopN 错杀候选（含反向信号分与确信度），支持列表指纹去重推送 |
-| 单票深度 | 输入/点击任意股票代码，下钻分析技术面（MA/RSI/量能）+ 八档反向信号分解图 + 南向/回购/新闻三卡片 + 观察池/预警/自选股操作 |
-| 6大策略 | 规则式买入机会扫描（深度超跌反弹/放量突破/低估值高股息/恒科急跌联动/恐慌急跌/龙头观察池）+ 10 分制综合评分 + 仓位感知推送；独立页手动扫描 + 交易时段调度自动推送 |
-| 新股打新 | 港股打新 5 维打分 + 中签率预测 + 招股信息速览 |
-| 盘中急跌联动 | 恒生科技指数盘中急跌时，扫描持仓/观察池/龙头池的「跟跌」个股，叠加八档反向信号输出低吸吸引力评分；交易时段守护线程按间隔自动扫描并推送企业微信 |
+| 今日决策 | 只展示已通过研究门槛的日线策略动作、建议股数、市场过滤和验证指标 |
+| 个股 | 查看技术面、反向证据、主要风险，并设置观察池、自选股和价格报警 |
+| 风险控制 | 汇总实际持仓的止损/止盈建议与价格报警状态 |
+
+旧六策略、盘中抄底和 IPO 页面已退出生产流程。相关模块仅保留作离线研究，不会由网站或后台调度器自动产生买入推送。
 
 ### 反向信号评分模型（八档，clamp 到 `[-1.0, 10.0]`）
 
@@ -172,11 +172,10 @@ Contrarian/
 │       └── ipo.py              # 新股打新打分
 │
 ├── frontend/
-│   ├── index.html            # 错杀猎手
-│   ├── analyze.html          # 单票深度
-│   ├── intraday.html         # 盘中急跌联动
-│   ├── strategies.html       # 6大策略扫描
-│   ├── ipo.html              # 新股打新
+│   ├── index.html            # 跳转到今日决策
+│   ├── strategy-center.html  # 已通过准入的策略动作
+│   ├── analyze.html          # 个股研究
+│   ├── risk.html             # 持仓和价格风控
 │   ├── app.css               # Apple 风共享样式
 │   └── app.js                # 通用工具 / 导航 / 下钻
 │
@@ -193,14 +192,12 @@ Contrarian/
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/health` | 富途连接健康检查 |
-| GET | `/screener` | 综合选股扫描（6 策略 + 仓位感知 + 自动剔除停牌） |
-| GET | `/missed-scan` | 错杀观察扫描（核心） |
+| GET | `/strategy-center/status` | 已通过研究门槛的策略动作（只读） |
 | GET | `/analyze?code=HK.00700` | 单票技术面 + 八档反向信号 |
 | GET | `/analyze/full?code=HK.00700` | 单票聚合分析：技术面、反向信号源数据与决策一次返回（前端主入口） |
 | GET | `/monitor` | 持仓风控（自动过滤窝轮/杠杆ETF） |
 | GET | `/daily-divergence` | 只读生成每日持仓资金面背离报告 |
 | POST | `/daily-divergence/push` | 生成报告并显式推送企业微信 |
-| GET/POST | `/intraday/scan`、`/intraday/scan/push` | 只读盘中扫描 / 显式扫描并推送 |
 | GET/POST | `/price-alerts` | 价格报警检查 / 新增报警 |
 | GET | `/southbound` | 港股通持股（个股或全市场净买额） |
 | GET | `/capital-flow` | 资金流向（大单/超大单） |
@@ -213,10 +210,6 @@ Contrarian/
 | GET/POST | `/watchlist` | 本地观察池读取 / 增删 |
 | GET | `/futu-watchlist` | 富途自选股（用户自建分组，可增删；`group` 可覆盖目标分组） |
 | POST | `/futu-watchlist` | 富途自选股增删：body `{code, name?, action?: 'add'\|'remove', group?}` |
-| GET | `/intraday/scan` | 盘中恒科急跌联动低吸扫描（手动触发 + 可选推送） |
-| GET | `/intraday/status` | 盘中调度器运行状态与配置 |
-| POST | `/intraday/config` | 运行时调度配置（开关 / 间隔 / 阈值，持久化） |
-| GET/POST | `/ipo` · `/ipo/meta` · `/ipo/auto` | 新股打新 |
 
 完整字段说明与信号权重细节见 **[references/README.md](references/README.md)**。
 

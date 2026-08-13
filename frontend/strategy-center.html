@@ -10,22 +10,14 @@
 <body data-page="strategy-center">
   <nav class="topnav">
     <div class="brand"><img src="logo.png" alt="Contrarian" class="logo-img"></div>
-    <div class="links">
-      <a href="index.html" data-page="hunter">错杀猎手</a>
-      <a href="analyze.html" data-page="analyze">单票深度</a>
-      <a href="strategy-center.html" data-page="strategy-center">策略中心</a>
-      <a href="intraday.html" data-page="intraday">盘中扫描</a>
-      <a href="strategies.html" data-page="strategies">旧策略扫描</a>
-      <a href="backtest.html" data-page="backtest">回测验证</a>
-      <a href="ipo.html" data-page="ipo">新股打新</a>
-    </div>
+    <div class="links"></div>
     <div id="conn" class="status bad">检测中…</div>
   </nav>
 
   <main class="page">
     <div class="page-head">
-      <h1>策略中心</h1>
-      <p>2 万港币账户 · 小米专属趋势 + 港股通用轮动 · 只读建议，不自动提交真实订单</p>
+      <h1>今日决策</h1>
+      <p>只展示通过研究门槛的策略动作。没有合格机会时，现金也是仓位。</p>
     </div>
 
     <section class="card">
@@ -77,10 +69,6 @@
       <div id="candidate_table" class="muted">—</div>
     </section>
 
-    <section class="card">
-      <div class="card-head"><div class="card-title">港股日内策略</div><span class="pill risk">禁止交易</span></div>
-      <div id="intraday_reason" class="alert danger">样本外尚未通过，平台不会生成日内订单。</div>
-    </section>
   </main>
 
   <script src="app.js"></script>
@@ -108,7 +96,6 @@
       $('rot_test').textContent='+'+fmt(rot.validation.return_pct,2)+'% · '+rot.validation.distinct_stocks+'只股票'; $('rot_dd').textContent=fmt(rot.validation.max_drawdown_pct,2)+'%'; $('rot_reason').textContent=rot.reason;
       const rows=rot.candidates||[];
       $('candidate_table').innerHTML=!rows.length?'当前没有候选股票。':`<table><thead><tr><th>排名</th><th>股票</th><th>收盘价</th><th>120日动量</th><th>每手</th><th>建议股数</th><th>预计金额</th></tr></thead><tbody>${rows.map((x,i)=>`<tr><td>${i+1}</td><td><span class="stock-link" onclick="openAnalyze('${x.code}')">${x.code}</span> ${x.name}</td><td>HK$${fmt(x.price,3)}</td><td class="up">+${fmt(x.momentum_pct,1)}%</td><td>${x.lot_size}</td><td>${x.affordable?x.suggested_qty:'买不起一手'}</td><td>${x.affordable?'HK$'+fmt(x.estimated_amount,0):'—'}</td></tr>`).join('')}</tbody></table>`;
-      $('intraday_reason').textContent=d.intraday.reason+'。当前动作：禁止交易。';
       actionPill('br_action',br.action); $('br_date').textContent=br.as_of; $('br_market').textContent=br.market_eligible?'通过':'不通过';
       $('br_test').textContent='+'+fmt(br.validation.return_pct,2)+'% · PF '+fmt(br.validation.profit_factor,2)+' · '+br.validation.trades+'笔';
       $('br_dd').textContent=fmt(br.validation.max_drawdown_pct,2)+'%'; $('br_reason').textContent=br.reason;

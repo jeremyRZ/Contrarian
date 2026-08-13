@@ -4,10 +4,6 @@ import asyncio
 from app import api
 
 
-def test_backtest_run_is_async_so_request_body_can_be_awaited():
-    assert inspect.iscoroutinefunction(api.post_backtest_run)
-
-
 def test_health_payload_does_not_expose_account_id(monkeypatch):
     class FakeClient:
         def connect(self):
@@ -21,7 +17,13 @@ def test_health_payload_does_not_expose_account_id(monkeypatch):
 
 def test_get_endpoints_cannot_trigger_push_side_effects():
     assert "push" not in inspect.signature(api.get_daily_divergence).parameters
-    assert "push" not in inspect.signature(api.get_intraday_scan).parameters
+
+
+def test_intraday_scheduler_only_runs_price_risk(monkeypatch):
+    captured = []
+    monkeypatch.setattr(api.intraday_scheduler, "start", lambda cfg, fns: captured.extend(fns))
+    api._start_intraday_scheduler()
+    assert captured == [api._price_alert_run]
 
 
 def test_app_lifespan_starts_and_stops_both_schedulers(monkeypatch):

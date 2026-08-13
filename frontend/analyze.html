@@ -14,25 +14,17 @@
 <body data-page="analyze">
   <nav class="topnav">
     <div class="brand"><img src="logo.png" alt="Contrarian" class="logo-img"></div>
-    <div class="links">
-      <a href="index.html" data-page="hunter">错杀猎手</a>
-      <a href="analyze.html" data-page="analyze">单票深度</a>
-      <a href="intraday.html" data-page="intraday">盘中急跌联动</a>
-      <a href="strategies.html" data-page="strategies">6大策略</a>
-      <a href="backtest.html" data-page="backtest">回测验证</a>
-      <a href="ipo.html" data-page="ipo">新股打新</a>
-    </div>
+    <div class="links"></div>
     <div id="conn" class="status bad">检测中…</div>
   </nav>
 
   <main class="page">
     <div class="page-head">
       <h1>单票深度</h1>
-      <p>个股 360° 诊断 — 股价与南向持股背离、技术面、估值与信号</p>
+      <p>先看结论、风险与操作，再按需展开完整依据。</p>
     </div>
 
     <section class="card">
-      <div class="hint-bar" style="margin-bottom:12px">提示：在「错杀猎手」列表中点击任意股票代码，可直接下钻到本页并自动分析。</div>
       <div class="toolbar-row">
         <input id="an_code" placeholder="HK.00700" value="HK.00700" style="width:160px" />
         <button class="act" onclick="runAnalyze()">分析</button>
@@ -47,43 +39,41 @@
       <div id="an_result" class="muted" style="margin-top:12px">输入代码后点击「分析」，或从错杀猎手列表点击股票</div>
     </section>
 
+    <section class="card decision-card">
+      <div class="card-head">
+        <div class="card-title">猎手观点<span class="sub">回测门控后的决策摘要</span></div>
+        <div id="dec_badge" class="pill warn">—</div>
+      </div>
+      <div id="an_dec" class="muted">分析后显示结论、主要风险与仓位建议</div>
+    </section>
+
     <section class="card">
-      <div class="card-title">错杀反向信号构成<span class="sub">各档贡献（红=利好 · 绿=利空）</span></div>
+      <div class="card-title">关键依据<span class="sub">仅显示产生实际贡献的反向信号</span></div>
       <div id="an_rev_chart" style="width:100%;height:auto;min-height:200px"></div>
     </section>
 
-    <section class="card">
-      <div class="card-title">南向资金（港股通）<span class="sub">市场净流向 + 个股持股</span></div>
-      <div id="an_sb" class="muted">加载中…</div>
-    </section>
-
-    <section class="card">
-      <div class="card-title">回购 Timeline<span class="sub">公司认为低估，是强错杀反向信号</span></div>
-      <div id="an_bb" class="muted">加载中…</div>
-    </section>
-
-    <section class="card">
-      <div class="card-title">相关新闻<span class="sub">利好 / 利空事件标注</span></div>
-      <div id="an_news" class="muted">加载中…</div>
-    </section>
-
-    <section class="card">
-      <div class="card-title">资金流向（大单 / 超大单）<span class="sub">主力净流入 = 超大单 + 大单，富途逐档统计</span></div>
-      <div id="an_cf" class="muted">加载中…</div>
-    </section>
-
-    <section class="card">
-      <div class="card-title">基本面反向信号<span class="sub">估值分位 + 机构增减持（错杀核心）</span></div>
-      <div id="an_fund" class="muted">加载中…</div>
-    </section>
-
-    <section class="card">
-      <div class="card-head">
-        <div class="card-title">🤖 猎手观点<span class="sub">LLM 决策层 · 回测门控后触发</span></div>
-        <div id="dec_badge" class="pill warn">—</div>
-      </div>
-      <div id="an_dec" class="muted">加载中…</div>
-    </section>
+    <div class="evidence-list">
+      <details class="evidence-item">
+        <summary><span>南向资金</span><small>港股通持股与增减变化</small></summary>
+        <div id="an_sb" class="evidence-body muted">分析后加载</div>
+      </details>
+      <details class="evidence-item">
+        <summary><span>公司回购</span><small>近期回购记录</small></summary>
+        <div id="an_bb" class="evidence-body muted">分析后加载</div>
+      </details>
+      <details class="evidence-item">
+        <summary><span>相关新闻</span><small>利好与利空事件</small></summary>
+        <div id="an_news" class="evidence-body muted">分析后加载</div>
+      </details>
+      <details class="evidence-item">
+        <summary><span>资金流向</span><small>大单与超大单</small></summary>
+        <div id="an_cf" class="evidence-body muted">分析后加载</div>
+      </details>
+      <details class="evidence-item">
+        <summary><span>基本面</span><small>估值分位与机构增减持</small></summary>
+        <div id="an_fund" class="evidence-body muted">分析后加载</div>
+      </details>
+    </div>
   </main>
 
   <!-- 我的持仓设置弹窗 -->

@@ -1,16 +1,11 @@
 """
-港股投资研究平台 / Contrarian 港股错杀猎手 - FastAPI 后端
+港股投资决策助手 / Contrarian - FastAPI 后端
 - /health        连接健康检查
 - /valuation     估值分析
-- /screener      买入机会扫描（6策略 + 仓位感知）
-- /strategies/push 手动触发 6 策略扫描并推送到企业微信
-- /missed-scan   错杀观察扫描（Contrarian 核心）
+- /strategy-center/status 已通过研究门槛的策略动作
 - /monitor       持仓监控风控（止损/止盈/技术面 + 企业微信推送）
 - /price-alerts  GET 价格报警检查 / POST 增运行时报警
 - /analyze       单票实时技术面分析
-- /ipo           新股打新分析（POST）
-- /intraday/scan 盘中「恒科急跌联动」低吸扫描（手动触发 + 可选推送）
-- /intraday/status 盘中调度器运行状态与配置
 - 前端静态文件托管在 /
 """
 from __future__ import annotations
@@ -23,7 +18,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .futu_client import build_client_from_config, load_config
@@ -57,6 +52,18 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
+
+
+@app.get("/strategies.html", include_in_schema=False)
+@app.get("/intraday.html", include_in_schema=False)
+@app.get("/backtest.html", include_in_schema=False)
+def legacy_strategy_page():
+    return RedirectResponse("/strategy-center.html", status_code=308)
+
+
+@app.get("/ipo.html", include_in_schema=False)
+def legacy_ipo_page():
+    return RedirectResponse("/analyze.html", status_code=308)
 
 _client = None
 
@@ -726,8 +733,8 @@ def _price_alert_run():
 
 
 def _start_intraday_scheduler():
-    """启动盘中调度（交易时段守护线程，默认 09:30–16:00 / 30 分钟）：急跌联动 + 6 大策略扫描 + 价格报警并发。"""
-    intraday_scheduler.start(CONFIG.get("intraday", {}) or {}, [_intraday_run, _strategy_run, _price_alert_run])
+    """交易时段只执行价格风控；未经准入的买入策略不得自动运行。"""
+    intraday_scheduler.start(CONFIG.get("intraday", {}) or {}, [_price_alert_run])
 
 
 # 托管前端（/ 必须在 API 路由之后）
