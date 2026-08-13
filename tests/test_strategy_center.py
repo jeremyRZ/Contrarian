@@ -22,3 +22,12 @@ def test_read_daily_deduplicates_latest_bar(tmp_path):
     result = strategy_center._read_daily(p)
     assert len(result) == 1
     assert result.iloc[0].close == 2
+
+
+def test_breakout_strategy_is_exposed_read_only(monkeypatch):
+    monkeypatch.setattr(strategy_center, "_positions", lambda client: {})
+    monkeypatch.setattr(strategy_center, "_xiaomi_status", lambda p: {"id": "x"})
+    monkeypatch.setattr(strategy_center, "_rotation_status", lambda p: {"id": "r"})
+    monkeypatch.setattr(strategy_center, "_breakout_status", lambda p: {"id": "b", "action": "WAIT"})
+    result = strategy_center.get_status(object(), refresh=False)
+    assert [x["id"] for x in result["strategies"]] == ["x", "r", "b"]

@@ -1,0 +1,53 @@
+strategy_id: hk_long_term_high_breakout_v1
+status: research_qualified
+market: HK
+capital_hkd: 20000
+direction: long_only
+data_frequency: daily
+universe:
+  historical_20d_turnover_min_hkd: 100000000
+  price_min_hkd: 2
+  require_affordable_board_lot: true
+market_regime:
+  hang_seng_close_above_ma120: true
+entry:
+  close_above_prior_120d_high: true
+  volume_over_20d_average_ratio_min: 1.2
+  close_above_ma200: true
+  ma50_above_ma200: true
+  ma200_higher_than_20d_ago: true
+  execution: next_open
+exit:
+  close_below_ma20: true
+  initial_stop_atr14_multiple: 2.0
+  trailing_drawdown_pct: 10
+  maximum_hold_bars: 40
+  execution: next_open
+portfolio:
+  per_position_allocation_pct: 20
+  maximum_positions: 4
+  maximum_total_allocation_pct: 80
+  round_to_board_lot: true
+cost_model:
+  commission_rate: 0.0003
+  minimum_commission_hkd_per_order: 3
+  platform_fee_hkd_per_order: 15
+  stamp_duty_rate: 0.001
+  stamp_duty_round_up_hkd: true
+  statutory_rate_per_side: 0.000127
+  base_slippage_bps_per_side: 8
+validation:
+  parameter_selection_period: 2019-01-01_to_2021-12-31
+  locked_test_period: 2022-01-01_to_2026-08-12
+  test_trades: 54
+  test_return_pct: 28.6405
+  test_profit_factor: 1.7967
+  test_max_drawdown_pct: -12.5422
+  stress_20bps_return_pct: 28.2905
+  stress_20bps_profit_factor: 1.7998
+  leave_one_stock_out_all_positive: true
+  parameter_neighbourhood_positive: 12_of_12
+notes:
+  - Research-qualified, not guaranteed and not connected to real order execution.
+  - Current-universe historical reconstruction still has survivorship bias.
+  - 2026 is partial through 2026-08-12.

@@ -29,6 +29,18 @@
     </div>
 
     <section class="card">
+      <div class="card-head"><div class="card-title">港股长期新高突破 <span class="sub">120日新高 · 放量确认</span></div><span id="br_action" class="pill">—</span></div>
+      <div class="grid2">
+        <div class="kv"><span>数据日期</span><span id="br_date">—</span></div>
+        <div class="kv"><span>恒指环境</span><span id="br_market">—</span></div>
+        <div class="kv"><span>历史验证</span><span id="br_test">—</span></div>
+        <div class="kv"><span>最大回撤</span><span id="br_dd">—</span></div>
+      </div>
+      <div id="br_reason" class="hint-bar" style="margin-top:14px">—</div>
+      <div id="br_table" class="muted" style="margin-top:14px">—</div>
+    </section>
+
+    <section class="card">
       <div class="card-head">
         <div class="card-title">执行状态 <span class="sub" id="generated">—</span></div>
         <button class="act" onclick="loadCenter(true)">从富途更新</button>
@@ -84,7 +96,7 @@
       const r = await fetch('/strategy-center/status?refresh=' + (refresh ? 1 : 0));
       const j = await r.json();
       if (!j.ok) { $('mode_alert').className='alert danger'; $('mode_alert').textContent=j.error || '加载失败'; return; }
-      const d=j.data, xm=d.strategies[0], rot=d.strategies[1];
+      const d=j.data, xm=d.strategies[0], rot=d.strategies[1], br=d.strategies[2];
       $('generated').textContent='生成于 ' + d.generated_at.replace('T',' ');
       $('mode_alert').textContent='只读模拟建议：平台不会自动提交真实订单。账户基准 HK$' + d.capital_hkd.toLocaleString();
       $('refresh_errors').innerHTML=(d.refresh_errors||[]).length ? '<div class="err" style="margin-top:10px">部分行情更新失败：'+d.refresh_errors.join('；')+'</div>' : '';
@@ -97,6 +109,10 @@
       const rows=rot.candidates||[];
       $('candidate_table').innerHTML=!rows.length?'当前没有候选股票。':`<table><thead><tr><th>排名</th><th>股票</th><th>收盘价</th><th>120日动量</th><th>每手</th><th>建议股数</th><th>预计金额</th></tr></thead><tbody>${rows.map((x,i)=>`<tr><td>${i+1}</td><td><span class="stock-link" onclick="openAnalyze('${x.code}')">${x.code}</span> ${x.name}</td><td>HK$${fmt(x.price,3)}</td><td class="up">+${fmt(x.momentum_pct,1)}%</td><td>${x.lot_size}</td><td>${x.affordable?x.suggested_qty:'买不起一手'}</td><td>${x.affordable?'HK$'+fmt(x.estimated_amount,0):'—'}</td></tr>`).join('')}</tbody></table>`;
       $('intraday_reason').textContent=d.intraday.reason+'。当前动作：禁止交易。';
+      actionPill('br_action',br.action); $('br_date').textContent=br.as_of; $('br_market').textContent=br.market_eligible?'通过':'不通过';
+      $('br_test').textContent='+'+fmt(br.validation.return_pct,2)+'% · PF '+fmt(br.validation.profit_factor,2)+' · '+br.validation.trades+'笔';
+      $('br_dd').textContent=fmt(br.validation.max_drawdown_pct,2)+'%'; $('br_reason').textContent=br.reason;
+      $('br_table').innerHTML=!(br.candidates||[]).length?'当前没有新突破候选。':`<table><thead><tr><th>股票</th><th>收盘价</th><th>量比</th><th>建议股数</th><th>预计金额</th></tr></thead><tbody>${br.candidates.map(x=>`<tr><td>${x.code} ${x.name}</td><td>HK$${fmt(x.price,3)}</td><td>${fmt(x.volume_ratio,2)}</td><td>${x.suggested_qty||'买不起一手'}</td><td>${x.suggested_qty?'HK$'+fmt(x.estimated_amount,0):'—'}</td></tr>`).join('')}</tbody></table>`;
     } catch(e) { $('mode_alert').className='alert danger'; $('mode_alert').textContent='策略中心请求失败：'+e; }
     finally { hideLoading(); }
   }

@@ -147,6 +147,41 @@ def _rotation_status(positions: dict[str, float]) -> dict:
     }
 
 
+def _breakout_status(positions: dict[str, float]) -> dict:
+    universe = pd.read_csv(UNIVERSE_FILE)
+    lots = {str(r.code): int(r.lot_size) for _, r in universe.iterrows()}
+    names = {str(r.code): str(r["name"]) for _, r in universe.iterrows()}
+    idx = _read_daily(DAILY_DIR / "HK_800000.csv")
+    date = idx.index[-1]; hsi_ma = idx.close.rolling(120).mean().iloc[-1]
+    market_ok = idx.close.iloc[-1] > hsi_ma
+    rows = []
+    for path in DAILY_DIR.glob("HK_*.csv"):
+        x = _read_daily(path)
+        if date not in x.index or len(x) < 221:
+            continue
+        code = str(x.iloc[-1].get("code", ""))
+        if code not in lots:
+            continue
+        c=x.close; z=x.loc[date]; ma50=c.rolling(50).mean(); ma200=c.rolling(200).mean()
+        turn20=x.turnover.rolling(20).mean().loc[date]
+        vol_ratio=z.volume/x.volume.rolling(20).mean().loc[date]
+        prior_high=x.high.rolling(120).max().shift(1).loc[date]
+        ok=(market_ok and turn20>=100_000_000 and z.close>=2 and z.close>ma200.loc[date]
+            and ma50.loc[date]>ma200.loc[date]>ma200.iloc[-21]
+            and z.close>prior_high and vol_ratio>=1.2)
+        if ok:
+            lot=lots[code];qty=int((CAPITAL*.20)//(z.close*lot))*lot
+            rows.append({"code":code,"name":names.get(code,code),"price":float(z.close),
+                         "volume_ratio":float(vol_ratio),"prior_high120":float(prior_high),
+                         "lot_size":lot,"suggested_qty":qty,"estimated_amount":float(qty*z.close)})
+    rows.sort(key=lambda r:r["volume_ratio"],reverse=True)
+    return {"id":"hk_long_term_high_breakout_v1","name":"港股长期新高突破","status":"已通过历史研究",
+            "as_of":str(date.date()),"action":"BUY" if any(r["suggested_qty"] for r in rows[:4]) else "WAIT",
+            "reason":"发现放量突破，建议下一交易日开盘核对" if rows else "恒指环境通过，但当前没有120日放量新高突破",
+            "market_eligible":bool(market_ok),"candidates":rows[:4],
+            "validation":{"return_pct":28.6405,"max_drawdown_pct":-12.5422,"profit_factor":1.7967,"trades":54}}
+
+
 def get_status(client, refresh: bool = False) -> dict:
     errors = _refresh_cache(client) if refresh else []
     positions = _positions(client)
@@ -155,7 +190,7 @@ def get_status(client, refresh: bool = False) -> dict:
         "mode": "READ_ONLY_PAPER_ADVICE",
         "capital_hkd": CAPITAL,
         "refresh_errors": errors[:8],
-        "strategies": [_xiaomi_status(positions), _rotation_status(positions)],
+        "strategies": [_xiaomi_status(positions), _rotation_status(positions), _breakout_status(positions)],
         "intraday": {
             "name": "港股日内策略", "status": "禁用：样本外未通过", "action": "NO_TRADE",
             "reason": "ORB、恐慌反转和MACD分钟策略均未通过质量门槛",

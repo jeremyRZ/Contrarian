@@ -37,4 +37,8 @@ universal_rotation_v2_results.json
 universal_rotation_v3_results.json
 hk_rotation_v1_results.json
 hk_rotation_v1_trades.csv
+walkforward_daily_results.json
+walkforward_rotation_results.json
+fixed_breakout_audit.json
+fixed_breakout_final_audit.json
 python-*.exe
