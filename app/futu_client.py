@@ -11,7 +11,21 @@ import os
 import socket
 from typing import Optional, Tuple
 
-import futu as ft
+# futu-api 在导入阶段创建日志目录。受限运行环境可能能看到用户 AppData
+# 下的目录，却不能可靠执行 exists/makedirs 组合，导致已有目录仍抛
+# FileExistsError。只在 SDK 导入期间把日志根目录指向项目内可写位置，
+# 随后恢复进程环境；FutuOpenD 的 host/port 与账户配置不受影响。
+_original_appdata = os.environ.get("appdata")
+_futu_runtime = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".runtime", "futu")
+os.makedirs(_futu_runtime, exist_ok=True)
+os.environ["appdata"] = _futu_runtime
+try:
+    import futu as ft
+finally:
+    if _original_appdata is None:
+        os.environ.pop("appdata", None)
+    else:
+        os.environ["appdata"] = _original_appdata
 import yaml
 
 DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yaml")
