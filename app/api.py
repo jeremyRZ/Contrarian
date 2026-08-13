@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .futu_client import build_client_from_config, load_config
-from .modules import valuation, screener, monitor, ipo, missed_scan, price_alert, analyze, buybacks, news, southbound, reverse_signals, capital_flow, southbound_risk, fundamentals, filters, dividend, earnings, divergence, daily_report, intraday, backtest, strategy_config, decision, strategy_center
+from .modules import valuation, screener, monitor, ipo, missed_scan, price_alert, analyze, buybacks, news, southbound, reverse_signals, capital_flow, southbound_risk, fundamentals, filters, dividend, earnings, divergence, daily_report, intraday, backtest, strategy_config, decision, strategy_center, forward_ledger
 from .modules.screener import LEADERS
 from . import scheduler, intraday_scheduler, notify
 
@@ -95,10 +95,11 @@ def _startup_scheduler():
         hh, mm = int(hh), int(mm)
     except (ValueError, AttributeError):
         hh, mm = 16, 30
-    scheduler.start_scheduler(
-        lambda: daily_report.run_daily_report(client(), _webhook()),
-        hour=hh, minute=mm, enabled=enabled,
-    )
+    def daily_jobs():
+        status = strategy_center.get_status(client(), refresh=True)
+        forward_ledger.record_status(status)
+        return daily_report.run_daily_report(client(), _webhook())
+    scheduler.start_scheduler(daily_jobs, hour=hh, minute=mm, enabled=enabled)
 
 
 @app.get("/health")
@@ -244,9 +245,16 @@ def get_strategies_config():
 def get_strategy_center_status(refresh: int = 0):
     """Qualified-strategy dashboard. Read-only; never places an order."""
     try:
-        return _wrap(strategy_center.get_status(client(), refresh=bool(refresh)), None)
+        status = strategy_center.get_status(client(), refresh=bool(refresh))
+        forward_ledger.record_status(status)
+        return _wrap(status, None)
     except Exception as e:  # noqa: BLE001
         return _wrap(None, f"策略中心更新失败: {e}")
+
+
+@app.get("/forward-ledger")
+def get_forward_ledger(limit: int = 200):
+    return _wrap(forward_ledger.dashboard(max(1, min(limit, 1000))), None)
 
 
 @app.post("/strategies/config")

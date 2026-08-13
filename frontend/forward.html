@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>前向验证 · Contrarian</title>
+  <link rel="stylesheet" href="app.css" />
+  <link rel="icon" href="favicon.ico" />
+</head>
+<body data-page="forward">
+  <nav class="topnav"><div class="brand"><img src="logo.png" alt="Contrarian" class="logo-img"></div><div class="links"></div><div id="conn" class="status bad">检测中…</div></nav>
+  <main class="page">
+    <div class="page-head"><h1>前向验证</h1><p>只记录信号产生后真实发生的数据，不用未来信息，不事后改写。</p></div>
+    <section class="forward-summary" aria-label="前向验证摘要">
+      <div><span>记录</span><strong id="f_total">—</strong></div>
+      <div><span>可执行建议</span><strong id="f_actionable">—</strong></div>
+      <div><span>模拟交易</span><strong id="f_trades">—</strong></div>
+      <div><span>累计收益</span><strong id="f_return">—</strong></div>
+      <div><span>最大回撤</span><strong id="f_dd">—</strong></div>
+    </section>
+    <div id="f_note" class="hint-bar" style="margin:18px 0"></div>
+    <section class="card">
+      <div class="card-head"><div class="card-title">建议流水<span class="sub">相同日期、策略和动作只记录一次</span></div><button class="act" onclick="loadLedger()">刷新</button></div>
+      <div id="f_records" class="muted">正在读取账本…</div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+  <script>
+  async function loadLedger(){
+    const j=await (await fetch('/forward-ledger')).json();
+    if(!j.ok){$('f_records').innerHTML='<div class="err">'+j.error+'</div>';return;}
+    const d=j.data,s=d.summary||{},rows=d.records||[];
+    $('f_total').textContent=s.total||0;$('f_actionable').textContent=s.actionable||0;$('f_trades').textContent=s.trades||0;
+    $('f_return').textContent=s.return_pct==null?'等待成交':fmt(s.return_pct,2)+'%';$('f_dd').textContent=s.max_drawdown_pct==null?'等待成交':fmt(s.max_drawdown_pct,2)+'%';$('f_note').textContent=d.note||'';
+    $('f_records').innerHTML=!rows.length?'尚无记录。打开“今日决策”或等待每日自动任务后开始积累。':`<table><thead><tr><th>信号日</th><th>策略</th><th>动作</th><th>记录时间</th><th>原因</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${x.signal_date}</td><td>${x.strategy_name}</td><td>${pill(({BUY:'买入',SELL:'卖出',HOLD:'持有',WAIT:'等待',REVIEW:'复核',UNAVAILABLE:'数据不可用'})[x.action]||x.action,x.action==='BUY'||x.action==='REVIEW'?'push':x.action==='SELL'||x.action==='UNAVAILABLE'?'risk':'warn')}</td><td>${x.recorded_at.replace('T',' ')}</td><td>${x.reason||'—'}</td></tr>`).join('')}</tbody></table>`;
+  }
+  loadLedger();
+  </script>
+</body>
+</html>

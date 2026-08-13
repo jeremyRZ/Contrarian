@@ -11,6 +11,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from .orb_universe import HK_LIQUID_SEED
 
 ROOT = Path(__file__).resolve().parents[2]
 DAILY_DIR = ROOT / ".universal_daily_60"
@@ -34,6 +35,31 @@ def _read_daily(path: Path) -> pd.DataFrame:
     return x.sort_values("time_key").drop_duplicates("time_key", keep="last").set_index("time_key")
 
 
+def _ensure_universe(client) -> list[str]:
+    """Create the production research universe from the existing liquid seed."""
+    if UNIVERSE_FILE.exists():
+        return []
+    if not hasattr(client, "stock_basicinfo"):
+        return ["初始化研究股票池失败: 客户端不支持基础资料查询"]
+    try:
+        frame, err = client.stock_basicinfo()
+    except Exception as exc:  # noqa: BLE001
+        return [f"初始化研究股票池失败: {exc}"]
+    if err or frame is None or frame.empty:
+        return [f"初始化研究股票池失败: {err or '无基础资料'}"]
+    rows = frame[frame["code"].astype(str).isin(HK_LIQUID_SEED)].copy()
+    if rows.empty:
+        return ["初始化研究股票池失败: 未匹配到流动性股票"]
+    name_col = "name" if "name" in rows.columns else "stock_name"
+    lot_col = "lot_size" if "lot_size" in rows.columns else None
+    out = pd.DataFrame({"code": rows["code"].astype(str),
+                        "name": rows[name_col].astype(str),
+                        "lot_size": rows[lot_col].astype(int) if lot_col else 100})
+    UNIVERSE_FILE.parent.mkdir(exist_ok=True)
+    out.to_csv(UNIVERSE_FILE, index=False)
+    return []
+
+
 def _positions(client) -> dict[str, float]:
     try:
         frame, err = client.positions()
@@ -47,12 +73,13 @@ def _positions(client) -> dict[str, float]:
 def _refresh_cache(client) -> list[str]:
     """Merge the latest adjusted daily bars into the research cache."""
     errors: list[str] = []
+    errors.extend(_ensure_universe(client))
     if not UNIVERSE_FILE.exists():
-        return ["研究股票池不存在"]
+        return errors
     codes = pd.read_csv(UNIVERSE_FILE)["code"].astype(str).tolist() + ["HK.800000"]
     DAILY_DIR.mkdir(exist_ok=True)
     for code in codes:
-        frame, err = client.history_kline(code, max_count=180)
+        frame, err = client.history_kline(code, max_count=260)
         if err or frame is None or frame.empty:
             errors.append(f"{code}: {err or '无日线数据'}")
             continue
@@ -183,14 +210,31 @@ def _breakout_status(positions: dict[str, float]) -> dict:
 
 
 def get_status(client, refresh: bool = False) -> dict:
-    errors = _refresh_cache(client) if refresh else []
+    required = [DAILY_DIR / "HK_01810.csv", DAILY_DIR / "HK_800000.csv"]
+    errors = _refresh_cache(client) if refresh or any(not p.exists() for p in required) else []
     positions = _positions(client)
+    def safe(fn, strategy_id, name):
+        try:
+            return fn(positions)
+        except Exception as exc:  # noqa: BLE001
+            return {"id": strategy_id, "name": name, "status": "数据不可用",
+                    "action": "UNAVAILABLE", "reason": str(exc), "as_of": None,
+                    "price": None, "ma20": None, "ma60": None, "suggested_qty": 0,
+                    "market": {"hsi_close": None, "hsi_ma120": None, "eligible": False},
+                    "market_eligible": False, "is_review_day": False,
+                    "validation": {"return_pct": None, "max_drawdown_pct": None,
+                                   "profit_factor": None, "distinct_stocks": 0, "trades": 0},
+                    "candidates": []}
     payload = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "mode": "READ_ONLY_PAPER_ADVICE",
         "capital_hkd": CAPITAL,
         "refresh_errors": errors[:8],
-        "strategies": [_xiaomi_status(positions), _rotation_status(positions), _breakout_status(positions)],
+        "strategies": [
+            safe(_xiaomi_status, "xiaomi_trend_v1", "小米专属趋势"),
+            safe(_rotation_status, "hk_liquid_trend_rotation_v1", "港股流动性趋势轮动"),
+            safe(_breakout_status, "hk_long_term_high_breakout_v1", "港股长期新高突破"),
+        ],
         "intraday": {
             "name": "港股日内策略", "status": "禁用：样本外未通过", "action": "NO_TRADE",
             "reason": "ORB、恐慌反转和MACD分钟策略均未通过质量门槛",

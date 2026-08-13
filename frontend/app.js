@@ -71,6 +71,7 @@ function openAnalyze(code) {
   links.innerHTML = `
     <a href="strategy-center.html" data-section="strategy">今日决策</a>
     <a href="analyze.html" data-section="analyze">个股</a>
+    <a href="forward.html" data-section="forward">前向验证</a>
     <a href="risk.html" data-section="risk">风险控制</a>`;
 
   links.querySelectorAll('[data-section]').forEach(el => {
