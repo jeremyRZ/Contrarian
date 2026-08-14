@@ -1,0 +1,19 @@
+.wordmark {
+  height: 44px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  margin: 0 8px 28px;
+}
+.wordmark b { font-size: 15px; letter-spacing: .08em; }
+.wordmark span { margin-top: 2px; color: #8fa4ba; font-size: 10px; letter-spacing: .12em; }
+
+@media (max-width: 760px) {
+  .wordmark { margin: 0; width: 102px; height: 36px; }
+  .wordmark b { font-size: 11px; }
+  .wordmark span { font-size: 8px; }
+  .section-heading { align-items: flex-start; flex-direction: column; }
+  .market-filter { width: 100%; }
+  .market-filter button { min-width: 0; flex: 1; padding: 7px; }
+}

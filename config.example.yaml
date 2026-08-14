@@ -2,9 +2,18 @@
 # 复制本文件为 config.yaml 并填入你的信息
 
 futu:
+  # Optional read-only account IDs. Leave empty to auto-discover the account
+  # matching trd_env in each market; fill only when multiple accounts exist.
+  accounts: {HK: "", CN: "", US: ""}
   host: "127.0.0.1"   # FutuOpenD 网关地址（本机或云端）
   port: 11111          # FutuOpenD 监听端口（默认 11111）
   trd_env: "REAL"      # REAL（真实）+ SIMULATE（模拟）
+
+# Tiger OpenAPI is used only for read-only US position queries.
+tiger:
+  enabled: false
+  props_path: "C:/path/to/folder-containing-tiger_openapi_config.properties"
+  readonly: true
   acc_id: ""           # 富途交易账户 ID（在富途 App 内查看，留空则自动取首个账户）
   watchlist_group: "Contrarian"  # 富途自选增删目标分组（必须是你在富途客户端自建的用户分组，API 无法创建分组）
 

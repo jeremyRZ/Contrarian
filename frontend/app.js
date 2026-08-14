@@ -68,15 +68,16 @@ function openAnalyze(code) {
     strategies: 'strategy',
     intraday: 'strategy',
     backtest: 'strategy',
-    risk: 'risk'
+    risk: 'risk',
+    markets: 'markets'
   }[page] || page;
 
   // 一级导航按用户任务组织；原页面仍保留在二级入口，避免功能和旧链接失效。
   links.innerHTML = `
-    <a href="strategy-center.html" data-section="strategy">今日决策</a>
-    <a href="analyze.html" data-section="analyze">个股</a>
-    <a href="forward.html" data-section="forward">前向验证</a>
-    <a href="risk.html" data-section="risk">风险控制</a>`;
+    <a href="index.html" data-section="home">今日</a>
+    <a href="index.html#portfolio" data-section="portfolio">组合</a>
+    <a href="markets.html" data-section="markets">研究</a>
+    <a href="forward.html" data-section="forward">验证</a>`;
 
   links.querySelectorAll('[data-section]').forEach(el => {
     if (el.dataset.section === section) el.classList.add('active');

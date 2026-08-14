@@ -22,7 +22,9 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .futu_client import build_client_from_config, load_config
-from .modules import valuation, screener, monitor, ipo, missed_scan, price_alert, analyze, buybacks, news, southbound, reverse_signals, capital_flow, southbound_risk, fundamentals, filters, dividend, earnings, divergence, daily_report, intraday, backtest, strategy_config, decision, strategy_center, forward_ledger, westock_research
+from .modules import valuation, screener, monitor, ipo, missed_scan, price_alert, analyze, buybacks, news, southbound, reverse_signals, capital_flow, southbound_risk, fundamentals, filters, dividend, earnings, divergence, daily_report, intraday, backtest, strategy_config, decision, strategy_center, forward_ledger, westock_research, cn_research
+from .markets import cn_lot_size, cn_price_limit, get_market_rules, resolve_security
+from .providers import MarketDataRouter, TigerPositionsProvider
 from .modules.screener import LEADERS
 from . import scheduler, intraday_scheduler, notify
 
@@ -47,7 +49,7 @@ async def _lifespan(_app: FastAPI):
             _client = None
 
 
-app = FastAPI(title="Contrarian 港股错杀猎手", version="1.8.1", lifespan=_lifespan)
+app = FastAPI(title="Contrarian 多市场投研平台", version="2.0.0", lifespan=_lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
@@ -73,6 +75,13 @@ def client():
     if _client is None:
         _client = build_client_from_config(CONFIG)
     return _client
+
+
+def market_data():
+    tiger_cfg = CONFIG.get("tiger", {}) or {}
+    tiger = TigerPositionsProvider(tiger_cfg.get("props_path", ""),
+                                   enabled=tiger_cfg.get("enabled", False))
+    return MarketDataRouter(client(), tiger_provider=tiger)
 
 
 def _wrap(result, error):
@@ -110,6 +119,112 @@ def health():
             "system": CONFIG.get("system", {}),
             "futu": {k: futu_cfg.get(k) for k in ("host", "port", "trd_env", "watchlist_group")
                      if k in futu_cfg}}
+
+
+@app.get("/api/markets")
+def get_markets():
+    """Stable market metadata used by the shared HK/CN/US frontend."""
+    markets = []
+    for key, name, enabled in (("HK", "港股", True), ("CN", "A股", True),
+                               ("US", "美股", bool((CONFIG.get("tiger", {}) or {}).get("enabled", False)))):
+        rules = get_market_rules(key)
+        markets.append({"market": key, "name": name, "enabled": enabled,
+                        "currency": rules.currency, "benchmark": rules.benchmark,
+                        "lot_size": rules.lot_size, "settlement": rules.settlement,
+                        "timezone": rules.timezone,
+                        "sessions": [[a.strftime("%H:%M"), b.strftime("%H:%M")]
+                                     for a, b in rules.sessions]})
+    return _wrap({"markets": markets, "default": "HK"}, None)
+
+
+@app.get("/api/securities/search")
+def search_securities(q: str = "", market: str = "CN", limit: int = 20):
+    rows, err = market_data().search(q, market, limit)
+    return _wrap({"market": market.upper(), "items": rows}, err)
+
+
+@app.get("/api/securities/{code}/snapshot")
+def get_security_snapshot(code: str):
+    try: security = resolve_security(code)
+    except ValueError as exc: return _wrap(None, str(exc))
+    frame, err = market_data().snapshot([security.code])
+    if err or frame is None or frame.empty: return _wrap(None, err or "行情为空")
+    row = frame.iloc[0].replace({float("inf"): None, float("-inf"): None}).to_dict()
+    return _wrap({"security": security.to_dict(), "snapshot": row}, None)
+
+
+@app.get("/api/securities/{code}/bars")
+def get_security_bars(code: str, start: str = "", end: str = "", count: int = 260):
+    try: security = resolve_security(code)
+    except ValueError as exc: return _wrap(None, str(exc))
+    frame, err = market_data().daily_bars(security.code, start=start or None,
+                                          end=end or None, count=max(20, min(count, 3000)))
+    if err or frame is None: return _wrap(None, err or "K线为空")
+    rows = frame.copy(); rows["date"] = rows.date.dt.strftime("%Y-%m-%d")
+    return _wrap({"security": security.to_dict(), "adjust": "QFQ_OR_PROVIDER_DEFAULT",
+                  "items": rows.where(rows.notna(), None).to_dict("records")}, None)
+
+
+@app.get("/api/securities/{code}/analysis")
+def get_market_security_analysis(code: str):
+    try: security = resolve_security(code)
+    except ValueError as exc: return _wrap(None, str(exc))
+    bars, err = market_data().daily_bars(security.code, count=600)
+    if err or bars is None: return _wrap(None, err or "K线为空")
+    if security.market == "CN":
+        gate = cn_research.validate(bars, security.code)
+        signal = cn_research.latest_signal(security.code, bars, gate)
+        return _wrap({"security": security.to_dict(), "signal": signal,
+                      "validation": gate, "execution_mode": "READ_ONLY_RESEARCH"}, None)
+    return _wrap({"security": security.to_dict(), "signal": None,
+                  "validation": {"status": "MARKET_ADAPTER_PENDING"}}, None)
+
+
+@app.get("/api/positions")
+def get_market_positions(market: str = ""):
+    frame, err = market_data().positions(market or None)
+    if err: return _wrap(None, err)
+    if frame is None or frame.empty: return _wrap({"market": market.upper() or "ALL", "items": []}, None)
+    rows = frame.where(frame.notna(), None).to_dict("records")
+    return _wrap({"market": market.upper() or "ALL", "items": rows}, None)
+
+
+@app.get("/api/cn/candidates")
+def get_cn_candidates(codes: str = ""):
+    pool = [x.strip() for x in codes.split(",") if x.strip()] or None
+    result = cn_research.scan(market_data(), pool)
+    forward_ledger.record_status({"strategies": [
+        {"id": item["strategy_id"], "name": f"A股趋势研究 {item['code']}",
+         "as_of": item.get("as_of"), "action": item.get("action", "WAIT"),
+         "reason": item.get("reason", ""), "signal": item}
+        for item in result.get("candidates", [])
+    ]})
+    return _wrap(result, None)
+
+
+@app.get("/api/cn/backtest/{code}")
+def get_cn_backtest(code: str):
+    try: security = resolve_security(code, "CN")
+    except ValueError as exc: return _wrap(None, str(exc))
+    if security.market != "CN": return _wrap(None, "该接口只接受A股代码")
+    bars, err = market_data().daily_bars(security.code, count=3000)
+    if err or bars is None: return _wrap(None, err or "K线为空")
+    return _wrap({"security": security.to_dict(), "validation": cn_research.validate(bars, security.code),
+                  "backtest": cn_research.backtest(bars, price_limit=cn_price_limit(security.code),
+                                                    lot_size=cn_lot_size(security.code))}, None)
+
+
+@app.get("/api/cn/events")
+def get_cn_events():
+    return _wrap(cn_research.load_event_candidates(), None)
+
+
+@app.post("/api/cn/events/import")
+async def import_cn_events(request: Request):
+    """Import ContestTrade output. Imported candidates remain RESEARCH_ONLY."""
+    try: payload = await request.json(); count = cn_research.save_event_candidates(payload)
+    except (ValueError, json.JSONDecodeError) as exc: return _wrap(None, str(exc))
+    return _wrap({"imported": count, "validation_status": "RESEARCH_ONLY"}, None)
 
 
 @app.get("/valuation")

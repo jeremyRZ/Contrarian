@@ -1,13 +1,82 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contrarian · 今日决策</title>
-  <meta http-equiv="refresh" content="0; url=strategy-center.html" />
-  <link rel="canonical" href="strategy-center.html" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>今日投资台 · Contrarian</title>
+  <meta name="description" content="把港股、A股和美股持仓放进同一条投资决策流程。">
+  <link rel="stylesheet" href="investor.css?v=20260814-1">
+  <link rel="stylesheet" href="investor-fixes.css?v=20260814-1">
 </head>
 <body>
-  <p>正在进入<a href="strategy-center.html">今日决策</a>…</p>
+<!--
+THESIS: 一张投资委员会晨会单；拒绝按市场和功能分割用户心智。
+OWN-WORLD: 雾白纸面、深海军蓝、风险红与机会蓝；直角表格和克制圆角控件。
+STORY: 先确认组合与风险，再处理今日动作，然后进入研究与验证。
+FIRST VIEWPORT: 左侧固定任务导航；右侧先给今日结论，再给跨市场持仓与动作队列。
+FORM: 投资决策台，方向候选第六项，seed c0e734ce。
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
+<aside class="shell-nav">
+  <a class="wordmark" href="/" aria-label="Contrarian 首页"><b>CONTRARIAN</b><span>投资决策台</span></a>
+  <nav aria-label="主要导航">
+    <a class="active" href="#today"><span>今日</span><small>先决定做什么</small></a>
+    <a href="#portfolio"><span>组合</span><small>全部账户与风险</small></a>
+    <a href="markets.html"><span>研究</span><small>找机会与看个股</small></a>
+    <a href="forward.html"><span>验证</span><small>策略是否真有效</small></a>
+  </nav>
+  <div class="source-state" id="source_state"><i></i><span>正在检查数据源</span></div>
+  <p class="readonly">只读模式<br>所有交易由你最终确认</p>
+</aside>
+
+<main>
+  <header class="topline">
+    <div><h1>今天，先处理组合</h1><p id="as_of">正在汇总港股、A股和美股账户…</p></div>
+    <button id="refresh" type="button">刷新决策</button>
+  </header>
+
+  <section id="today" class="decision-strip" aria-live="polite">
+    <div class="decision-main"><span>今日优先级</span><strong id="today_verdict">读取中</strong><p id="today_reason">等待组合和策略数据</p></div>
+    <dl>
+      <div><dt>必须处理</dt><dd id="must_count">—</dd></div>
+      <div><dt>需要关注</dt><dd id="watch_count">—</dd></div>
+      <div><dt>可研究机会</dt><dd id="opp_count">—</dd></div>
+      <div><dt>数据异常</dt><dd id="error_count">—</dd></div>
+    </dl>
+  </section>
+
+  <section id="portfolio" class="workspace">
+    <div class="section-heading">
+      <div><h2>我的组合</h2><p>市场只是标签；这里按风险和动作统一排序。</p></div>
+      <div class="market-filter" role="group" aria-label="持仓市场筛选">
+        <button class="active" data-market="ALL">全部</button><button data-market="HK">港股</button><button data-market="CN">A股</button><button data-market="US">美股</button>
+      </div>
+    </div>
+    <div class="account-band" id="account_band"></div>
+    <div class="table-shell">
+      <table>
+        <thead><tr><th>标的</th><th>市场</th><th class="num">数量</th><th class="num">成本</th><th class="num">现价</th><th class="num">市值</th><th class="num">浮动盈亏</th><th>下一步</th></tr></thead>
+        <tbody id="position_rows"><tr><td colspan="8" class="empty">正在读取账户持仓…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="two-column">
+    <article class="work-panel">
+      <div class="section-heading"><div><h2>今日动作</h2><p>先风险、后机会；没有合格信号就不交易。</p></div><a href="strategy-center.html">查看完整决策</a></div>
+      <div id="action_rows" class="action-list"><div class="empty">正在读取策略状态…</div></div>
+    </article>
+    <article class="work-panel">
+      <div class="section-heading"><div><h2>下一步研究</h2><p>从当前问题出发，不从市场目录出发。</p></div></div>
+      <div class="research-paths">
+        <a href="markets.html"><b>A股与美股研究</b><span>搜索标的、查看趋势和验证状态</span></a>
+        <a href="analyze.html"><b>单股深度分析</b><span>估值、资金、事件与失效条件</span></a>
+        <a href="forward.html"><b>检查策略证据</b><span>看真实前向表现，而不是只看回测</span></a>
+        <a href="risk.html"><b>调整风险边界</b><span>仓位、止损和组合集中度</span></a>
+      </div>
+    </article>
+  </section>
+</main>
+<script src="investor.js?v=20260814-1"></script>
 </body>
 </html>

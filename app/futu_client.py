@@ -53,12 +53,14 @@ def _reachable(host: str, port: int, timeout: float = 2.0) -> bool:
 class FutuClient:
     def __init__(self, host: str = "127.0.0.1", port: int = 11111,
                  trd_env: str = "REAL", acc_id: Optional[str] = None,
-                 watchlist_group: str = "Contrarian"):
+                 watchlist_group: str = "Contrarian",
+                 accounts: Optional[dict] = None):
         self.host = host
         self.port = port
         self.trd_env = trd_env
         self.acc_id = acc_id
         self.watchlist_group = watchlist_group
+        self.accounts = {str(k).upper(): v for k, v in (accounts or {}).items()}
         self._quote = None
         self._trade = None
         self.connected = False
@@ -406,6 +408,61 @@ class FutuClient:
         except Exception as e:  # noqa: BLE001
             return None, str(e)
 
+    def positions_market(self, market: str) -> Tuple[Optional[object], Optional[str]]:
+        """Read positions through an isolated HK/CN/US trade context.
+
+        If no account id is configured, discover accounts in that market
+        context and select one matching the configured REAL/SIMULATE
+        environment.  This keeps the common single-account setup zero-config.
+        """
+        key = str(market or "").upper()
+        if key not in {"HK", "CN", "US"}:
+            return None, f"不支持的持仓市场: {market}"
+        if not _reachable(self.host, self.port):
+            return None, "FutuOpenD 未启动或端口不可达"
+        context = None
+        try:
+            context = ft.OpenSecTradeContext(
+                filter_trdmarket=getattr(ft.TrdMarket, key), host=self.host, port=self.port)
+            configured = self.accounts.get(key)
+            if configured:
+                acc = int(configured)
+            else:
+                ret, accounts = context.get_acc_list()
+                if ret != ft.RET_OK:
+                    return None, f"无法发现{key}账户: {accounts}"
+                if accounts is None or accounts.empty:
+                    return None, f"富途未返回可用的{key}账户；请确认账户已开通并登录OpenD"
+                candidates = accounts.copy()
+                env_col = next((c for c in candidates.columns
+                                if str(c).lower() in {"trd_env", "trade_env"}), None)
+                if env_col:
+                    wanted = str(self.trd_env).upper()
+                    matched = candidates[candidates[env_col].astype(str).str.upper().str.contains(wanted)]
+                    if not matched.empty:
+                        candidates = matched
+                id_col = next((c for c in candidates.columns
+                               if str(c).lower() in {"acc_id", "account_id"}), None)
+                if not id_col:
+                    return None, f"{key}账户列表缺少acc_id字段"
+                if len(candidates.index) > 1:
+                    return None, (
+                        f"发现多个{key} {str(self.trd_env).upper()}账户；"
+                        f"请在config.yaml的futu.accounts.{key}中指定acc_id"
+                    )
+                acc = int(candidates.iloc[0][id_col])
+            ret, data = context.position_list_query(trd_env=self._trd_env(), acc_id=acc)
+            if ret != ft.RET_OK:
+                return None, str(data)
+            return data, None
+        except Exception as exc:  # noqa: BLE001
+            return None, str(exc)
+        finally:
+            try:
+                if context: context.close()
+            except Exception:  # noqa: BLE001
+                pass
+
     # ---------- 自选股（watchlist） ----------
     # 富途自选股支持通过 modify_user_security 增删，但**仅对用户自建分组有效**；
     # 系统分组（「全部」等）不可写。本模块默认管理一个用户自建分组
@@ -484,4 +541,5 @@ def build_client_from_config(cfg: Optional[dict] = None) -> FutuClient:
         trd_env=f.get("trd_env", "REAL"),
         acc_id=f.get("acc_id") or None,
         watchlist_group=f.get("watchlist_group", "Contrarian"),
+        accounts=f.get("accounts") or {},
     )
