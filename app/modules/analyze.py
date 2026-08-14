@@ -99,13 +99,17 @@ def analyze(client, code: str):
     if price and hi and lo and hi > lo:
         pos_pct = round((price - lo) / (hi - lo) * 100, 1)
 
-    # 结论
+    # 价格位置与估值是两回事；负 PE / PB 不得描述为“低估”。
     if pos_pct is not None and pos_pct < 25:
-        conclusion = "处于52周低位，估值偏低"
+        conclusion = "处于52周低位"
     elif pos_pct is not None and pos_pct > 80:
         conclusion = "处于52周高位，注意追高风险"
     else:
-        conclusion = "估值处于中部区间"
+        conclusion = "处于52周价格区间中部"
+    if pe is not None and pe <= 0:
+        conclusion += "；PE为负，处于亏损状态"
+    if pb is not None and pb <= 0:
+        conclusion += "；PB为负，净资产为负"
     if "RSI超买(70)" in " ".join(signals) or (tech.get("rsi14") or 0) >= 70:
         conclusion += "；技术面短期超买，警惕回落"
     elif (tech.get("rsi14") or 100) <= 30:

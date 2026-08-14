@@ -163,11 +163,27 @@ def get_news(client, code: str, num: int = 10) -> Tuple[Optional[dict], Optional
             rows = raw.to_dict("records")
     except Exception:  # noqa: BLE001
         rows = []
+    # 富途搜索偶尔会混入其它公司的新闻。只保留标题明确提到当前公司/代码的结果。
+    terms = {str(code).split(".")[-1]}
+    try:
+        snap, snap_err = client.market_snapshot([code])
+        if not snap_err and snap is not None and not snap.empty:
+            name = str(snap.iloc[0].get("name") or "").strip()
+            if name:
+                terms.add(name)
+                terms.add(name.replace("集团", "").replace("-W", "").strip())
+    except Exception:  # noqa: BLE001
+        pass
+    terms = {term for term in terms if len(term) >= 3}
     items = []
+    filtered_irrelevant = 0
     for it in rows[:num]:
         if not isinstance(it, dict):
             continue
         title = str(it.get("title", "") or "")
+        if terms and not any(term in title for term in terms):
+            filtered_irrelevant += 1
+            continue
         # 优先 LLM 复核，失败/未配置则词典法
         rev = llm_review(title)
         if rev is not None:
@@ -185,4 +201,5 @@ def get_news(client, code: str, num: int = 10) -> Tuple[Optional[dict], Optional
             "sentiment_score": round(sc, 2),
             "llm": rev is not None,
         })
-    return {"code": code, "news": items}, None
+    return {"code": code, "news": items,
+            "filtered_irrelevant": filtered_irrelevant}, None

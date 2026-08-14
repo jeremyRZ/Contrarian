@@ -3,106 +3,250 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>策略中心 · Contrarian</title>
-  <link rel="stylesheet" href="app.css" />
+  <title>今日决策 · Contrarian</title>
+  <link rel="stylesheet" href="app.css?v=20260814-4" />
   <link rel="icon" href="favicon.ico" />
 </head>
 <body data-page="strategy-center">
+<!--
+THESIS: 一屏完成从市场状态到股票筛选再到交易动作，拒绝大卡片说明书。
+OWN-WORLD: 冷灰交易终端、紧凑表格、红涨绿跌、蓝色交互与清晰分栏。
+STORY: 用户先确认能否交易，再筛选股票，最后查看策略动作和依据。
+FIRST VIEWPORT: 顶部市场门控与漏斗摘要，左侧筛选，右侧60只股票主表，更新按钮右上。
+FORM: Operate 模式的桌面行情工作台，seed key terminal-watchboard-v1。
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
   <nav class="topnav">
     <div class="brand"><img src="logo.png" alt="Contrarian" class="logo-img"></div>
     <div class="links"></div>
     <div id="conn" class="status bad">检测中…</div>
   </nav>
 
-  <main class="page">
-    <div class="page-head">
-      <h1>今日决策</h1>
-      <p>只展示通过研究门槛的策略动作。没有合格机会时，现金也是仓位。</p>
-    </div>
-
-    <section class="card">
-      <div class="card-head"><div class="card-title">港股长期新高突破 <span class="sub">120日新高 · 放量确认</span></div><span id="br_action" class="pill">—</span></div>
-      <div class="grid2">
-        <div class="kv"><span>数据日期</span><span id="br_date">—</span></div>
-        <div class="kv"><span>恒指环境</span><span id="br_market">—</span></div>
-        <div class="kv"><span>历史验证</span><span id="br_test">—</span></div>
-        <div class="kv"><span>最大回撤</span><span id="br_dd">—</span></div>
+  <main class="terminal-page">
+    <header class="terminal-head">
+      <div>
+        <h1>今日选股</h1>
+        <p id="generated">正在读取最新扫描结果</p>
       </div>
-      <div id="br_reason" class="hint-bar" style="margin-top:14px">—</div>
-      <div id="br_table" class="muted" style="margin-top:14px">—</div>
+      <button class="act" onclick="loadCenter(true)">从富途重新扫描</button>
+    </header>
+
+    <section class="market-strip">
+      <div class="market-decision"><span>今日结论</span><strong id="headline_action">读取中</strong><small id="headline_reason">等待策略计算</small></div>
+      <div><span>恒指</span><strong id="market_hsi">暂无</strong><small id="market_gate">市场门控</small></div>
+      <div><span>全港股</span><strong id="market_total">暂无</strong><small>普通股入口</small></div>
+      <div><span>初筛通过</span><strong id="market_passed">暂无</strong><small>流动性合格</small></div>
+      <div><span>动态池</span><strong id="market_selected">暂无</strong><small>进入策略二筛</small></div>
+      <div><span>交易候选</span><strong id="market_candidates">暂无</strong><small>轮动或突破</small></div>
     </section>
 
-    <section class="card">
-      <div class="card-head">
-        <div class="card-title">执行状态 <span class="sub" id="generated">—</span></div>
-        <button class="act" onclick="loadCenter(true)">从富途更新</button>
+    <div id="refresh_errors"></div>
+
+    <section class="investor-overview" aria-label="今日市场与持仓概览">
+      <div class="breadth-panel">
+        <div class="overview-title"><strong>动态池涨跌分布</strong><span>统计口径：当前60只动态池</span></div>
+        <div class="breadth-values">
+          <div><b id="breadth_up" class="up">0</b><span>上涨</span></div>
+          <div><b id="breadth_flat">0</b><span>平盘</span></div>
+          <div><b id="breadth_down" class="down">0</b><span>下跌</span></div>
+          <div><b id="breadth_median">暂无</b><span>中位涨跌</span></div>
+        </div>
+        <div class="breadth-track"><i id="breadth_up_bar"></i><i id="breadth_flat_bar"></i><i id="breadth_down_bar"></i></div>
       </div>
-      <div id="mode_alert" class="alert info">正在读取策略状态…</div>
-      <div id="refresh_errors"></div>
+      <div class="sector-panel">
+        <div class="overview-title"><strong>分类强弱</strong><span>按分类平均涨跌幅</span></div>
+        <div id="sector_strength" class="sector-strength"><span class="muted">正在计算…</span></div>
+      </div>
+      <div class="portfolio-panel">
+        <div class="overview-title"><strong>我的持仓</strong><span id="portfolio_count">富途账户</span></div>
+        <div id="portfolio_summary" class="portfolio-summary"><span class="muted">正在读取…</span></div>
+      </div>
     </section>
 
-    <section class="card">
-      <div class="card-head"><div class="card-title">小米专属趋势 <span class="sub">HK.01810 · 日线</span></div><span id="xm_action" class="pill">—</span></div>
-      <div class="grid2">
-        <div class="kv"><span>数据日期</span><span id="xm_date">—</span></div>
-        <div class="kv"><span>收盘价</span><span id="xm_price">—</span></div>
-        <div class="kv"><span>MA20 / MA60</span><span id="xm_ma">—</span></div>
-        <div class="kv"><span>建议股数</span><span id="xm_qty">—</span></div>
-        <div class="kv"><span>历史验证</span><span id="xm_test">—</span></div>
-        <div class="kv"><span>最大回撤</span><span id="xm_dd">—</span></div>
-      </div>
-      <div id="xm_reason" class="hint-bar" style="margin-top:14px">—</div>
+    <section class="action-queue-console">
+      <div class="console-head"><div><strong>今日行动队列</strong><span>按资金安全和截止时间排序，不需要在多个页面拼结论</span></div></div>
+      <div id="action_queue" class="action-queue"><div class="no-plan">正在生成账户级行动顺序…</div></div>
     </section>
 
-    <section class="card">
-      <div class="card-head"><div class="card-title">港股流动性趋势轮动 <span class="sub">最多4只 · 总仓位60%</span></div><span id="rot_action" class="pill">—</span></div>
-      <div class="grid2">
-        <div class="kv"><span>数据日期</span><span id="rot_date">—</span></div>
-        <div class="kv"><span>正式调仓日</span><span id="rot_review">—</span></div>
-        <div class="kv"><span>恒指 / MA120</span><span id="rot_hsi">—</span></div>
-        <div class="kv"><span>大盘过滤</span><span id="rot_market">—</span></div>
-        <div class="kv"><span>历史验证</span><span id="rot_test">—</span></div>
-        <div class="kv"><span>最大回撤</span><span id="rot_dd">—</span></div>
-      </div>
-      <div id="rot_reason" class="hint-bar" style="margin-top:14px">—</div>
-      <div class="card-title" style="margin:18px 0 8px">当前候选 <span class="sub">买不起一手的股票不会进入建议订单</span></div>
-      <div id="candidate_table" class="muted">—</div>
+    <section class="holdings-console">
+      <div class="console-head"><div><strong>持仓风险与资金占用</strong><span>期权按正股合并；先管理已有资金，再寻找新机会</span></div><a href="risk.html">完整风险控制</a></div>
+      <div class="holdings-table-wrap"><table class="holdings-table"><thead><tr><th>标的</th><th>持仓构成</th><th>持仓市值</th><th>仓位占比</th><th>今日盈亏</th><th>累计盈亏</th><th>风险状态</th><th></th></tr></thead><tbody id="holding_rows"><tr><td colspan="8" class="table-empty">正在读取富途持仓…</td></tr></tbody></table></div>
+      <div id="portfolio_limit" class="portfolio-limit"></div>
     </section>
 
+    <section class="screener-shell">
+      <aside class="filter-rail">
+        <div class="filter-title">股票分类</div>
+        <button class="filter-item active" data-filter="sector" data-value="全部">全部股票 <b id="count_all">0</b></button>
+        <div id="sector_filters"></div>
+        <div class="filter-title split">策略阶段</div>
+        <button class="filter-item" data-filter="stage" data-value="动态池">动态池</button>
+        <button class="filter-item" data-filter="stage" data-value="专属策略">专属策略</button>
+        <button class="filter-item" data-filter="stage" data-value="轮动候选">轮动候选</button>
+        <button class="filter-item" data-filter="stage" data-value="突破候选">突破候选</button>
+        <details class="method-box">
+          <summary>选池规则</summary>
+          <div id="method_text">正在读取…</div>
+        </details>
+      </aside>
+
+      <div class="stock-board">
+        <div class="board-tools">
+          <div>
+            <strong>动态股票池</strong>
+            <span id="result_count">暂无</span>
+          </div>
+          <div class="board-actions">
+            <div class="sort-tabs" aria-label="股票排序">
+              <button class="sort-tab active" data-sort="rank">综合</button>
+              <button class="sort-tab" data-sort="change_desc">涨幅</button>
+              <button class="sort-tab" data-sort="change_asc">跌幅</button>
+              <button class="sort-tab" data-sort="turnover">成交额</button>
+            </div>
+            <input id="stock_search" type="search" placeholder="搜索名称或代码" oninput="renderStocks()" />
+          </div>
+        </div>
+        <div class="stock-table-wrap">
+          <table class="stock-table">
+            <thead><tr>
+              <th>排名</th><th>股票</th><th>分类</th><th>现价</th><th>涨跌额</th><th>涨跌幅</th><th>成交额</th><th>振幅</th><th>买卖价差</th><th>流动性分</th><th>策略阶段</th><th></th>
+            </tr></thead>
+            <tbody id="stock_rows"><tr><td colspan="12" class="table-empty">正在加载动态股票池…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="strategy-desk">
+      <div class="desk-head"><strong>策略动作台</strong><span>只有买入、卖出或正式调仓才值得推送</span></div>
+      <div class="strategy-row">
+        <div><span>小米专属趋势</span><small>HK.01810 · MA20 / MA60</small></div><b id="xm_action">暂无</b><span id="xm_metrics">暂无</span><span id="xm_reason">暂无</span>
+      </div>
+      <div class="strategy-row">
+        <div><span>流动性趋势轮动</span><small>最多4只 · 总仓位60%</small></div><b id="rot_action">暂无</b><span id="rot_metrics">暂无</span><span id="rot_reason">暂无</span>
+      </div>
+      <div class="strategy-row">
+        <div><span>长期新高突破</span><small>120日新高 · 放量确认</small></div><b id="br_action">暂无</b><span id="br_metrics">暂无</span><span id="br_reason">暂无</span>
+      </div>
+    </section>
+
+    <section class="trade-plans">
+      <div class="console-head"><div><strong>可执行交易计划</strong><span>只有通过市场门控和策略条件的标的才会出现</span></div></div>
+      <div id="trade_plan_rows" class="trade-plan-rows"><div class="no-plan">正在核对策略条件…</div></div>
+    </section>
+
+    <section class="forward-scoreboard">
+      <div class="console-head"><div><strong>策略前向成绩单</strong><span>只使用信号产生后真实发生的价格，不回填未来信息</span></div><a href="forward.html">查看完整台账</a></div>
+      <div id="forward_scores" class="forward-scores"><div class="no-plan">正在读取到期样本…</div></div>
+    </section>
+
+    <details class="workflow-panel">
+      <summary>完整执行逻辑与限制</summary>
+      <div id="workflow_steps" class="workflow-grid"></div>
+    </details>
   </main>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=20260814-3"></script>
   <script>
-  const actionLabel = {BUY:"买入", SELL:"卖出", HOLD:"持有", WAIT:"等待", REVIEW:"待核对", NO_TRADE:"禁止交易"};
-  function actionPill(id, action) {
-    const el = $(id); el.textContent = actionLabel[action] || action;
-    el.className = "pill " + (action === "BUY" || action === "REVIEW" ? "push" : action === "SELL" ? "risk" : "warn");
+  let CENTER_DATA=null, STOCKS=[], ACTIVE={type:'sector',value:'全部'}, SORT='rank';
+  const actionLabel={BUY:'买入',SELL:'卖出',HOLD:'持有',WAIT:'等待',REVIEW:'调仓复核',BLOCKED:'风控阻止',UNAVAILABLE:'不可用'};
+  const money=v=>{if(v==null||isNaN(v))return '暂无';if(Math.abs(v)>=1e8)return (v/1e8).toFixed(2)+'亿';if(Math.abs(v)>=1e4)return (v/1e4).toFixed(0)+'万';return Math.round(v).toLocaleString()};
+
+  async function loadCenter(refresh=false){
+    showLoading(refresh?'正在更新全港股动态池与历史行情…':'正在读取今日策略…');
+    try{
+      const j=await (await fetch('/strategy-center/status?refresh='+(refresh?1:0)+'&_='+Date.now())).json();
+      if(!j.ok)throw new Error(j.error||'策略状态不可用');
+      CENTER_DATA=j.data; STOCKS=(j.data.universe&&j.data.universe.stocks)||[]; renderCenter();
+    }catch(e){$('stock_rows').innerHTML='<tr><td colspan="10" class="table-empty error">'+esc(e.message||e)+'</td></tr>'}
+    finally{hideLoading()}
   }
-  async function loadCenter(refresh=false) {
-    showLoading(refresh ? "正在从 Futu OpenD 更新日线…" : "正在读取策略状态…");
-    try {
-      const r = await fetch('/strategy-center/status?refresh=' + (refresh ? 1 : 0));
-      const j = await r.json();
-      if (!j.ok) { $('mode_alert').className='alert danger'; $('mode_alert').textContent=j.error || '加载失败'; return; }
-      const d=j.data, xm=d.strategies[0], rot=d.strategies[1], br=d.strategies[2];
-      $('generated').textContent='生成于 ' + d.generated_at.replace('T',' ');
-      $('mode_alert').textContent='只读模拟建议：平台不会自动提交真实订单。账户基准 HK$' + d.capital_hkd.toLocaleString();
-      $('refresh_errors').innerHTML=(d.refresh_errors||[]).length ? '<div class="err" style="margin-top:10px">部分行情更新失败：'+d.refresh_errors.join('；')+'</div>' : '';
-      actionPill('xm_action',xm.action); $('xm_date').textContent=xm.as_of; $('xm_price').textContent='HK$'+fmt(xm.price,2);
-      $('xm_ma').textContent=fmt(xm.ma20,2)+' / '+fmt(xm.ma60,2); $('xm_qty').textContent=xm.suggested_qty+' 股';
-      $('xm_test').textContent='+'+fmt(xm.validation.return_pct,2)+'% · PF '+fmt(xm.validation.profit_factor,2); $('xm_dd').textContent=fmt(xm.validation.max_drawdown_pct,2)+'%'; $('xm_reason').textContent=xm.reason;
-      actionPill('rot_action',rot.action); $('rot_date').textContent=rot.as_of; $('rot_review').textContent=rot.is_review_day?'是':'否';
-      $('rot_hsi').textContent=fmt(rot.market.hsi_close,0)+' / '+fmt(rot.market.hsi_ma120,0); $('rot_market').textContent=rot.market.eligible?'通过':'不通过';
-      $('rot_test').textContent='+'+fmt(rot.validation.return_pct,2)+'% · '+rot.validation.distinct_stocks+'只股票'; $('rot_dd').textContent=fmt(rot.validation.max_drawdown_pct,2)+'%'; $('rot_reason').textContent=rot.reason;
-      const rows=rot.candidates||[];
-      $('candidate_table').innerHTML=!rows.length?'当前没有候选股票。':`<table><thead><tr><th>排名</th><th>股票</th><th>收盘价</th><th>120日动量</th><th>每手</th><th>建议股数</th><th>预计金额</th></tr></thead><tbody>${rows.map((x,i)=>`<tr><td>${i+1}</td><td><span class="stock-link" onclick="openAnalyze('${x.code}')">${x.code}</span> ${x.name}</td><td>HK$${fmt(x.price,3)}</td><td class="up">+${fmt(x.momentum_pct,1)}%</td><td>${x.lot_size}</td><td>${x.affordable?x.suggested_qty:'买不起一手'}</td><td>${x.affordable?'HK$'+fmt(x.estimated_amount,0):'—'}</td></tr>`).join('')}</tbody></table>`;
-      actionPill('br_action',br.action); $('br_date').textContent=br.as_of; $('br_market').textContent=br.market_eligible?'通过':'不通过';
-      $('br_test').textContent='+'+fmt(br.validation.return_pct,2)+'% · PF '+fmt(br.validation.profit_factor,2)+' · '+br.validation.trades+'笔';
-      $('br_dd').textContent=fmt(br.validation.max_drawdown_pct,2)+'%'; $('br_reason').textContent=br.reason;
-      $('br_table').innerHTML=!(br.candidates||[]).length?'当前没有新突破候选。':`<table><thead><tr><th>股票</th><th>收盘价</th><th>量比</th><th>建议股数</th><th>预计金额</th></tr></thead><tbody>${br.candidates.map(x=>`<tr><td>${x.code} ${x.name}</td><td>HK$${fmt(x.price,3)}</td><td>${fmt(x.volume_ratio,2)}</td><td>${x.suggested_qty||'买不起一手'}</td><td>${x.suggested_qty?'HK$'+fmt(x.estimated_amount,0):'—'}</td></tr>`).join('')}</tbody></table>`;
-    } catch(e) { $('mode_alert').className='alert danger'; $('mode_alert').textContent='策略中心请求失败：'+e; }
-    finally { hideLoading(); }
+  function renderCenter(){
+    const d=CENTER_DATA, u=d.universe||{}, s=u.stats||{}, xm=d.strategies[0],rot=d.strategies[1],br=d.strategies[2];
+    $('generated').textContent='生成于 '+d.generated_at.replace('T',' ')+' · 数据日期 '+(rot.as_of||'暂无');
+    $('headline_action').textContent=d.portfolio?.gate&&!d.portfolio.gate.allow_new_risk?'降低风险':(d.workflow.next_action.indexOf('没有合格')>=0?'保持现金':'存在待执行动作');
+    $('headline_reason').textContent=d.workflow.next_action;
+    const mc=d.market_context||{};$('market_hsi').textContent=`${fmt(rot.market.hsi_close,0)} ${signed(mc.hsi_change_pct,2,'%')}`;$('market_hsi').className=marketClass(mc.hsi_change_pct); $('market_gate').textContent=`${mc.regime||'未知'} · ${rot.market.eligible?'高于MA120':'低于MA120，禁开新仓'}`;
+    $('market_total').textContent=(s.market_total||0).toLocaleString(); $('market_passed').textContent=s.passed_initial_filters||0; $('market_selected').textContent=u.count||0;
+    const candidateCount=new Set([...(rot.candidates||[]).map(x=>x.code),...(br.candidates||[]).map(x=>x.code)]).size;
+    $('market_candidates').textContent=candidateCount;
+    $('refresh_errors').innerHTML=(d.refresh_errors||[]).length?'<div class="terminal-warning">部分行情更新失败：'+d.refresh_errors.map(esc).join('；')+'</div>':'';
+    const basis=(u.basis||[]).join('；'), filters=(u.daily_filters||[]).join(' → ');
+    $('method_text').innerHTML='<b>全市场初筛</b><p>'+esc(basis)+'</p><b>策略二筛</b><p>'+esc(filters)+'</p><b>限制</b><p>'+esc(u.limitation||'暂无')+'</p>';
+    renderSectorFilters(); renderStocks(); renderStrategy('xm',xm,`现价 ${fmt(xm.price,2)} · MA20 ${fmt(xm.ma20,2)} · MA60 ${fmt(xm.ma60,2)}`);
+    renderInvestorOverview();
+    renderActionQueue(); renderHoldings(); renderTradePlans(); renderForwardScores();
+    renderStrategy('rot',rot,`恒指 ${fmt(rot.market.hsi_close,0)} / MA120 ${fmt(rot.market.hsi_ma120,0)} · 候选 ${(rot.candidates||[]).length}`);
+    renderStrategy('br',br,`市场门控 ${br.market_eligible?'通过':'不通过'} · 候选 ${(br.candidates||[]).length}`);
+    $('workflow_steps').innerHTML=(d.workflow.steps||[]).map((x,i)=>`<div><b>${i+1}. ${esc(x.name)}</b><span>${esc(x.rule)}</span></div>`).join('');
   }
+  function renderStrategy(prefix,x,metrics){
+    const a=actionLabel[x.action]||x.action; $(prefix+'_action').textContent=a; $(prefix+'_action').className='action '+String(x.action||'').toLowerCase();
+    $(prefix+'_metrics').textContent=metrics; $(prefix+'_reason').textContent=x.reason||'暂无';
+  }
+  function renderInvestorOverview(){
+    const valid=STOCKS.filter(x=>x.change_rate!=null&&!isNaN(x.change_rate));
+    const up=valid.filter(x=>x.change_rate>0).length, down=valid.filter(x=>x.change_rate<0).length, flat=valid.length-up-down;
+    const ordered=valid.map(x=>Number(x.change_rate)).sort((a,b)=>a-b);
+    const median=ordered.length?(ordered.length%2?ordered[(ordered.length-1)/2]:(ordered[ordered.length/2-1]+ordered[ordered.length/2])/2):null;
+    $('breadth_up').textContent=up; $('breadth_down').textContent=down; $('breadth_flat').textContent=flat;
+    $('breadth_median').textContent=signed(median,2,'%'); $('breadth_median').className=marketClass(median);
+    const total=valid.length||1; $('breadth_up_bar').style.width=(up/total*100)+'%'; $('breadth_flat_bar').style.width=(flat/total*100)+'%'; $('breadth_down_bar').style.width=(down/total*100)+'%';
+    const sectors={}; valid.forEach(x=>(sectors[x.sector]||(sectors[x.sector]=[])).push(Number(x.change_rate)));
+    $('sector_strength').innerHTML=Object.entries(sectors).map(([name,vals])=>({name,value:vals.reduce((a,b)=>a+b,0)/vals.length,count:vals.length})).sort((a,b)=>b.value-a.value).map(x=>`<button onclick="selectSector('${esc(x.name)}')"><span>${esc(x.name)} <small>${x.count}只</small></span><b class="${marketClass(x.value)}">${signed(x.value,2,'%')}</b></button>`).join('')||'<span class="muted">暂无分类行情</span>';
+    const p=CENTER_DATA.portfolio||{};
+    $('portfolio_count').textContent=p.available?`${p.count||0}项持仓`:'读取失败';
+    $('portfolio_summary').innerHTML=p.available?`<div><span>持仓市值</span><b>HK$ ${money(p.market_value)}</b></div><div><span>今日盈亏</span><b class="${marketClass(p.today_pl)}">HK$ ${signed(p.today_pl,0)}</b></div><div><span>累计盈亏</span><b class="${marketClass(p.total_pl)}">HK$ ${signed(p.total_pl,0)}</b></div><a href="risk.html">查看持仓风险</a>`:`<span class="down">${esc(p.error||'持仓数据不可用')}</span>`;
+  }
+  function renderHoldings(){
+    const p=CENTER_DATA.portfolio||{}, rows=p.underlyings||[];
+    $('holding_rows').innerHTML=!p.available?`<tr><td colspan="8" class="table-empty error">${esc(p.error||'持仓数据不可用')}</td></tr>`:!rows.length?'<tr><td colspan="8" class="table-empty">当前没有持仓</td></tr>':rows.map(x=>`<tr onclick="openAnalyze('${x.code}')"><td><b>${esc(x.name)}</b><small>${esc(x.code)}</small></td><td>${x.direct_market_value?`正股 ${money(x.direct_market_value)}`:'无正股'}${x.derivatives.length?` · ${x.derivatives.length}项期权`:''}${x.derivatives.length&&x.delta_exposure_available?` · Delta敞口 ${money(x.delta_notional_hkd)}`:x.derivatives.length?' · Delta缺失':''}</td><td>HK$ ${money(x.market_value)}</td><td class="${x.weight_pct>=30?'risk-high':''}">${x.weight_pct==null?'暂无':fmt(x.weight_pct,1)+'%'}</td><td class="${marketClass(x.today_pl)}">HK$ ${signed(x.today_pl,0)}</td><td class="${marketClass(x.total_pl)}">HK$ ${signed(x.total_pl,0)}</td><td><span class="risk-label ${['集中度过高','杠杆产品'].includes(x.risk)?'high':x.risk==='仓位偏高'?'medium':'normal'}">${esc(x.risk)}</span></td><td class="go">分析</td></tr>`).join('');
+    const allocation=p.cash_ratio==null?'现金比例不可用':`现金 ${fmt(p.cash_ratio,1)}%`;
+    const gate=p.gate||{}, cap=gate.allow_new_risk?'账户风险门控通过，可继续评估策略机会':`禁止新增风险：${(gate.reasons||[]).join('；')}`;
+    $('portfolio_limit').className='portfolio-limit '+(gate.allow_new_risk?'gate-pass':'gate-block');
+    const replacement=CENTER_DATA.replacement_decision||{};
+    $('portfolio_limit').innerHTML=`<b>${gate.allow_new_risk?'组合门控通过':'组合门控阻止'}</b><span>${allocation} · ${esc(cap)} · 换仓判断：${esc(replacement.decision||'暂无')}</span><small>${esc(replacement.reason||p.risk_note||'')}</small>`;
+  }
+  function renderActionQueue(){
+    const levels={MUST:'必须处理',SHOULD:'建议处理',OPPORTUNITY:'交易机会',NONE:'无需操作'};
+    $('action_queue').innerHTML=(CENTER_DATA.action_queue||[]).map(x=>`<button class="queue-item ${String(x.level).toLowerCase()}" ${x.code?`onclick="openAnalyze('${x.code}')"`:''}><span class="queue-level">${levels[x.level]||x.level}</span><span class="queue-name"><b>${esc(x.action)} · ${esc(x.name)}</b><small>${esc(x.reason||'')}</small></span><span class="queue-deadline">${esc(x.deadline||'')}</span>${x.code?'<span class="go">分析</span>':''}</button>`).join('');
+  }
+  function renderTradePlans(){
+    const strategies=CENTER_DATA.strategies||[], plans=[];
+    strategies.forEach(s=>{if(s.trade_plan&&['BUY','SELL','HOLD'].includes(s.action))plans.push({strategy:s.name,code:s.id==='xiaomi_trend_v1'?'HK.01810':'',name:s.id==='xiaomi_trend_v1'?'小米集团-W':s.name,action:s.action,reason:s.reason,plan:s.trade_plan});if(['BUY','REVIEW'].includes(s.action))(s.proposed||s.candidates||[]).forEach(x=>{if(x.trade_plan)plans.push({strategy:s.name,code:x.code,name:x.name,action:s.action,reason:s.reason,plan:x.trade_plan})})});
+    $('trade_plan_rows').innerHTML=plans.length?plans.map(x=>`<div class="trade-plan"><div><b>${esc(x.name)}</b><small>${esc(x.code)} · ${esc(x.strategy)}</small></div><span class="action ${String(x.action).toLowerCase()}">${actionLabel[x.action]||x.action}</span><dl><div><dt>触发价</dt><dd>${fmt(x.plan.trigger,3)}</dd></div><div><dt>止损价</dt><dd>${fmt(x.plan.stop,3)}</dd></div><div><dt>目标价</dt><dd>${fmt(x.plan.target,3)}</dd></div><div><dt>风险收益</dt><dd>${x.plan.risk_reward==null?'暂无':fmt(x.plan.risk_reward,1)+':1'}</dd></div></dl><p>${esc(x.reason||'')} · ${esc(x.plan.validity||'')}</p></div>`).join(''):'<div class="no-plan"><b>当前没有可执行交易</b><span>市场门控或策略条件未通过。保持现金不是遗漏，而是当前策略动作。</span></div>';
+  }
+  function renderForwardScores(){
+    const f=CENTER_DATA.forward_scoreboard||{}, rows=f.strategy_stats||[];
+    $('forward_scores').innerHTML=rows.length?rows.map(x=>`<div class="forward-score"><div><b>${esc(x.strategy_name)}</b><small>${x.mature_samples}个到期样本</small></div><span>胜率 <b>${x.win_rate_pct==null?'收集中':fmt(x.win_rate_pct,1)+'%'}</b></span><span>平均收益 <b class="${marketClass(x.average_return_pct)}">${signed(x.average_return_pct,2,'%')}</b></span><span class="validation-status ${String(x.status).toLowerCase()}">${x.status==='ACTIVE'?'有效':x.status==='REVIEW_REQUIRED'?'暂停复核':'收集中'}</span></div>`).join(''):`<div class="no-plan"><b>前向样本仍在积累</b><span>${esc(f.note||'信号将在第5和第20个交易日自动评价')}</span></div>`;
+  }
+  function selectSector(name){
+    const btn=[...document.querySelectorAll('.filter-item')].find(x=>x.dataset.filter==='sector'&&x.dataset.value===name); if(btn)btn.click();
+  }
+  function renderSectorFilters(){
+    const counts={}; STOCKS.forEach(x=>counts[x.sector]=(counts[x.sector]||0)+1); $('count_all').textContent=STOCKS.length;
+    $('sector_filters').innerHTML=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<button class="filter-item" data-filter="sector" data-value="${esc(k)}">${esc(k)} <b>${v}</b></button>`).join('');
+    document.querySelectorAll('.filter-item').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.filter-item').forEach(x=>x.classList.remove('active'));btn.classList.add('active');ACTIVE={type:btn.dataset.filter,value:btn.dataset.value};renderStocks()});
+  }
+  function renderStocks(){
+    const q=($('stock_search').value||'').trim().toLowerCase();
+    const rows=STOCKS.filter(x=>(ACTIVE.value==='全部'||x[ACTIVE.type]===ACTIVE.value)&&(!q||(x.name+x.code).toLowerCase().includes(q))).slice();
+    if(SORT==='change_desc')rows.sort((a,b)=>(b.change_rate??-Infinity)-(a.change_rate??-Infinity));
+    if(SORT==='change_asc')rows.sort((a,b)=>(a.change_rate??Infinity)-(b.change_rate??Infinity));
+    if(SORT==='turnover')rows.sort((a,b)=>(b.turnover??0)-(a.turnover??0));
+    if(SORT==='rank')rows.sort((a,b)=>a.rank-b.rank);
+    $('result_count').textContent=`显示 ${rows.length} / ${STOCKS.length}`;
+    $('stock_rows').innerHTML=rows.length?rows.map(x=>`<tr onclick="openAnalyze('${x.code}')">
+      <td class="rank">${x.rank}</td><td><b>${esc(x.name)}</b><small>${esc(x.code)}</small></td><td>${esc(x.sector)}</td>
+      <td class="price ${marketClass(x.change_rate)}">${x.price==null?'暂无':fmt(x.price,3)}</td>
+      <td class="market-num ${marketClass(x.change_value)}">${signed(x.change_value,3)}</td>
+      <td class="market-num ${marketClass(x.change_rate)}">${signed(x.change_rate,2,'%')}</td>
+      <td>${money(x.turnover)}</td><td>${x.amplitude==null?'暂无':fmt(x.amplitude,2)+'%'}</td><td>${x.spread_bps==null?'暂无':fmt(x.spread_bps,1)+' bps'}</td>
+      <td>${x.liquidity_score==null?'暂无':fmt(x.liquidity_score,2)}</td><td><span class="stage ${x.stage==='动态池'?'base':'hot'}">${esc(x.stage)}</span></td><td class="go">分析</td></tr>`).join(''):'<tr><td colspan="12" class="table-empty">当前分类没有股票</td></tr>';
+  }
+  const marketClass=v=>v>0?'up':v<0?'down':'flat';
+  const signed=(v,d=2,suffix='')=>v==null||isNaN(v)?'暂无':`${v>0?'+':''}${Number(v).toFixed(d)}${suffix}`;
+  document.querySelectorAll('.sort-tab').forEach(btn=>btn.onclick=()=>{SORT=btn.dataset.sort;document.querySelectorAll('.sort-tab').forEach(x=>x.classList.toggle('active',x===btn));renderStocks()});
   loadCenter(false);
   </script>
 </body>

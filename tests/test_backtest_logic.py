@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from app.modules import bt_backtest
+from app.modules import backtest, bt_backtest
 
 
 def test_stats_reports_worst_trade_excursion_not_average_as_maximum():
@@ -106,3 +106,7 @@ def test_single_stock_report_does_not_replace_broad_evidence(monkeypatch):
     bt_backtest.cached_report(["HK.00700"], {}, object(), 250, 10, "HK.800700")
 
     assert bt_backtest.get_cached_evidence_report() is broad
+
+
+def test_backtest_compatibility_module_exports_evidence_report():
+    assert backtest.get_cached_evidence_report is bt_backtest.get_cached_evidence_report

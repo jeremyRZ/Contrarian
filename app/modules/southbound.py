@@ -12,9 +12,42 @@ from __future__ import annotations
 import json
 import urllib.parse
 import urllib.request
+from pathlib import Path
 from typing import Optional, Tuple
 
 from ..cache import cached
+
+ROOT = Path(__file__).resolve().parents[2]
+CACHE_DIR = ROOT / ".runtime" / "southbound"
+
+
+def _cache_path(hk: str) -> Path:
+    return CACHE_DIR / f"HK_{hk}.json"
+
+
+def _save_holding_cache(hk: str, data: dict) -> None:
+    """持久化最后一次成功结果，供网络源被系统策略阻断时降级。"""
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        path = _cache_path(hk)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        pass
+
+
+def _load_holding_cache(hk: str) -> Optional[dict]:
+    try:
+        data = json.loads(_cache_path(hk).read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return None
+        data["source"] = "eastmoney-hsgt-cache"
+        data["stale"] = True
+        data["source_note"] = f"东方财富当前不可达，展示 {data.get('date') or '最近一次'} 的缓存数据"
+        return data
+    except (OSError, ValueError, TypeError):
+        return None
 
 
 def _num(v):
@@ -172,7 +205,7 @@ def holding(code: str) -> Tuple[Optional[dict], Optional[str]]:
         if chg_ratio is not None and chg_ratio <= -5.0:
             risk.append(f"单日南向骤减{abs(chg_ratio):.1f}%")
 
-        return {
+        result = {
             "code": code,
             "hk_code": hk,
             "name": g("SECURITY_NAME"),
@@ -191,6 +224,12 @@ def holding(code: str) -> Tuple[Optional[dict], Optional[str]]:
             "contiguous_down_days": down,
             "risk": risk,
             "source": "eastmoney-hsgt",
-        }, None
+            "stale": False,
+        }
+        _save_holding_cache(hk, result)
+        return result, None
     except Exception as ex:  # noqa: BLE001
-        return None, f"港股通持股获取失败: {ex}"
+        fallback = _load_holding_cache(hk)
+        if fallback:
+            return fallback, None
+        return None, "南向持股数据源暂不可达，且暂无历史缓存"

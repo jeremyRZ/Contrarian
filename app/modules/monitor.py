@@ -22,6 +22,25 @@ TP_LADDER = [
     (40, "减仓1/4，启用移动止盈(回撤-12%清仓)"),
 ]
 
+# 富途港股期权代码使用英文标的缩写，持仓接口本身不返回正股代码。
+# 在数据层统一维护映射，分析页与风险页无需各自猜测。
+DERIVATIVE_UNDERLYINGS = {
+    "MIU": {"code": "HK.01810", "name": "小米集团-W"},
+    "SMC": {"code": "HK.00981", "name": "中芯国际"},
+}
+
+
+def derivative_underlying(code: str, name: str = "") -> dict | None:
+    """返回受支持的港股期权或窝轮对应正股。"""
+    symbol = str(code or "").upper().removeprefix("HK.")
+    for prefix, stock in DERIVATIVE_UNDERLYINGS.items():
+        if symbol.startswith(prefix):
+            return dict(stock)
+    for keyword, prefix in (("小米", "MIU"), ("中芯", "SMC")):
+        if keyword in str(name or ""):
+            return dict(DERIVATIVE_UNDERLYINGS[prefix])
+    return None
+
 
 def _classify(name: str, code: str) -> str:
     n = (name or "")

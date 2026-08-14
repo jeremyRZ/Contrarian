@@ -7,6 +7,10 @@
 const $ = (id) => document.getElementById(id);
 const cls = (v) => (v >= 0) ? 'up' : 'down';
 const pill = (s, clsname) => `<span class="pill ${clsname}">${s}</span>`;
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
 
 // 数字格式化：null/NaN/Inf → '—'，否则保留 d 位小数（消除浮点长尾如 0.011680000000000001）
 function fmt(v, d = 2) {

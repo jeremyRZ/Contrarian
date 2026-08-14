@@ -59,7 +59,11 @@ def valuation_signal(client, code: str) -> Tuple[Optional[dict], Optional[str]]:
     score = 0.0
     label = None
     low = False
-    if pe_pct is not None:
+    invalid_valuation = False
+    if pe_cur is not None and pe_cur <= 0:
+        score, label, low = -1.0, "PE为负（亏损状态，不可按低估处理）", False
+        invalid_valuation = True
+    elif pe_pct is not None:
         if pe_pct <= 20:
             score, label, low = 2.0, "PE 历史分位极低（深度低估）", True
         elif pe_pct <= 40:
@@ -71,7 +75,12 @@ def valuation_signal(client, code: str) -> Tuple[Optional[dict], Optional[str]]:
         else:
             score, label, low = -0.5, "PE 历史分位偏高（非错杀区）", False
     # 2) PB 历史分位辅助微调（仅额外加分，避免重复惩罚）
-    if pb_pct is not None and pb_pct <= 20:
+    if pb_cur is not None and pb_cur <= 0:
+        score -= 1.0
+        label = (label + "；" if label else "") + "PB为负（净资产为负）"
+        low = False
+        invalid_valuation = True
+    elif pb_pct is not None and pb_pct <= 20:
         score += 0.3
         if label is None:
             label = "PB 历史分位偏低"
@@ -81,7 +90,7 @@ def valuation_signal(client, code: str) -> Tuple[Optional[dict], Optional[str]]:
         pt = int(plate.get("plate_stock_item_count") or 0)
     except (ValueError, TypeError):
         pr, pt = 0, 0
-    if pr and pt and pr <= max(1, pt * 0.33):
+    if not invalid_valuation and pr and pt and pr <= max(1, pt * 0.33):
         score += 0.5
         if label is None:
             label = "行业内估值偏低"

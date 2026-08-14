@@ -1,6 +1,8 @@
 import inspect
 import asyncio
 
+import pandas as pd
+
 from app import api
 
 
@@ -39,3 +41,78 @@ def test_app_lifespan_starts_and_stops_both_schedulers(monkeypatch):
 
     asyncio.run(exercise_lifespan())
     assert calls == ["daily-start", "intraday-start", "intraday-stop", "daily-stop"]
+
+
+def test_holdings_include_option_underlying_for_quick_analysis(monkeypatch):
+    class FakeClient:
+        def positions(self):
+            return pd.DataFrame([
+                {"code": "HK.MIU260828C34000", "stock_name": "小米 260828 34.00 购", "qty": 2},
+                {"code": "HK.08305", "stock_name": "圣唐控股", "qty": 50000},
+            ]), None
+
+    monkeypatch.setattr(api, "client", lambda: FakeClient())
+    monkeypatch.setattr(api.filters, "is_tradable", lambda client, code: (True, None))
+
+    result = api.get_holdings()
+    stocks = result["data"]["stocks"]
+    positions = result["data"]["positions"]
+
+    assert {item["code"] for item in stocks} == {"HK.01810", "HK.08305"}
+    xiaomi = next(item for item in stocks if item["code"] == "HK.01810")
+    assert xiaomi["source"] == "期权正股"
+    assert xiaomi["derivatives"] == ["HK.MIU260828C34000"]
+    option = next(item for item in positions if item["code"] == "HK.MIU260828C34000")
+    assert option["analysis_code"] == "HK.01810"
+    assert option["qty"] == 2.0
+
+
+def test_holdings_do_not_hide_owned_stock_because_valuation_is_missing(monkeypatch):
+    class FakeClient:
+        def positions(self):
+            return pd.DataFrame([
+                {"code": "HK.02706", "stock_name": "海致科技集团", "qty": 400},
+            ]), None
+
+    monkeypatch.setattr(api, "client", lambda: FakeClient())
+    monkeypatch.setattr(api.filters, "is_tradable", lambda client, code: (False, "无估值"))
+
+    result = api.get_holdings()
+
+    assert [item["code"] for item in result["data"]["stocks"]] == ["HK.02706"]
+
+
+def test_holdings_consolidate_options_and_hide_excluded_delisted_stock(monkeypatch):
+    class FakeClient:
+        def positions(self):
+            return pd.DataFrame([
+                {"code": "HK.MIU260828C34000", "stock_name": "小米 260828 34.00 购", "qty": 32},
+                {"code": "HK.MIU260828C32000", "stock_name": "小米 260828 32.00 购", "qty": 17},
+                {"code": "HK.07709", "stock_name": "南方东英SK海力士每日杠杆最多 (2x) 产品", "qty": 200},
+                {"code": "HK.44165", "stock_name": "中国绿宝", "qty": 50000},
+            ]), None
+
+    monkeypatch.setattr(api, "client", lambda: FakeClient())
+    monkeypatch.setitem(api.CONFIG, "monitor", {"holdings_exclude": ["HK.44165"]})
+
+    stocks = api.get_holdings()["data"]["stocks"]
+
+    assert [item["code"] for item in stocks] == ["HK.01810", "HK.07709"]
+    assert stocks[0]["derivatives"] == ["HK.MIU260828C32000", "HK.MIU260828C34000"]
+
+
+def test_analysis_evidence_blocks_decision_without_financial_and_consensus_data():
+    result = api._analysis_evidence(
+        analysis={"price": 10, "technical": {"ma20": 9}},
+        southbound_data=None,
+        buyback_data={"buybacks": []},
+        news_data={"news": [{"title": "公司公告"}]},
+        capital_flow_data={"flow": {"summary": {"main": 1}}},
+        fundamentals_data={"valuation": {"pe": {"current": 10}}},
+    )
+
+    assert result["readiness"] == "INSUFFICIENT"
+    assert "财务趋势" in result["missing"]
+    assert "分析师一致预期" in result["missing"]
+    assert "分析师评级" in result["missing"]
+    assert "券商研报" not in result["missing"]  # unsupported coverage is disclosed, not mislabeled missing

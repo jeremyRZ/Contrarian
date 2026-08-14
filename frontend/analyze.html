@@ -28,14 +28,11 @@
       <div class="toolbar-row">
         <input id="an_code" placeholder="HK.00700" value="HK.00700" style="width:160px" />
         <button class="act" onclick="runAnalyze()">分析</button>
-        <button class="icon-btn" id="cf_settings_btn" title="我的持仓设置" onclick="openWatchSettings()">⚙</button>
         <div class="toolbar-sep"></div>
-        <button class="toolbar-btn" id="an_watch_btn" onclick="addToWatch()" title="加入本地观察池">⭐ 观察池</button>
-        <button class="toolbar-btn" id="an_alert_btn" onclick="openAlertDialog()" title="设置价格预警">🔔 预警</button>
-        <button class="toolbar-btn" id="an_fw_btn" onclick="toggleFutuWatch()" title="加入/移出富途自选">☆ 加自选</button>
+        <button class="toolbar-btn" id="an_alert_btn" onclick="openAlertDialog()" title="设置盘中价格提醒">🔔 设置价格提醒</button>
         <span id="an_op_hint" class="muted" style="font-size:12px"></span>
       </div>
-      <div id="cf_watch" class="watch-bar muted" style="margin-top:8px">读取我的正股持仓中…</div>
+      <div id="cf_watch" class="watch-bar muted" style="margin-top:8px">读取持仓标的中…</div>
       <div id="an_result" class="muted" style="margin-top:12px">输入代码后点击「分析」，或从错杀猎手列表点击股票</div>
     </section>
 
@@ -45,6 +42,14 @@
         <div id="dec_badge" class="pill warn">—</div>
       </div>
       <div id="an_dec" class="muted">分析后显示结论、主要风险与仓位建议</div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <div class="card-title">证据完整度 <span class="sub">先判断数据是否足够，再看结论</span></div>
+        <div id="ev_badge" class="pill warn">—</div>
+      </div>
+      <div id="an_evidence" class="muted">分析后显示有效证据与缺失项</div>
     </section>
 
     <section class="card">
@@ -73,23 +78,12 @@
         <summary><span>基本面</span><small>估值分位与机构增减持</small></summary>
         <div id="an_fund" class="evidence-body muted">分析后加载</div>
       </details>
+      <details class="evidence-item" open>
+        <summary><span>财务与机构观点</span><small>财务趋势、目标价、预期覆盖与公司公告</small></summary>
+        <div id="an_research" class="evidence-body muted">分析后加载</div>
+      </details>
     </div>
   </main>
-
-  <!-- 我的持仓设置弹窗 -->
-  <div id="cf_modal" class="modal-mask" style="display:none">
-    <div class="modal">
-      <div class="modal-head"><span>我的持仓（正股）</span><button class="icon-btn" onclick="closeWatchSettings()">✕</button></div>
-      <div class="modal-body">
-        <div class="muted" style="margin-bottom:8px">勾选要在单票页顶部显示为快捷芯片的股票，点击芯片即可直接分析。默认显示全部正股。</div>
-        <div id="cf_modal_list" class="watch-opts"></div>
-      </div>
-      <div class="modal-foot">
-        <button class="ghost" onclick="refreshHoldings()">刷新持仓</button>
-        <button class="act" onclick="saveWatchSettings()">保存</button>
-      </div>
-    </div>
-  </div>
 
   <!-- 设置预警弹窗 -->
   <div id="cf_alert_modal" class="modal-mask" style="display:none">
@@ -119,6 +113,7 @@ async function runAnalyze() {
   const el = $('an_result');
   if (!j.ok) { el.innerHTML = '<div class="err">'+j.error+'</div>'; return; }
   const d = j.data.analysis; const t = d.technical || {};
+  renderEvidence(j.data.evidence || {});
   CF_CUR = { code, name: d.name, price: d.price };
   el.innerHTML = `
   <div class="grid2"><div>
@@ -137,7 +132,6 @@ async function runAnalyze() {
   </div></div>`;
   renderReverseBreakdown(d.reverse);
   renderExtras(j.data.extras || {});
-  refreshFutuWatchState();   // 同步富途自选状态（★/☆）
   } finally { hideLoading(); }
 }
 
@@ -148,6 +142,7 @@ function renderExtras(extras) {
   renderNews(extras.news || {ok:false,error:'无新闻数据'});
   renderCapitalFlow(extras.capital_flow || {ok:false,error:'无资金流数据'});
   renderFundamentals(extras.fundamentals || {ok:false,error:'无基本面数据'});
+  renderResearch(extras.research || {ok:false,error:'无投研数据'});
   renderDecision(extras.decision || {ok:false,error:'无决策数据'});
 }
 
@@ -175,7 +170,11 @@ function renderSouthbound(j) {
     if (hd.risk && hd.risk.length) {
       h += '<div class="kv"><span>反向风险</span><span>'+hd.risk.map(r=>'<span class="pill risk">'+esc(r)+'</span>').join(' ')+'</span></div>';
     }
-    h += '<div class="muted" style="margin-top:6px">来源：东方财富沪深港通持股明细（真实）</div>';
+    if (hd.stale) {
+      h += '<div class="muted" style="margin-top:6px">⚠ '+esc(hd.source_note||'当前展示最近一次缓存数据')+'</div>';
+    } else {
+      h += '<div class="muted" style="margin-top:6px">来源：东方财富沪深港通持股明细（实时获取）</div>';
+    }
   } else if (d.holding_error) {
     h += '<div class="muted">个股持股：'+esc(d.holding_error)+'</div>';
   }
@@ -461,23 +460,12 @@ function renderReverseBreakdown(rev) {
   const p = new URLSearchParams(location.search);
   const code = p.get('code');
   loadHoldings();
-  refreshFutuWatchState();
   if (code) { $('an_code').value = code; runAnalyze(); }
 })();
 
-/* ===== 我的持仓（正股）快捷选择 ===== */
-let CF_HOLDINGS = [];          // 全部正股持仓 [{code,name,type}]
-let CF_WATCH = loadWatchSel(); // 用户勾选的 code 列表（null=全部）
+/* ===== 我的持仓及衍生品正股快捷选择 ===== */
+let CF_HOLDINGS = [];          // [{code,name,type,source,derivatives}]
 let CF_CUR = { code: '', name: '', price: null };  // 当前分析标的（供预警预填）
-
-function loadWatchSel() {
-  try { return JSON.parse(localStorage.getItem('cf_analyze_watch') || 'null'); }
-  catch (e) { return null; }
-}
-function saveWatchSel(arr) {
-  if (arr == null) localStorage.removeItem('cf_analyze_watch');
-  else localStorage.setItem('cf_analyze_watch', JSON.stringify(arr));
-}
 
 async function loadHoldings() {
   try {
@@ -487,74 +475,59 @@ async function loadHoldings() {
   renderWatch();
 }
 
+function renderResearch(j) {
+  const el = $('an_research');
+  if (!j.ok) { el.innerHTML = '<span class="muted">'+esc(j.error||'投研数据查询失败')+'</span>'; return; }
+  const d = j.data || {}, money = v => v==null?'—':fmtHKD(v);
+  let h = '';
+  const f = d.finance || {};
+  if (f.status === 'available' && (f.periods||[]).length) {
+    h += '<div style="font-weight:600;margin-bottom:6px">财务趋势</div>';
+    h += (f.periods||[]).map(x=>'<div class="kv"><span>'+esc(x.date||'')+' '+esc(x.report_type||'')+'</span><span>营收 '+money(x.revenue)+'（同比 '+fmt(x.revenue_yoy,1)+'%） · 归母净利 '+money(x.net_profit)+' · 毛利率 '+fmt(x.gross_margin,1)+'%</span></div>').join('');
+  } else h += '<div class="muted">财务：'+esc(f.error||'无覆盖')+'</div>';
+  const r = d.rating || {}, rs = r.summary || {};
+  if (r.status === 'available') h += '<div class="kv" style="margin-top:10px"><span>分析师评级</span><span class="pill good">'+(rs.forecastInstitutions||0)+' 家机构 · 买入 '+(rs.ratingBuyCnt||0)+' · 目标价 '+fmt(rs.targetPriceAvg,2)+' · 现价 '+fmt(rs.currentPrice,2)+'</span></div>';
+  else h += '<div class="muted">分析师评级：'+esc(r.error||'无覆盖')+'</div>';
+  const c = d.consensus || {};
+  h += '<div class="kv"><span>一致预期</span><span class="muted">'+(c.status==='available'?'已获取':esc(c.status==='no_coverage'?'供应商未覆盖该股，不等于查询失败':(c.error||'无覆盖')))+'</span></div>';
+  const br = d.broker_reports || {};
+  h += '<div class="kv"><span>券商研报</span><span class="muted">'+esc(br.error||'无覆盖')+'</span></div>';
+  const ns = d.notices || {};
+  if (ns.status === 'available' && (ns.items||[]).length) h += '<div style="font-weight:600;margin-top:12px">近期公司公告</div>'+(ns.items||[]).slice(0,5).map(x=>'<div class="news-item"><span class="news-title">'+esc(x.title||'')+'</span><div class="news-meta">'+esc(x.time||'')+'</div></div>').join('');
+  el.innerHTML = h;
+}
+
+function renderEvidence(ev) {
+  const el = $('an_evidence');
+  const badge = $('ev_badge');
+  const ready = ev.readiness === 'READY';
+  badge.textContent = ready ? '证据齐备' : '证据不足';
+  badge.className = 'pill ' + (ready ? 'good' : 'risk');
+  const available = (ev.available || []).map(x=>`<span class="pill good">${esc(x)}</span>`).join(' ');
+  const missing = (ev.missing || []).map(x=>`<span class="pill risk">缺 ${esc(x)}</span>`).join(' ');
+  el.innerHTML = `<div class="hint-bar">${esc(ev.message || '—')} · 覆盖 ${ev.coverage_pct || 0}%</div>`+
+    `<div style="margin-top:10px"><b>已有：</b>${available || '无'}</div>`+
+    `<div style="margin-top:8px"><b>缺失：</b>${missing || '无'}</div>`;
+}
+
 function renderWatch() {
   const el = $('cf_watch');
   if (!CF_HOLDINGS.length) {
-    el.innerHTML = '<span class="muted">未读取到正股持仓（富途未连接或无持仓）</span>';
+    el.innerHTML = '<span class="muted">未读取到可分析持仓（富途未连接或无持仓）</span>';
     return;
   }
-  const sel = CF_WATCH || CF_HOLDINGS.map(s => s.code);
   const chips = CF_HOLDINGS
-    .filter(s => sel.includes(s.code))
-    .map(s => `<span class="chip" onclick="pickStock('${esc(s.code)}')">${esc(s.name)} <small>${esc(s.code)}</small></span>`)
+    .map(s => {
+      const merged = (s.derivatives && s.derivatives.length) ? ` · ${s.derivatives.length}张期权合并` : '';
+      return `<span class="chip" onclick="pickStock('${esc(s.code)}')">${esc(s.name)} <small>${esc(s.code)} · ${esc(s.source || '持仓')}${merged}</small></span>`;
+    })
     .join('');
-  el.innerHTML = chips || '<span class="muted">未选择任何持仓（点 ⚙ 设置）</span>';
+  el.innerHTML = chips;
 }
 
 function pickStock(code) {
   $('an_code').value = code;
   runAnalyze();
-}
-
-function openWatchSettings() {
-  buildWatchModal();
-  $('cf_modal').style.display = 'flex';
-}
-function closeWatchSettings() {
-  $('cf_modal').style.display = 'none';
-}
-function buildWatchModal() {
-  const list = $('cf_modal_list');
-  const sel = CF_WATCH || CF_HOLDINGS.map(s => s.code);
-  list.innerHTML = CF_HOLDINGS.length
-    ? CF_HOLDINGS.map(s =>
-        `<label class="wopt"><input type="checkbox" value="${esc(s.code)}" ${sel.includes(s.code) ? 'checked' : ''}/> ${esc(s.name)} <small>${esc(s.code)}</small></label>`
-      ).join('')
-    : '<span class="muted">无正股持仓</span>';
-}
-function saveWatchSettings() {
-  const checks = [...document.querySelectorAll('#cf_modal_list input:checked')].map(i => i.value);
-  CF_WATCH = checks.length ? checks : null;
-  saveWatchSel(CF_WATCH);
-  closeWatchSettings();
-  renderWatch();
-}
-async function refreshHoldings() {
-  const btn = document.querySelector('#cf_modal .ghost');
-  const old = btn ? btn.textContent : '';
-  if (btn) btn.textContent = '刷新中…';
-  await loadHoldings();
-  buildWatchModal();
-  if (btn) btn.textContent = old;
-}
-
-/* ===== 加入观察池 / 设置预警（分析完直接落地操作） ===== */
-async function addToWatch() {
-  const code = $('an_code').value.trim();
-  if (!code) return;
-  const hint = $('an_op_hint');
-  hint.textContent = '保存中…';
-  try {
-    const r = await fetch('/watchlist', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, name: CF_CUR.name || code }),
-    });
-    const j = await r.json();
-    hint.textContent = (j.ok) ? '✓ 已加入观察池' : ('✗ ' + (j.error || '失败'));
-  } catch (e) {
-    hint.textContent = '✗ 网络错误';
-  }
-  setTimeout(() => { hint.textContent = ''; }, 2500);
 }
 
 function openAlertDialog() {
@@ -601,58 +574,6 @@ async function submitAlert() {
   setTimeout(() => { hint.textContent = ''; }, 2500);
 }
 
-/* ===== 富途自选股（增删开关） ===== */
-let FW_IN = false;
-async function refreshFutuWatchState() {
-  const code = $('an_code').value.trim();
-  const btn = $('an_fw_btn');
-  if (!btn || !code) return;
-  try {
-    const r = await fetch('/futu-watchlist?_=' + Date.now());
-    const j = await r.json();
-    if (!j.ok) { FW_IN = false; setFwBtn(false); return; }
-    const d = j.data || {};
-    const stocks = d.stocks || [];
-    FW_IN = stocks.some(s => s.code === code);
-    setFwBtn(FW_IN, d.group);
-  } catch (e) {
-    FW_IN = false; setFwBtn(false);
-  }
-}
-function setFwBtn(inGroup, group) {
-  const btn = $('an_fw_btn');
-  if (!btn) return;
-  if (inGroup) {
-    btn.textContent = '★ 已自选';
-    btn.title = '点击移出富途自选' + (group ? '（' + group + '）' : '');
-  } else {
-    btn.textContent = '☆ 加自选';
-    btn.title = '点击加入富途自选' + (group ? '（' + group + '）' : '');
-  }
-}
-async function toggleFutuWatch() {
-  const code = $('an_code').value.trim();
-  if (!code) return;
-  const hint = $('an_op_hint');
-  hint.textContent = '处理中…';
-  const action = FW_IN ? 'remove' : 'add';
-  try {
-    const r = await fetch('/futu-watchlist', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, name: (typeof CF_CUR !== 'undefined' && CF_CUR && CF_CUR.name) || code, action }),
-    });
-    const j = await r.json();
-    if (j.ok) {
-      hint.textContent = (action === 'add') ? '✓ 已加入富途自选' : '✓ 已移出富途自选';
-    } else {
-      hint.textContent = '✗ ' + (j.error || '失败');
-    }
-    await refreshFutuWatchState();
-  } catch (e) {
-    hint.textContent = '✗ 网络错误';
-  }
-  setTimeout(() => { hint.textContent = ''; }, 2500);
-}
 </script>
 </body>
 </html>

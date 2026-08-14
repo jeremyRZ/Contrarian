@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .futu_client import build_client_from_config, load_config
-from .modules import valuation, screener, monitor, ipo, missed_scan, price_alert, analyze, buybacks, news, southbound, reverse_signals, capital_flow, southbound_risk, fundamentals, filters, dividend, earnings, divergence, daily_report, intraday, backtest, strategy_config, decision, strategy_center, forward_ledger
+from .modules import valuation, screener, monitor, ipo, missed_scan, price_alert, analyze, buybacks, news, southbound, reverse_signals, capital_flow, southbound_risk, fundamentals, filters, dividend, earnings, divergence, daily_report, intraday, backtest, strategy_config, decision, strategy_center, forward_ledger, westock_research
 from .modules.screener import LEADERS
 from . import scheduler, intraday_scheduler, notify
 
@@ -322,7 +322,7 @@ def post_daily_divergence_push():
 
 @app.get("/holdings")
 def get_holdings():
-    """持仓中的正股（排除窝轮/杠杆ETF），供单票页快速选择。轻量，不做技术面。"""
+    """实际正股持仓及衍生品对应正股，供单票页快捷分析。"""
     try:
         pos, err = client().positions()
     except Exception as e:  # noqa: BLE001
@@ -330,29 +330,56 @@ def get_holdings():
     if err:
         return _wrap(None, err)
     if pos is None or pos.empty:
-        return _wrap({"stocks": []}, None)
+        return _wrap({"stocks": [], "positions": []}, None)
     exclude = set(str(x) for x in (CONFIG.get("monitor", {}).get("holdings_exclude") or []))
     cols = {c.lower(): c for c in pos.columns}
     c_code = cols.get("code")
     c_name = cols.get("stock_name") or cols.get("name")
-    out = []
+    stocks = {}
+    positions = []
     for _, row in pos.iterrows():
         code = str(row[c_code])
-        if code in exclude:
-            continue
         name = str(row[c_name]) if c_name else code
         ptype = monitor._classify(name, code)
-        if not ptype.startswith("正股"):
+        underlying = monitor.derivative_underlying(code, name)
+        analysis_code = underlying["code"] if underlying else (
+            code if ptype.startswith("正股") or ptype == "杠杆ETF" else None
+        )
+        positions.append({
+            "code": code,
+            "name": name,
+            "type": ptype,
+            "qty": float(row.get(cols.get("qty"), 0) or 0),
+            "market_val": float(row.get(cols.get("market_val"), 0) or 0),
+            "pl_val": float(row.get(cols.get("pl_val"), 0) or 0),
+            "analysis_code": analysis_code,
+            "analysis_name": underlying["name"] if underlying else name,
+        })
+        if ptype.startswith("正股"):
+            target = {"code": code, "name": name, "type": ptype,
+                      "source": "正股持仓", "derivatives": []}
+        elif ptype == "杠杆ETF":
+            target = {"code": code, "name": name, "type": ptype,
+                      "source": "杠杆ETF持仓", "derivatives": []}
+        else:
+            if not underlying:
+                continue
+            target = {**underlying, "type": "正股(衍生品标的)",
+                      "source": "期权正股", "derivatives": [code]}
+        target_code = target["code"]
+        if target_code in exclude:
             continue
-        # 自动剔除停牌 / 无报价 / 无估值的标的
-        try:
-            ok, _ = filters.is_tradable(client(), code)
-        except Exception:  # noqa: BLE001
-            ok = True
-        if not ok:
-            continue
-        out.append({"code": code, "name": name, "type": ptype})
-    return _wrap({"stocks": out}, None)
+        if target_code in stocks:
+            stocks[target_code]["derivatives"] = sorted(set(
+                stocks[target_code].get("derivatives", []) + target.get("derivatives", [])
+            ))
+            if target["source"] == "正股持仓":
+                derivatives = stocks[target_code]["derivatives"]
+                stocks[target_code].update(target)
+                stocks[target_code]["derivatives"] = derivatives
+        else:
+            stocks[target_code] = target
+    return _wrap({"stocks": list(stocks.values()), "positions": positions}, None)
 
 
 @app.get("/price-alerts")
@@ -388,6 +415,38 @@ def _embedded(result, error=None):
     return {"ok": not bool(error), "data": result, "error": error}
 
 
+def _analysis_evidence(*, analysis, southbound_data, buyback_data, news_data,
+                       capital_flow_data, fundamentals_data, research_data=None) -> dict:
+    """评估单股结论的数据覆盖度；缺关键基本面时禁止包装成完整决策。"""
+    checks = {
+        "价格与技术面": bool(analysis.get("price") is not None and
+                         (analysis.get("technical") or {}).get("ma20") is not None),
+        "资金流向": bool(capital_flow_data and
+                     (capital_flow_data.get("flow") or capital_flow_data.get("distribution"))),
+        "公司相关新闻": bool(news_data and news_data.get("news")),
+        "南向持股": bool((southbound_data and southbound_data.get("holding")) or
+                     (research_data or {}).get("south", {}).get("status") == "available"),
+        "公司回购": bool(buyback_data is not None),
+        "估值数据": bool(fundamentals_data and fundamentals_data.get("valuation")),
+        # 下列三项尚无已接通的可靠生产数据源，必须明确呈现为缺失。
+        "财务趋势": (research_data or {}).get("finance", {}).get("status") == "available",
+        "分析师评级": (research_data or {}).get("rating", {}).get("status") == "available",
+        "分析师一致预期": (research_data or {}).get("consensus", {}).get("status") == "available",
+    }
+    available = [name for name, ok in checks.items() if ok]
+    missing = [name for name, ok in checks.items() if not ok]
+    critical = {"财务趋势", "分析师评级"}
+    readiness = "INSUFFICIENT" if critical & set(missing) else "READY"
+    return {
+        "available": available,
+        "missing": missing,
+        "coverage_pct": round(len(available) / len(checks) * 100),
+        "readiness": readiness,
+        "message": ("证据不足：当前结果只能用于行情观察，不能支持完整买卖决策"
+                    if readiness == "INSUFFICIENT" else "关键证据已齐备"),
+    }
+
+
 @app.get("/analyze/full")
 def get_analyze_full(code: str):
     """单票聚合分析：一次数据采集返回技术面、反向信号、源数据和决策。"""
@@ -408,20 +467,41 @@ def get_analyze_full(code: str):
     nw_data, nw_err = sources.get("news", (None, reverse_err))
     cf_data, cf_err = sources.get("capital_flow", (None, reverse_err))
     fund_data = sources.get("fundamentals") or {}
+    research_data = westock_research.get_research(code)
 
     decision_result = decision.decide(
         code, cl, CONFIG,
         analysis_result=analysis_result,
         reverse_result=reverse_result,
     )
+    evidence = _analysis_evidence(
+        analysis=analysis_result,
+        southbound_data=sb_data,
+        buyback_data=bb_data,
+        news_data=nw_data,
+        capital_flow_data=cf_data,
+        fundamentals_data=fund_data,
+        research_data=research_data,
+    )
+    if evidence.get("readiness") != "READY":
+        decision_result = dict(decision_result or {})
+        decision_result.update({
+            "gated": True,
+            "evidence_gated": True,
+            "verdict": None,
+            "reason": evidence.get("message") or "关键研究证据不足，禁止形成完整买入结论",
+            "position_suggestion": "不新增仓位；补齐财务趋势和分析师评级后重新评估",
+        })
     return _wrap({
         "analysis": analysis_result,
+        "evidence": evidence,
         "extras": {
             "southbound": _embedded(sb_data, sb_err),
             "buybacks": _embedded(bb_data, bb_err),
             "news": _embedded(nw_data, nw_err),
             "capital_flow": _embedded(cf_data, cf_err),
             "fundamentals": _embedded(fund_data),
+            "research": _embedded(research_data),
             "decision": _embedded(decision_result),
         },
     }, None)

@@ -27,6 +27,7 @@ finally:
     else:
         os.environ["appdata"] = _original_appdata
 import yaml
+import pandas as pd
 
 DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yaml")
 QUERY_TIMEOUT = 4  # 秒
@@ -153,6 +154,43 @@ class FutuClient:
             if ret != ft.RET_OK:
                 return None, str(data)
             return data, None
+        except Exception as e:  # noqa: BLE001
+            return None, str(e)
+
+    def liquid_stock_candidates(self, *, min_price: float = 2.0,
+                                max_lot_price: float = 10_000.0,
+                                min_market_value: float = 1_000_000_000.0,
+                                limit: int = 300) -> Tuple[Optional[object], Optional[str]]:
+        """Server-side first pass over all HK stocks before snapshot requests."""
+        ok, msg = self._ensure_quote()
+        if not ok:
+            return None, msg
+        try:
+            price = ft.SimpleFilter(); price.stock_field = ft.StockField.CUR_PRICE
+            price.filter_min = float(min_price); price.is_no_filter = False
+            lot = ft.SimpleFilter(); lot.stock_field = ft.StockField.LOT_PRICE
+            lot.filter_max = float(max_lot_price); lot.is_no_filter = False
+            cap = ft.SimpleFilter(); cap.stock_field = ft.StockField.MARKET_VAL
+            cap.filter_min = float(min_market_value); cap.is_no_filter = False
+            cap.sort = ft.SortDir.DESCEND
+            rows, begin, total = [], 0, None
+            while begin < int(limit):
+                ret, data = self._quote.get_stock_filter(
+                    market=ft.Market.HK, filter_list=[price, lot, cap],
+                    begin=begin, num=min(200, int(limit) - begin))
+                if ret != ft.RET_OK:
+                    return None, str(data)
+                last_page, total, items = data
+                for item in items:
+                    rows.append({"code": item.stock_code, "name": item.stock_name,
+                                 "cur_price": item.cur_price, "lot_price": item.lot_price,
+                                 "market_val": item.market_val})
+                begin += len(items)
+                if last_page or not items:
+                    break
+            frame = pd.DataFrame(rows)
+            frame.attrs["market_filter_total"] = total
+            return frame, None
         except Exception as e:  # noqa: BLE001
             return None, str(e)
 

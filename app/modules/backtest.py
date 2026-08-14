@@ -19,4 +19,5 @@ from .bt_backtest import (  # noqa: F401
     sweep,
     _hstech_crash_map,
     clear_caches,
+    get_cached_evidence_report,
 )
