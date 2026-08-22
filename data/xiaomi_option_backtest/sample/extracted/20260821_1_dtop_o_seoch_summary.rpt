@@ -1,0 +1,550 @@
+DTOP                                                       HKEX DCASS                                            RUN DATE :  21AUG26
+                                         DAILY TRADING ACTIVITY & OPEN POSITIONS SUMMARY                         RUN TIME : 19:59:21
+                                                                                                                 PAGE     :        1
+REPORT DATE     : 21AUG26   
+CLEARINGHOUSE   : SEOCH
+
+SUMMARY
+
+MARKET
+        INSTRUMENT CLASS                      GROSS              NET           NET CHANGE            T/O              DEAL
+---------------------------------------- ----------------  ----------------  ----------------  ----------------  ----------------
+RSO   - RMB STOCK OPTIONS               
+        RKB - CALL OPTIONS                              0                 0                 0                 0                 0
+        RKB - PUT OPTIONS                               0                 0                 0                 0                 0
+                                         ----------------  ----------------  ----------------  ----------------  ----------------
+        RSO   MARKET TOTAL                              0                 0                 0                 0                 0
+
+SOM   - STOCK OPTIONS                   
+        A50 - CALL OPTIONS                          3,169             2,400                28                45                 9
+        A50 - PUT OPTIONS                           5,112             3,375                21                61                13
+        AAC - CALL OPTIONS                         23,934            16,314               197               632                67
+        AAC - PUT OPTIONS                          22,298            14,865               137               588                57
+        XAB - CALL OPTIONS                         13,710             9,213              -129               600                41
+        XAB - PUT OPTIONS                          14,874            10,740               173               467                56
+        ACC - CALL OPTIONS                         11,843             7,568               297               347                15
+        ACC - PUT OPTIONS                          11,617             8,131                21                48                 8
+        AIA - CALL OPTIONS                         58,040            42,517               914             5,011               303
+        AIA - PUT OPTIONS                          78,680            63,478               844             3,951               375
+        AIR - CALL OPTIONS                         15,944             9,507               100               151                 8
+        AIR - PUT OPTIONS                          10,284             8,009                20                90                 8
+        AKS - CALL OPTIONS                          7,497             4,352               168               291                70
+        AKS - PUT OPTIONS                           7,797             4,546               152               276                83
+        ALB - CALL OPTIONS                        895,066           668,257             4,021            44,616             3,708
+        ALB - PUT OPTIONS                       1,079,574           843,296             7,260            60,285             3,593
+        ALC - CALL OPTIONS                         28,814            17,875                73               584                34
+        ALC - PUT OPTIONS                          25,568            14,844               411             1,297                47
+        ALA - CALL OPTIONS                         74,220            44,835               -47               153                 3
+        ALA - PUT OPTIONS                          90,636            70,602               -33                 0                 0
+        ALH - CALL OPTIONS                          6,038             4,727               244               616                13
+        ALH - PUT OPTIONS                           5,198             4,927               122               139                 8
+        AMC - CALL OPTIONS                          6,789             5,861              -121               139                 9
+        AMC - PUT OPTIONS                           6,178             4,307                 4                17                 5
+        ANA - CALL OPTIONS                        105,171            90,008              -113               500                22
+        ANA - PUT OPTIONS                          95,212            80,825             1,271             1,639                54
+        XBC - CALL OPTIONS                        192,021           155,603             3,553            10,561               118
+        XBC - PUT OPTIONS                         219,773           176,034             2,268             7,147               114
+        BCM - CALL OPTIONS                         10,864             6,961                 4               231                 5
+        BCM - PUT OPTIONS                          10,845             6,523                76                76                 6
+        BEA - CALL OPTIONS                         20,777            14,138              -690             1,085                28
+        BEA - PUT OPTIONS                          25,557            18,970             2,348             3,777                67
+        BIU - CALL OPTIONS                        328,024           253,164             1,324             7,213               239
+        BIU - PUT OPTIONS                         502,700           435,518             5,700            16,066               315
+        BLI - CALL OPTIONS                         86,676            67,276             1,197             1,831                87
+        BLI - PUT OPTIONS                          89,143            69,413               522             2,919               102
+        BOC - CALL OPTIONS                         25,829            16,681               -10               497                44
+DTOP                                                       HKEX DCASS                                            RUN DATE :  21AUG26
+                                         DAILY TRADING ACTIVITY & OPEN POSITIONS SUMMARY                         RUN TIME : 19:59:21
+                                                                                                                 PAGE     :        2
+REPORT DATE     : 21AUG26   
+CLEARINGHOUSE   : SEOCH
+
+SUMMARY
+
+MARKET
+        INSTRUMENT CLASS                      GROSS              NET           NET CHANGE            T/O              DEAL
+---------------------------------------- ----------------  ----------------  ----------------  ----------------  ----------------
+        BOC - PUT OPTIONS                          33,796            22,647               169               458                36
+        BOM - CALL OPTIONS                         11,510             8,263                27               730                51
+        BOM - PUT OPTIONS                          14,483            11,451               155               316                28
+        BUD - CALL OPTIONS                         13,430            10,001                62               229                 7
+        BUD - PUT OPTIONS                          11,243             8,540               300               301                 4
+        BYD - CALL OPTIONS                        183,661           135,535               295             3,608               384
+        BYD - PUT OPTIONS                         273,626           211,470               711             4,327               339
+        BYE - CALL OPTIONS                         16,162            11,581               -36               109                33
+        BYE - PUT OPTIONS                          21,221            16,491               110               185                45
+        CAT - CALL OPTIONS                         71,600            52,716               405             3,979               443
+        CAT - PUT OPTIONS                          87,899            69,198               371             2,364               399
+        XCC - CALL OPTIONS                        236,580           177,885               597             3,943               123
+        XCC - PUT OPTIONS                         327,384           226,048             1,081             6,909               203
+        CCC - CALL OPTIONS                         37,091            24,508               410               520                 3
+        CCC - PUT OPTIONS                          25,173            20,673               866             1,066                 7
+        CCE - CALL OPTIONS                         13,143             6,533                36                91                 5
+        CCE - PUT OPTIONS                          24,599            17,439                63               164                18
+        CDA - CALL OPTIONS                          3,091             2,716                 0                 0                 0
+        CDA - PUT OPTIONS                             708               560                 0                 0                 0
+        CGN - CALL OPTIONS                          5,213               835                -5                 8                 4
+        CGN - PUT OPTIONS                           5,366             1,224                -6                30                 8
+        CHQ - CALL OPTIONS                         16,718            13,649               150               688                90
+        CHQ - PUT OPTIONS                           9,715             7,478               -88               473                79
+        CHT - CALL OPTIONS                         98,755            74,511              -297             1,592               115
+        CHT - PUT OPTIONS                         125,256            89,742               872             2,812               183
+        CHU - CALL OPTIONS                         44,812            33,942               209               847                54
+        CHU - PUT OPTIONS                          36,538            29,826               295               429                28
+        CIT - CALL OPTIONS                         13,319             7,195               613             1,453                57
+        CIT - PUT OPTIONS                          14,072             8,066                92             1,403                56
+        CKH - CALL OPTIONS                         28,538            23,170                51               998                73
+        CKH - PUT OPTIONS                          23,329            16,933               -75               802                67
+        CKP - CALL OPTIONS                          7,564             6,235               -12               149                23
+        CKP - PUT OPTIONS                           8,046             6,578                45               210                39
+        CLI - CALL OPTIONS                        124,867            92,469             2,416             9,595               382
+        CLI - PUT OPTIONS                         145,918           111,308             2,010             5,940               223
+        CLP - CALL OPTIONS                          4,814             3,468               -11               243                24
+        CLP - PUT OPTIONS                           5,664             4,307               -19               292                26
+        CMB - CALL OPTIONS                         56,369            38,503               135               967                51
+        CMB - PUT OPTIONS                          79,111            61,650                23               750                52
+        CNC - CALL OPTIONS                        155,072            91,745               795             5,249               290
+        CNC - PUT OPTIONS                         174,447           112,242             1,058             3,754               239
+        COL - CALL OPTIONS                         24,867            17,860               103               327                20
+        COL - PUT OPTIONS                          22,445            15,456               119               498                36
+        COS - CALL OPTIONS                          8,500             3,745              -245             2,553               152
+DTOP                                                       HKEX DCASS                                            RUN DATE :  21AUG26
+                                         DAILY TRADING ACTIVITY & OPEN POSITIONS SUMMARY                         RUN TIME : 19:59:21
+                                                                                                                 PAGE     :        3
+REPORT DATE     : 21AUG26   
+CLEARINGHOUSE   : SEOCH
+
+SUMMARY
+
+MARKET
+        INSTRUMENT CLASS                      GROSS              NET           NET CHANGE            T/O              DEAL
+---------------------------------------- ----------------  ----------------  ----------------  ----------------  ----------------
+        COS - PUT OPTIONS                          12,717             8,366                24             1,359               114
+        CPA - CALL OPTIONS                         17,248            13,128               -27                59                 9
+        CPA - PUT OPTIONS                          17,810            14,852               -40               233                12
+        CPC - CALL OPTIONS                        161,932           123,313               635            21,346               106
+        CPC - PUT OPTIONS                         184,475           149,464             4,638             8,260                81
+        CPI - CALL OPTIONS                         45,654            36,050                33             1,965                82
+        CPI - PUT OPTIONS                          62,257            50,906                27               941                66
+        CRC - CALL OPTIONS                          8,101             6,884                30                30                 1
+        CRC - PUT OPTIONS                           7,951             6,460                10                10                 1
+        CRG - CALL OPTIONS                         12,844             6,669                12                12                 2
+        CRG - PUT OPTIONS                          20,728            17,862             1,312             1,569                21
+        CRL - CALL OPTIONS                         32,582            25,735              -151               927                60
+        CRL - PUT OPTIONS                          27,270            21,205                87               528                47
+        CRP - CALL OPTIONS                          6,434             4,515               -17               112                17
+        CRP - PUT OPTIONS                           8,213             6,402                58               323                26
+        CSA - CALL OPTIONS                          3,857             3,088                22                38                10
+        CSA - PUT OPTIONS                           5,708             4,941                -1                 7                 4
+        CSE - CALL OPTIONS                         29,740            18,353             1,173             1,952                66
+        CSE - PUT OPTIONS                          32,153            21,806             1,106             1,707                57
+        CSP - CALL OPTIONS                         57,747            36,337             1,995             3,771               136
+        CSP - PUT OPTIONS                          69,465            50,884            11,987            15,345               166
+        CTB - CALL OPTIONS                          9,710             3,388               260               265                10
+        CTB - PUT OPTIONS                           9,270             3,257                24               752                12
+        CTC - CALL OPTIONS                         75,076            57,683             1,591             2,504                53
+        CTC - PUT OPTIONS                          59,410            44,762               536             1,150                49
+        CTS - CALL OPTIONS                         19,356            13,980               -76               651                46
+        CTS - PUT OPTIONS                          22,744            16,827               164               357                34
+        DFM - CALL OPTIONS                              0                 0                 0                 0                 0
+        DFM - PUT OPTIONS                               0                 0                 0                 0                 0
+        GAC - CALL OPTIONS                          4,556               970                 3                 4                 4
+        GAC - PUT OPTIONS                           2,050               788               -26                 3                 1
+        GAH - CALL OPTIONS                         22,210            15,043               185               538               101
+        GAH - PUT OPTIONS                          22,937            16,382                77               836               139
+        GHL - CALL OPTIONS                          3,877             1,844                10                10                 1
+        GHL - PUT OPTIONS                           4,050             2,048               -33                64                 8
+        GLI - CALL OPTIONS                         69,292            42,958               622             3,828               254
+        GLI - PUT OPTIONS                          39,230            19,836              -335             1,965               153
+        GLX - CALL OPTIONS                         36,042            27,809               308               914                91
+        GLX - PUT OPTIONS                          41,130            33,966                 2               879                69
+        GWM - CALL OPTIONS                         28,304            20,542               720             1,325                19
+        GWM - PUT OPTIONS                          30,054            21,506               172               572                 9
+        HCF - CALL OPTIONS                          9,379             7,167                 5               160                19
+        HCF - PUT OPTIONS                          12,717             9,409                56               252                25
+        HDO - CALL OPTIONS                         11,130             7,725               -75               893                23
+DTOP                                                       HKEX DCASS                                            RUN DATE :  21AUG26
+                                         DAILY TRADING ACTIVITY & OPEN POSITIONS SUMMARY                         RUN TIME : 19:59:21
+                                                                                                                 PAGE     :        4
+REPORT DATE     : 21AUG26   
+CLEARINGHOUSE   : SEOCH
+
+SUMMARY
+
+MARKET
+        INSTRUMENT CLASS                      GROSS              NET           NET CHANGE            T/O              DEAL
+---------------------------------------- ----------------  ----------------  ----------------  ----------------  ----------------
+        HDO - PUT OPTIONS                          10,532             8,307               -29               206                22
+        HEH - CALL OPTIONS                          3,124             1,775                11                89                22
+        HEH - PUT OPTIONS                           3,659             2,693               -55               225                37
+        HES - CALL OPTIONS                          6,255             4,096                75               117                10
+        HES - PUT OPTIONS                           7,318             5,394                79               109                16
+        HEX - CALL OPTIONS                        211,472           163,095             1,281             9,459               583
+        HEX - PUT OPTIONS                         223,990           175,053             2,452            12,106               816
+        HGN - CALL OPTIONS                          5,662             4,261                -1                13                 6
+        HGN - PUT OPTIONS                           8,115             6,526                87               104                10
+        HKB - CALL OPTIONS                        123,031            97,162               750             5,635               334
+        HKB - PUT OPTIONS                         190,560           153,498             1,772             6,254               320
+        HKG - CALL OPTIONS                         14,650             9,083              -205               990                34
+        HKG - PUT OPTIONS                          32,693            28,204               987             1,193                34
+        HLD - CALL OPTIONS                         11,092             6,990               107             1,012               135
+        HLD - PUT OPTIONS                           8,945             5,959               462               857                67
+        HNP - CALL OPTIONS                         31,247            23,638                 5                54                 4
+        HNP - PUT OPTIONS                          19,263            12,735               138               246                15
+        HOS - CALL OPTIONS                         17,401            11,495               175               992               217
+        HOS - PUT OPTIONS                          17,028            11,779                27               242               100
+        HRB - CALL OPTIONS                         58,902            33,235               387               783                52
+        HRB - PUT OPTIONS                          37,169            24,300                61               585                24
+        HSB - CALL OPTIONS                              0                 0                 0                 0                 0
+        HSB - PUT OPTIONS                               0                 0                 0                 0                 0
+        XIC - CALL OPTIONS                        146,592           117,007            -1,245            10,116               152
+        XIC - PUT OPTIONS                         233,123           196,807               743             5,061               146
+        INB - CALL OPTIONS                          9,876             6,608               -35               151                40
+        INB - PUT OPTIONS                          11,105             8,237                94               223                26
+        JDC - CALL OPTIONS                        117,957            90,556             3,709             6,130               189
+        JDC - PUT OPTIONS                         155,398           125,248               383             2,301               236
+        JDH - CALL OPTIONS                         23,339            18,925               -95               446                35
+        JDH - PUT OPTIONS                          30,869            23,880               691             1,267                54
+        JXC - CALL OPTIONS                         22,696            13,519                44               456                64
+        JXC - PUT OPTIONS                          22,057            12,823               241               932               110
+        KDS - CALL OPTIONS                         15,545             6,930                 2               100                15
+        KDS - PUT OPTIONS                          16,529             9,876               257               378                19
+        KLE - CALL OPTIONS                          1,560               779                59                99                 5
+        KLE - PUT OPTIONS                           2,182             1,719               106               134                 8
+        KSO - CALL OPTIONS                         15,125            10,279               -18             1,045                70
+        KSO - PUT OPTIONS                           8,095             4,673               142               358                36
+        KST - CALL OPTIONS                        303,469           243,743             6,339            21,583               816
+        KST - PUT OPTIONS                         272,820           217,369             9,560            19,837               691
+        LAO - CALL OPTIONS                         31,348            20,281               655             3,339               393
+        LAO - PUT OPTIONS                          54,222            28,214             1,539             3,627               376
+        LAU - CALL OPTIONS                         84,305            53,584             2,986             4,615                54
+DTOP                                                       HKEX DCASS                                            RUN DATE :  21AUG26
+                                         DAILY TRADING ACTIVITY & OPEN POSITIONS SUMMARY                         RUN TIME : 19:59:21
+                                                                                                                 PAGE     :        5
+REPORT DATE     : 21AUG26   
+CLEARINGHOUSE   : SEOCH
+
+SUMMARY
+
+MARKET
+        INSTRUMENT CLASS                      GROSS              NET           NET CHANGE            T/O              DEAL
+---------------------------------------- ----------------  ----------------  ----------------  ----------------  ----------------
+        LAU - PUT OPTIONS                          93,593            70,929             3,311             4,224                64
+        LEN - CALL OPTIONS                        111,944            81,313                86             1,173               139
+        LEN - PUT OPTIONS                         160,851           127,135               -63             1,442               142
+        LNI - CALL OPTIONS                         73,633            58,290             2,006             4,005               137
+        LNI - PUT OPTIONS                          70,322            56,913               107             2,032               113
+        LNK - CALL OPTIONS                         18,238            12,935               127               402                62
+        LNK - PUT OPTIONS                          20,966            16,679               104               547                70
+        LSP - CALL OPTIONS                         15,655             9,138               686               969                46
+        LSP - PUT OPTIONS                          10,324             4,248                90               307                14
+        MDG - CALL OPTIONS                         14,431             9,751               157               213                25
+        MDG - PUT OPTIONS                          13,314             9,694                95               254                22
+        MEN - CALL OPTIONS                         12,104             7,967                99               238                26
+        MEN - PUT OPTIONS                          14,274             9,522                 8                89                24
+        MET - CALL OPTIONS                        478,330           387,995             3,715            19,756               956
+        MET - PUT OPTIONS                         553,926           433,091             5,434            21,367               874
+        MGM - CALL OPTIONS                          6,815             6,239                 6                48                 3
+        MGM - PUT OPTIONS                           4,814             4,241                62                90                 6
+        MIU - CALL OPTIONS                        649,096           507,392             3,767            28,823             1,347
+        MIU - PUT OPTIONS                         573,705           448,906             3,147            18,382               843
+        MOL - CALL OPTIONS                          8,716             7,200               -11                95                31
+        MOL - PUT OPTIONS                           6,092             5,181                26               116                19
+        MSB - CALL OPTIONS                          3,392             2,097                35                45                 4
+        MSB - PUT OPTIONS                           4,641             2,941                 0                 0                 0
+        MTR - CALL OPTIONS                         10,891             7,491              -133               566                27
+        MTR - PUT OPTIONS                          14,824            10,660               -99               489                28
+        NBM - CALL OPTIONS                         32,251            25,898               314               521                21
+        NBM - PUT OPTIONS                          19,806            12,987               108               315                 7
+        NCL - CALL OPTIONS                         14,156             7,258              -861             1,748                78
+        NCL - PUT OPTIONS                          13,849             8,169                -6               521                57
+        NFU - CALL OPTIONS                          6,003             2,920                11               136                25
+        NFU - PUT OPTIONS                           7,479             4,691                30               118                37
+        NTE - CALL OPTIONS                         22,837            17,221               612             1,985               238
+        NTE - PUT OPTIONS                          27,950            22,019               199             1,273               230
+        NWD - CALL OPTIONS                         20,012            16,065               818             1,319                47
+        NWD - PUT OPTIONS                          59,789            56,082             1,000             2,197                68
+        ORT - CALL OPTIONS                          9,298             4,383                36               122                19
+        ORT - PUT OPTIONS                           7,433             3,794               -40               132                13
+        PAI - CALL OPTIONS                        370,512           274,857               251            26,507               514
+        PAI - PUT OPTIONS                         464,512           381,314             2,911            15,344               592
+        PEC - CALL OPTIONS                        106,602            84,439               200             1,941               106
+        PEC - PUT OPTIONS                         152,938           121,530               753             2,503                83
+        PEN - CALL OPTIONS                        174,019           124,669            13,950            21,627               326
+        PEN - PUT OPTIONS                         116,186            82,638               896             4,831               165
+        PHT - CALL OPTIONS                         17,472            13,972               380               728                35
+DTOP                                                       HKEX DCASS                                            RUN DATE :  21AUG26
+                                         DAILY TRADING ACTIVITY & OPEN POSITIONS SUMMARY                         RUN TIME : 19:59:21
+                                                                                                                 PAGE     :        6
+REPORT DATE     : 21AUG26   
+CLEARINGHOUSE   : SEOCH
+
+SUMMARY
+
+MARKET
+        INSTRUMENT CLASS                      GROSS              NET           NET CHANGE            T/O              DEAL
+---------------------------------------- ----------------  ----------------  ----------------  ----------------  ----------------
+        PHT - PUT OPTIONS                           7,480             5,609               102               188                16
+        PIC - CALL OPTIONS                          7,980             4,954               121               385                21
+        PIC - PUT OPTIONS                          11,056             7,843               -20               119                16
+        PIN - CALL OPTIONS                          5,299             2,040               236               282                17
+        PIN - PUT OPTIONS                           5,944             2,661                19                70                 5
+        POP - CALL OPTIONS                        264,856           167,035            13,203            32,138             1,316
+        POP - PUT OPTIONS                         456,175           364,498             9,894            38,574             2,969
+        SAN - CALL OPTIONS                         85,123            58,854               245             1,676                28
+        SAN - PUT OPTIONS                         106,311            72,354               175               720                12
+        SBO - CALL OPTIONS                         11,215             7,656               140               742                81
+        SBO - PUT OPTIONS                          10,465             7,489               110               278                27
+        SET - CALL OPTIONS                          8,928             5,818                 5               106                22
+        SET - PUT OPTIONS                           6,963             4,168                -5                63                11
+        SHK - CALL OPTIONS                         11,688             8,180                36               871               124
+        SHK - PUT OPTIONS                          11,882             9,208               359             1,254               119
+        SHL - CALL OPTIONS                         26,933            10,468                11                52                 5
+        SHL - PUT OPTIONS                          21,469            10,995               -40                60                 3
+        SHZ - CALL OPTIONS                         11,524             8,915               128               191                14
+        SHZ - PUT OPTIONS                          12,199             9,337                23               137                16
+        SMC - CALL OPTIONS                         52,308            36,376                57               969               312
+        SMC - PUT OPTIONS                          58,461            42,544               189               882               231
+        SNO - CALL OPTIONS                         29,792            18,640               479             1,886               223
+        SNO - PUT OPTIONS                          33,624            21,931                -8             1,043               136
+        SNP - CALL OPTIONS                          6,594             4,622                 4                 9                 2
+        SNP - PUT OPTIONS                           5,112             3,916               116               116                 4
+        SWA - CALL OPTIONS                          3,925             3,012               206               267                27
+        SWA - PUT OPTIONS                           3,487             2,791               115               156                19
+        TCH - CALL OPTIONS                      1,377,291         1,011,089             3,871            38,759             2,197
+        TCH - PUT OPTIONS                       1,095,481           854,798            14,962            48,120             2,491
+        TIC - CALL OPTIONS                         19,175            13,904               364               628                55
+        TIC - PUT OPTIONS                          14,702            10,790               131               182                16
+        TRF - CALL OPTIONS                         22,953            19,338               295               847                69
+        TRF - PUT OPTIONS                          31,752            24,097               409               743                41
+        TRP - CALL OPTIONS                         52,806            39,054               188             1,028               136
+        TRP - PUT OPTIONS                          72,637            58,063               259             1,720               199
+        XTW - CALL OPTIONS                         30,160            23,167               173               717                22
+        XTW - PUT OPTIONS                          18,247            11,921                 1                83                 7
+        VNK - CALL OPTIONS                         11,752             9,338               721             1,549                18
+        VNK - PUT OPTIONS                          43,953            38,708               130               385                 9
+        WHD - CALL OPTIONS                              0                 0                 0                 0                 0
+        WHD - PUT OPTIONS                              42                42                 0                 0                 0
+        WHG - CALL OPTIONS                          3,050             2,336                59               374                12
+        WHG - PUT OPTIONS                           5,644             4,098                51                99                 9
+        WHL - CALL OPTIONS                          1,247               683               -14                14                 1
+DTOP                                                       HKEX DCASS                                            RUN DATE :  21AUG26
+                                         DAILY TRADING ACTIVITY & OPEN POSITIONS SUMMARY                         RUN TIME : 19:59:21
+                                                                                                                 PAGE     :        7
+REPORT DATE     : 21AUG26   
+CLEARINGHOUSE   : SEOCH
+
+SUMMARY
+
+MARKET
+        INSTRUMENT CLASS                      GROSS              NET           NET CHANGE            T/O              DEAL
+---------------------------------------- ----------------  ----------------  ----------------  ----------------  ----------------
+        WHL - PUT OPTIONS                           1,070               658                20                45                 4
+        WWC - CALL OPTIONS                          1,706             1,352                10                10                 1
+        WWC - PUT OPTIONS                           3,672             3,114                20                20                 1
+        WXA - CALL OPTIONS                         13,643             9,851               -22               175                29
+        WXA - PUT OPTIONS                          15,239            10,863                19               245                46
+        WXB - CALL OPTIONS                         63,914            44,228             4,447             5,348               126
+        WXB - PUT OPTIONS                          70,335            53,172               640             1,690               116
+        XPB - CALL OPTIONS                          4,432             3,098                60                60                 2
+        XPB - PUT OPTIONS                           3,713             2,455                12                24                 3
+        YZC - CALL OPTIONS                         16,629            10,372                 8                43                 8
+        YZC - PUT OPTIONS                          15,853            10,132                -3               124                19
+        ZAO - CALL OPTIONS                          9,641             7,143                86               674                52
+        ZAO - PUT OPTIONS                           4,389             1,963                21               387                31
+        ZJG - CALL OPTIONS                         45,252            25,978             1,708             4,104               366
+        ZJG - PUT OPTIONS                          44,480            24,552             1,708             4,463               400
+        ZJI - CALL OPTIONS                          9,110             5,635               225               611               117
+        ZJI - PUT OPTIONS                           9,736             6,293               343               627               161
+        ZJM - CALL OPTIONS                         58,516            40,120               225             2,434               416
+        ZJM - PUT OPTIONS                         105,581            81,420               488             3,708               444
+        ZSH - CALL OPTIONS                         13,962             9,278                -7                18                 3
+        ZSH - PUT OPTIONS                           3,225             1,561                -3               112                 4
+                                         ----------------  ----------------  ----------------  ----------------  ----------------
+        SOM   MARKET TOTAL                       20018695          15116929            209832            840136             43920
+
+SOM2  - STOCK OPTIONS 2                 
+        KAT - CALL OPTIONS                          9,353             6,729             5,355             6,903               438
+        KAT - PUT OPTIONS                           6,546             4,329             1,230             3,952               805
+        KCH - CALL OPTIONS                          2,092             1,186               187               254                23
+        KCH - PUT OPTIONS                           2,125               966                62               281                18
+        KEH - CALL OPTIONS                          4,888             1,382               384               650                43
+        KEH - PUT OPTIONS                           3,361               937               458               746                39
+        MNX - CALL OPTIONS                         37,812            15,791            10,319            21,223             1,067
+        MNX - PUT OPTIONS                          63,269            40,961            30,989            65,678             1,888
+        NIO - CALL OPTIONS                          3,332             1,407                56               146                13
+        NIO - PUT OPTIONS                           2,926               880               -58               341                 6
+        SGM - CALL OPTIONS                         21,271            11,180               485               627                42
+        SGM - PUT OPTIONS                          32,758            21,543               982             2,371                69
+        UBR - CALL OPTIONS                         20,190             4,020                -3               177                 8
+        UBR - PUT OPTIONS                          18,988             3,167               121               162                11
+        WCP - CALL OPTIONS                          1,663               962               405               486                14
+        WCP - PUT OPTIONS                           1,065               373               107               107                 3
+        YOF - CALL OPTIONS                          5,482             1,358                23                77                31
+        YOF - PUT OPTIONS                           4,143               453                32                48                26
+        ZLT - CALL OPTIONS                          2,128             1,231               713               849                13
+DTOP                                                       HKEX DCASS                                            RUN DATE :  21AUG26
+                                         DAILY TRADING ACTIVITY & OPEN POSITIONS SUMMARY                         RUN TIME : 19:59:21
+                                                                                                                 PAGE     :        8
+REPORT DATE     : 21AUG26   
+CLEARINGHOUSE   : SEOCH
+
+SUMMARY
+
+MARKET
+        INSTRUMENT CLASS                      GROSS              NET           NET CHANGE            T/O              DEAL
+---------------------------------------- ----------------  ----------------  ----------------  ----------------  ----------------
+        ZLT - PUT OPTIONS                           1,904               548                95                95                 7
+        ZMI - CALL OPTIONS                          7,940             1,116               353             4,171               157
+        ZMI - PUT OPTIONS                           8,264               965               469             4,859               145
+        ZTE - CALL OPTIONS                          6,405             2,544               631               671                23
+        ZTE - PUT OPTIONS                           4,912             1,447               319               330                22
+                                         ----------------  ----------------  ----------------  ----------------  ----------------
+        SOM2  MARKET TOTAL                         272817            125475             53714            115204              4911
+
+WSO   - WEEKLY STOCK OPTIONS            
+        AIA - WEEKLY CALL OPTIONS                     309               299            -1,611               381                50
+        AIA - WEEKLY PUT OPTIONS                    1,907             1,502              -160               532                31
+        AKS - WEEKLY CALL OPTIONS                     450               321                 0               370                37
+        AKS - WEEKLY PUT OPTIONS                      299               191               -56               229                28
+        ALB - WEEKLY CALL OPTIONS                  13,849             9,089            -2,639            11,314               840
+        ALB - WEEKLY PUT OPTIONS                    8,839             5,802            -4,925            13,147               814
+        ANA - WEEKLY CALL OPTIONS                     595               430            -1,392               550                27
+        ANA - WEEKLY PUT OPTIONS                    1,189               886              -171               737                31
+        BIU - WEEKLY CALL OPTIONS                   5,554             3,984              -252               548                39
+        BIU - WEEKLY PUT OPTIONS                    3,649             2,573              -464               636                43
+        BLI - WEEKLY CALL OPTIONS                   3,509             3,221               -72               107                 9
+        BLI - WEEKLY PUT OPTIONS                    2,219             1,059            -1,461             1,145                18
+        BYD - WEEKLY CALL OPTIONS                   1,557             1,401            -1,154               408                71
+        BYD - WEEKLY PUT OPTIONS                    1,814             1,281               116               435                34
+        CAT - WEEKLY CALL OPTIONS                   1,385             1,059              -637             1,279                95
+        CAT - WEEKLY PUT OPTIONS                    1,480             1,116              -120               605                89
+        CHT - WEEKLY CALL OPTIONS                   1,512               845              -136                97                13
+        CHT - WEEKLY PUT OPTIONS                    1,316             1,116              -227                98                 9
+        CLI - WEEKLY CALL OPTIONS                     942               861            -1,741             1,274                70
+        CLI - WEEKLY PUT OPTIONS                    2,494             1,449              -282               758                65
+        CNC - WEEKLY CALL OPTIONS                   1,643             1,443            -1,140               911                26
+        CNC - WEEKLY PUT OPTIONS                    1,770             1,607               -42               291                17
+        GAH - WEEKLY CALL OPTIONS                     333               272               -85                44                16
+        GAH - WEEKLY PUT OPTIONS                      432               378               100               171                15
+        HEX - WEEKLY CALL OPTIONS                     862               567            -1,632             1,142                82
+        HEX - WEEKLY PUT OPTIONS                    4,205             3,771               -39               455                27
+        HKB - WEEKLY CALL OPTIONS                   2,274             1,409                -1             2,231                74
+        HKB - WEEKLY PUT OPTIONS                    1,924             1,540              -268               689                36
+        JDC - WEEKLY CALL OPTIONS                   1,373             1,159              -801               915                58
+        JDC - WEEKLY PUT OPTIONS                    1,089               784              -362               876                80
+        KST - WEEKLY CALL OPTIONS                   9,123             6,089              -794             2,406               191
+        KST - WEEKLY PUT OPTIONS                    1,715               754            -3,520             1,651               102
+        LAO - WEEKLY CALL OPTIONS                     290               190              -184               588                77
+        LAO - WEEKLY PUT OPTIONS                      637               516                33               157                22
+        LAU - WEEKLY CALL OPTIONS                     445               337            -2,043             1,689                40
+DTOP                                                       HKEX DCASS                                            RUN DATE :  21AUG26
+                                         DAILY TRADING ACTIVITY & OPEN POSITIONS SUMMARY                         RUN TIME : 19:59:21
+                                                                                                                 PAGE     :        9
+REPORT DATE     : 21AUG26   
+CLEARINGHOUSE   : SEOCH
+
+SUMMARY
+
+MARKET
+        INSTRUMENT CLASS                      GROSS              NET           NET CHANGE            T/O              DEAL
+---------------------------------------- ----------------  ----------------  ----------------  ----------------  ----------------
+        LAU - WEEKLY PUT OPTIONS                    2,728             1,993                38                78                 7
+        LSP - WEEKLY CALL OPTIONS                   1,997             1,705               -18               191                18
+        LSP - WEEKLY PUT OPTIONS                      793               604               -21               150                14
+        MET - WEEKLY CALL OPTIONS                  10,176             7,460               152             4,544               218
+        MET - WEEKLY PUT OPTIONS                    3,049             1,840            -2,564             4,677               292
+        MIU - WEEKLY CALL OPTIONS                   2,607             1,827            -4,738             5,366               296
+        MIU - WEEKLY PUT OPTIONS                    9,516             6,321               -20             1,496               115
+        NTE - WEEKLY CALL OPTIONS                     763               563              -185               693                84
+        NTE - WEEKLY PUT OPTIONS                    1,321               892               -61               610                95
+        PAI - WEEKLY CALL OPTIONS                   2,047             1,386            -2,996             1,214                67
+        PAI - WEEKLY PUT OPTIONS                    4,589             2,532              -283             1,273                61
+        PEN - WEEKLY CALL OPTIONS                   1,782               742            -2,852               573                37
+        PEN - WEEKLY PUT OPTIONS                    4,109             3,107              -109               675                40
+        POP - WEEKLY CALL OPTIONS                  12,407             9,569              -550             4,487               321
+        POP - WEEKLY PUT OPTIONS                   15,286            10,772            -4,057             9,992               718
+        SHK - WEEKLY CALL OPTIONS                      79                34              -387               185                23
+        SHK - WEEKLY PUT OPTIONS                      438               372                89               157                11
+        SMC - WEEKLY CALL OPTIONS                   1,217               835                 1               753               234
+        SMC - WEEKLY PUT OPTIONS                    1,084               893                 8               618               167
+        SNO - WEEKLY CALL OPTIONS                     493               363              -208               318                44
+        SNO - WEEKLY PUT OPTIONS                      378               340                64               245                20
+        TCH - WEEKLY CALL OPTIONS                  10,700             7,806            -1,781             6,942               613
+        TCH - WEEKLY PUT OPTIONS                   13,489             9,268            -1,620             5,619               386
+        TRP - WEEKLY CALL OPTIONS                   1,329             1,155              -246                90                12
+        TRP - WEEKLY PUT OPTIONS                    1,433             1,214               -72               161                21
+        WXA - WEEKLY CALL OPTIONS                     569               483              -182               135                13
+        WXA - WEEKLY PUT OPTIONS                      498               372                -4                66                17
+        WXB - WEEKLY CALL OPTIONS                   1,069               753            -1,080               552                52
+        WXB - WEEKLY PUT OPTIONS                    1,784             1,394               109               647                54
+        ZJG - WEEKLY CALL OPTIONS                     642               514              -811             1,011                66
+        ZJG - WEEKLY PUT OPTIONS                    2,549             1,933               299               461                63
+        ZJI - WEEKLY CALL OPTIONS                     943               515              -664               618                99
+        ZJI - WEEKLY PUT OPTIONS                    2,098             1,748              -401               524                90
+        ZJM - WEEKLY CALL OPTIONS                     205               204              -438               453                73
+        ZJM - WEEKLY PUT OPTIONS                    1,440               842               219               487                42
+                                         ----------------  ----------------  ----------------  ----------------  ----------------
+        WSO   MARKET TOTAL                         198590            141652            -53531            104927              7759
+
+WSO2  - WEEKLY STOCK OPTIONS 2          
+        KAT - WEEKLY CALL OPTIONS                     798               714               280             2,040               215
+        KAT - WEEKLY PUT OPTIONS                    1,097               797               497             1,431               151
+        KCH - WEEKLY CALL OPTIONS                     149                52               -22                21                 6
+        KCH - WEEKLY PUT OPTIONS                      241               100                41                93                 7
+        KEH - WEEKLY CALL OPTIONS                     348                79              -155               526                39
+DTOP                                                       HKEX DCASS                                            RUN DATE :  21AUG26
+                                         DAILY TRADING ACTIVITY & OPEN POSITIONS SUMMARY                         RUN TIME : 19:59:21
+                                                                                                                 PAGE     :       10
+REPORT DATE     : 21AUG26   
+CLEARINGHOUSE   : SEOCH
+
+SUMMARY
+
+MARKET
+        INSTRUMENT CLASS                      GROSS              NET           NET CHANGE            T/O              DEAL
+---------------------------------------- ----------------  ----------------  ----------------  ----------------  ----------------
+        KEH - WEEKLY PUT OPTIONS                    1,268               257              -951               768                54
+        MNX - WEEKLY CALL OPTIONS                   1,859               978            -2,025             3,287               222
+        MNX - WEEKLY PUT OPTIONS                    4,095             2,529            -1,346             6,272               310
+        NIO - WEEKLY CALL OPTIONS                      83                53                12                68                 5
+        NIO - WEEKLY PUT OPTIONS                       15                15                 0                22                 2
+        SGM - WEEKLY CALL OPTIONS                     103                51              -164               102                 8
+        SGM - WEEKLY PUT OPTIONS                       70                40                40               140                15
+        UBR - WEEKLY CALL OPTIONS                     800               524                46               156                13
+        UBR - WEEKLY PUT OPTIONS                      169               125              -187                70                 6
+        WCP - WEEKLY CALL OPTIONS                      23                23                 0                45                 3
+        WCP - WEEKLY PUT OPTIONS                       59                53                36                58                 6
+        YOF - WEEKLY CALL OPTIONS                     330               189                55               358                37
+        YOF - WEEKLY PUT OPTIONS                      202               129                74               176                21
+        ZLT - WEEKLY CALL OPTIONS                      84                84               -25               256                16
+        ZLT - WEEKLY PUT OPTIONS                      151                86                26               349                20
+        ZMI - WEEKLY CALL OPTIONS                     225               205                 0                25                 4
+        ZMI - WEEKLY PUT OPTIONS                      192               126               123               175                12
+        ZTE - WEEKLY CALL OPTIONS                     377               222               103               521                30
+        ZTE - WEEKLY PUT OPTIONS                      245               132                17               558                30
+                                         ----------------  ----------------  ----------------  ----------------  ----------------
+        WSO2  MARKET TOTAL                          12983              7563             -3525             17517              1232
+---------------------------------------- ----------------  ----------------  ----------------  ----------------  ----------------
+ALL MARKET TOTAL                                 20503085          15391619            206490           1077784             57822
+                                         ================  ================  ================  ================  ================
+
+
+NOTE:
+
+"GROSS"        = EITHER THE TOTAL NUMBER OF LONG OR THE TOTAL NUMBER OF SHORT POSITIONS IN A CONTRACT HELD BY ALL PARTICIPANTS IN
+                    THE MARKET
+
+"NET"          = EITHER THE TOTAL NUMBER OF NET LONG OR THE TOTAL NUMBER OF NET SHORT POSITION IN A CONTRACT HELD BY ALL MARKET
+                    PARTICIPANTS. IT IS CALCULATED BY NETTING THE LONG AND SHORT POSITIONS IN A PARTICULAR CONTRACT HELD IN ALL ITS
+                    ACCOUNTS BY EACH PARTICIPANT AND THEN SUM ALL NET LONG OR NET SHORT ACROSS ALL PARTICIPANTS IN THE MARKET.
+
+"NET CHANGE"   = THE CHANGE OF "NET" BETWEEN THE CURRENT TRADE DAY AND THE PREVIOUS TRADE DAY
+
+"T/O"          = THE NUMBER OF CONTRACTS TRADED IN THE MARKET
+
+"DEAL"         = THE NUMBER OF MATCHED ORDERS IN THE MARKET
+
+
+                                                       ***END OF REPORT***
+

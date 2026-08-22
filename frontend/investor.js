@@ -82,6 +82,26 @@ function renderActions(data) {
   $('today_reason').textContent = must ? '风险动作永远排在新机会之前。' : opp ? '只有证据和仓位边界同时通过才考虑执行。' : '没有正式信号时，现金也是仓位。';
 }
 
+function renderResearchAssets(data) {
+  const assets = data?.assets || [];
+  $('observation_assets').innerHTML = assets.map(item => {
+    const latest = item.latest;
+    const detail = item.asset === 'BTC'
+      ? '价格、波动、回撤和模拟仓位将在配置数据源后显示。'
+      : latest
+        ? `${esc(latest.question || '最近观察')} · 成本后边际 ${number(latest.net_edge, 4)} · ${esc(item.message)}`
+        : esc(item.message);
+    const time = latest?.observed_at
+      ? `最近记录 ${new Date(latest.observed_at).toLocaleString('zh-CN', {hour12:false})}`
+      : '当前没有可展示的实时数据';
+    return `<article class="observation-asset">
+      <div class="observation-title"><div><span>${esc(item.asset === 'BTC' ? 'Bitcoin' : 'Polymarket')}</span><b>${esc(item.stage_label)}</b></div><em>${esc(item.data_state)}</em></div>
+      <p>${detail}</p><small>${time}</small>
+      <div class="observation-rule">不计入实盘组合 · 不产生 BUY/SELL 推送 · 不自动下单</div>
+    </article>`;
+  }).join('') || '<div class="observation-empty">研究资产状态暂不可用。</div>';
+}
+
 async function load() {
   $('refresh').disabled = true;
   state.errors = [];
@@ -93,6 +113,8 @@ async function load() {
   renderAccounts(marketRequests); renderPositions();
   try { renderActions(await api('/strategy-center/status', 25000)); }
   catch (error) { state.errors.push('今日策略：' + error.message); renderActions(null); }
+  try { renderResearchAssets(await api('/api/research-assets')); }
+  catch (error) { state.errors.push('观察研究：' + error.message); renderResearchAssets(null); }
   $('error_count').textContent = state.errors.length;
   $('source_state').classList.toggle('warning', state.errors.length > 0);
   $('source_state').querySelector('span').textContent = state.errors.length ? `${state.errors.length} 个数据源需检查` : '数据源已同步';

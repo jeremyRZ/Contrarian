@@ -47,6 +47,23 @@ schedule:
   enabled: true        # false 则关闭每日自动推送
   time: "16:30"        # 推送时间（本地时间，建议收盘后）
 
+# 小米20交易日方向状态：仅在 BUY/SELL 状态切换时推送，不自动下单。
+xiaomi_directional:
+  enabled: true
+  threshold_pct: 5.0
+  execution_mode: "READ_ONLY_USER_CONFIRMATION_REQUIRED"
+
+# 小米期权选择层：55日突破后选择约10%虚值、30–60天到期的Call/Put。
+xiaomi_options:
+  enabled: true
+  historical_gate_passed: true
+  min_days_to_expiry: 30
+  max_days_to_expiry: 60
+  target_otm_pct: 10.0
+  max_spread_pct: 25.0
+  max_premium_risk_pct: 1.0
+  execution_mode: "READ_ONLY_USER_CONFIRMATION_REQUIRED"
+
 # 盘中「恒科急跌联动」低吸扫描调度
 # 交易时段守护线程：周一至周五 09:30–16:00（HK）内按 interval_min 扫描一次，
 # 仅当恒生科技指数急跌（≤ threshold）时推送企业微信（指纹去重，最短 30 分钟）。

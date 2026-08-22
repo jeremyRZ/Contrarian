@@ -28,6 +28,22 @@ def test_intraday_scheduler_only_runs_price_risk(monkeypatch):
     assert captured == [api._price_alert_run]
 
 
+def test_xiaomi_directional_get_is_read_only(monkeypatch):
+    monkeypatch.setattr(api.xiaomi_directional, "live_status",
+                        lambda client, cfg: ({"action": "WAIT"}, None))
+    monkeypatch.setattr(api, "client", lambda: object())
+    result = api.get_xiaomi_directional()
+    assert result == {"ok": True, "data": {"action": "WAIT"}}
+
+
+def test_xiaomi_options_get_is_read_only(monkeypatch):
+    monkeypatch.setattr(api.xiaomi_options, "analyze",
+                        lambda client, cfg: ({"instrument": "NONE"}, None))
+    monkeypatch.setattr(api, "client", lambda: object())
+    result = api.get_xiaomi_options()
+    assert result == {"ok": True, "data": {"instrument": "NONE"}}
+
+
 def test_app_lifespan_starts_and_stops_both_schedulers(monkeypatch):
     calls = []
     monkeypatch.setattr(api, "_startup_scheduler", lambda: calls.append("daily-start"))

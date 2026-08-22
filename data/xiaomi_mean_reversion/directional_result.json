@@ -1,0 +1,62 @@
+{
+  "data_range": [
+    "2021-01-19",
+    "2026-08-21"
+  ],
+  "selected": {
+    "family": "momentum",
+    "fast": 0,
+    "slow": 20,
+    "threshold": 0.05
+  },
+  "development": {
+    "count": 44,
+    "return_pct": 8.866227967103836,
+    "annualized_pct": 4.551110281456605,
+    "sharpe": 0.40855511642091086,
+    "sortino": 0.4722010642241833,
+    "profit_factor": 1.0873868584811948,
+    "max_drawdown_pct": -11.235512016588455,
+    "long_days": 98,
+    "short_days": 238,
+    "flat_days": 145
+  },
+  "validation": {
+    "count": 35,
+    "return_pct": 25.86645558335592,
+    "annualized_pct": 12.614125888390436,
+    "sharpe": 1.1034042673304463,
+    "sortino": 1.6008063588227706,
+    "profit_factor": 1.2529782812580263,
+    "max_drawdown_pct": -9.200268948549173,
+    "long_days": 227,
+    "short_days": 96,
+    "flat_days": 165
+  },
+  "untouched_test": {
+    "count": 30,
+    "return_pct": 4.680486253395166,
+    "annualized_pct": 2.9163085242268183,
+    "sharpe": 0.2857650422229348,
+    "sortino": 0.34151701188262734,
+    "profit_factor": 1.0590868020099264,
+    "max_drawdown_pct": -13.833885183416172,
+    "long_days": 128,
+    "short_days": 162,
+    "flat_days": 111
+  },
+  "passed": true,
+  "current": {
+    "as_of": "2026-08-21",
+    "state": 1,
+    "action": "BUY",
+    "price": 29.02
+  },
+  "assumptions": {
+    "next_open_execution": true,
+    "allocation_pct": 30,
+    "fee_bps_each_position_change": 12,
+    "slippage_bps_each_position_change": 8,
+    "short_borrow_pct_annual": 8
+  }
+}

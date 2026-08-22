@@ -1,0 +1,308 @@
+{
+  "data_range": [
+    "2019-04-30",
+    "2026-08-21"
+  ],
+  "costs": {
+    "fee_bps_each_side": 12,
+    "slippage_bps_each_side": 8,
+    "short_borrow_pct_annual": 8,
+    "allocation_pct": 30
+  },
+  "directions": {
+    "long": {
+      "selected": {
+        "direction": "long",
+        "rsi2": 5,
+        "z20": 2.0,
+        "hold_days": 8,
+        "stop_pct": 10,
+        "regime": "any"
+      },
+      "development": {
+        "count": 15,
+        "return_pct": 14.841472008960043,
+        "profit_factor": 4.880972451392937,
+        "win_rate": 0.7333333333333333,
+        "expectancy_pct": 0.9894314672640027,
+        "max_drawdown_pct": -2.0079050239948493
+      },
+      "validation": {
+        "count": 5,
+        "return_pct": 3.415763847680009,
+        "profit_factor": 6.35614113524004,
+        "win_rate": 0.8,
+        "expectancy_pct": 0.6831527695360021,
+        "max_drawdown_pct": -0.6377284992000076
+      },
+      "test": {
+        "count": 9,
+        "return_pct": -4.57197575798014,
+        "profit_factor": 0.38080679717407195,
+        "win_rate": 0.4444444444444444,
+        "expectancy_pct": -0.5079973064422392,
+        "max_drawdown_pct": -4.57197575798014
+      },
+      "passed": false,
+      "test_trades": [
+        {
+          "entry_date": "2025-04-01",
+          "exit_date": "2025-04-02",
+          "entry": 49.439519999999995,
+          "exit": 44.4599715456,
+          "qty": 600,
+          "pnl": -3055.33670655283,
+          "return_on_equity_pct": -3.05533670655283,
+          "reason": "stop"
+        },
+        {
+          "entry_date": "2025-07-30",
+          "exit_date": "2025-08-05",
+          "entry": 55.044,
+          "exit": 54.60628,
+          "qty": 400,
+          "pnl": -227.72013439999952,
+          "return_on_equity_pct": -0.22772013439999952,
+          "reason": "mean_reversion"
+        },
+        {
+          "entry_date": "2025-08-11",
+          "exit_date": "2025-08-14",
+          "entry": 51.09083999999999,
+          "exit": 53.90684,
+          "qty": 400,
+          "pnl": 1076.0011136000037,
+          "return_on_equity_pct": 1.0760011136000038,
+          "reason": "mean_reversion"
+        },
+        {
+          "entry_date": "2025-10-14",
+          "exit_date": "2025-10-24",
+          "entry": 49.29940799999999,
+          "exit": 47.06232,
+          "qty": 400,
+          "pnl": -941.0888294399972,
+          "return_on_equity_pct": -0.9410888294399973,
+          "reason": "mean_reversion"
+        },
+        {
+          "entry_date": "2025-11-20",
+          "exit_date": "2025-11-26",
+          "entry": 38.831039999999994,
+          "exit": 40.547536,
+          "qty": 600,
+          "pnl": 972.7450252800039,
+          "return_on_equity_pct": 0.972745025280004,
+          "reason": "mean_reversion"
+        },
+        {
+          "entry_date": "2026-01-20",
+          "exit_date": "2026-01-26",
+          "entry": 36.048816,
+          "exit": 36.330912,
+          "qty": 800,
+          "pnl": 156.19226111999654,
+          "return_on_equity_pct": 0.15619226111999654,
+          "reason": "mean_reversion"
+        },
+        {
+          "entry_date": "2026-03-03",
+          "exit_date": "2026-03-09",
+          "entry": 33.166512,
+          "exit": 32.653856,
+          "qty": 800,
+          "pnl": -473.3123532799998,
+          "return_on_equity_pct": -0.4733123532799998,
+          "reason": "mean_reversion"
+        },
+        {
+          "entry_date": "2026-04-29",
+          "exit_date": "2026-05-05",
+          "entry": 29.943936,
+          "exit": 30.77536,
+          "qty": 800,
+          "pnl": 606.8486758399987,
+          "return_on_equity_pct": 0.6068486758399987,
+          "reason": "mean_reversion"
+        },
+        {
+          "entry_date": "2026-06-12",
+          "exit_date": "2026-06-23",
+          "entry": 26.080847999999996,
+          "exit": 23.453984989439995,
+          "qty": 1000,
+          "pnl": -2686.304810147329,
+          "return_on_equity_pct": -2.686304810147329,
+          "reason": "stop"
+        }
+      ]
+    },
+    "short": {
+      "selected": {
+        "direction": "short",
+        "rsi2": 5,
+        "z20": 1.0,
+        "hold_days": 3,
+        "stop_pct": 5,
+        "regime": "any"
+      },
+      "development": {
+        "count": 17,
+        "return_pct": -0.14741152562450788,
+        "profit_factor": 0.9836689678374595,
+        "win_rate": 0.5294117647058824,
+        "expectancy_pct": -0.008671266213205488,
+        "max_drawdown_pct": -4.534375464861451
+      },
+      "validation": {
+        "count": 26,
+        "return_pct": -13.607791113305922,
+        "profit_factor": 0.31448853094304097,
+        "win_rate": 0.2692307692307692,
+        "expectancy_pct": -0.523376581280998,
+        "max_drawdown_pct": -15.108211073236632
+      },
+      "test": {
+        "count": 13,
+        "return_pct": 5.586717167080502,
+        "profit_factor": 2.3392382890753347,
+        "win_rate": 0.7692307692307693,
+        "expectancy_pct": 0.42974747439080835,
+        "max_drawdown_pct": -1.6843810561591677
+      },
+      "passed": false,
+      "test_trades": [
+        {
+          "entry_date": "2025-02-07",
+          "exit_date": "2025-02-07",
+          "entry": 40.66744,
+          "exit": 42.734972649599996,
+          "qty": 600,
+          "pnl": -1305.9173737718197,
+          "return_on_equity_pct": -1.3059173737718197,
+          "reason": "stop"
+        },
+        {
+          "entry_date": "2025-02-11",
+          "exit_date": "2025-02-14",
+          "entry": 43.9648,
+          "exit": 42.43391999999999,
+          "qty": 600,
+          "pnl": 838.9759046137007,
+          "return_on_equity_pct": 0.8389759046137005,
+          "reason": "mean_reversion"
+        },
+        {
+          "entry_date": "2025-02-26",
+          "exit_date": "2025-02-27",
+          "entry": 54.2066,
+          "exit": 56.962463543999995,
+          "qty": 400,
+          "pnl": -1160.458927553172,
+          "return_on_equity_pct": -1.160458927553172,
+          "reason": "stop"
+        },
+        {
+          "entry_date": "2025-03-19",
+          "exit_date": "2025-03-24",
+          "entry": 56.9544,
+          "exit": 55.2942,
+          "qty": 400,
+          "pnl": 585.2343596712342,
+          "return_on_equity_pct": 0.5852343596712342,
+          "reason": "mean_reversion"
+        },
+        {
+          "entry_date": "2025-05-06",
+          "exit_date": "2025-05-08",
+          "entry": 53.05752,
+          "exit": 49.839839999999995,
+          "qty": 400,
+          "pnl": 1228.378030816439,
+          "return_on_equity_pct": 1.228378030816439,
+          "reason": "mean_reversion"
+        },
+        {
+          "entry_date": "2025-05-21",
+          "exit_date": "2025-05-26",
+          "entry": 54.906040000000004,
+          "exit": 52.64208,
+          "qty": 400,
+          "pnl": 829.8925013041113,
+          "return_on_equity_pct": 0.8298925013041114,
+          "reason": "mean_reversion"
+        },
+        {
+          "entry_date": "2025-06-06",
+          "exit_date": "2025-06-09",
+          "entry": 54.4564,
+          "exit": 53.74296,
+          "qty": 400,
+          "pnl": 219.11752802192007,
+          "return_on_equity_pct": 0.21911752802192008,
+          "reason": "mean_reversion"
+        },
+        {
+          "entry_date": "2025-06-25",
+          "exit_date": "2025-06-27",
+          "entry": 57.40404,
+          "exit": 61.499159999999996,
+          "qty": 400,
+          "pnl": -1705.1869019178062,
+          "return_on_equity_pct": -1.7051869019178063,
+          "reason": "stop"
+        },
+        {
+          "entry_date": "2025-07-02",
+          "exit_date": "2025-07-04",
+          "entry": 60.351679999999995,
+          "exit": 57.54599999999999,
+          "qty": 400,
+          "pnl": 1055.0989012164391,
+          "return_on_equity_pct": 1.0550989012164391,
+          "reason": "mean_reversion"
+        },
+        {
+          "entry_date": "2025-09-03",
+          "exit_date": "2025-09-05",
+          "entry": 56.90444,
+          "exit": 54.0432,
+          "qty": 400,
+          "pnl": 1081.2633679780831,
+          "return_on_equity_pct": 1.081263367978083,
+          "reason": "mean_reversion"
+        },
+        {
+          "entry_date": "2025-09-18",
+          "exit_date": "2025-09-22",
+          "entry": 57.25416,
+          "exit": 56.294999999999995,
+          "qty": 400,
+          "pnl": 309.08223202191954,
+          "return_on_equity_pct": 0.30908223202191953,
+          "reason": "mean_reversion"
+        },
+        {
+          "entry_date": "2026-02-12",
+          "exit_date": "2026-02-23",
+          "entry": 37.07032,
+          "exit": 35.888687999999995,
+          "qty": 800,
+          "pnl": 803.7649378542526,
+          "return_on_equity_pct": 0.8037649378542526,
+          "reason": "mean_reversion"
+        },
+        {
+          "entry_date": "2026-07-30",
+          "exit_date": "2026-08-03",
+          "entry": 32.37408,
+          "exit": 28.762991999999997,
+          "qty": 800,
+          "pnl": 2807.472606825207,
+          "return_on_equity_pct": 2.807472606825207,
+          "reason": "mean_reversion"
+        }
+      ]
+    }
+  }
+}

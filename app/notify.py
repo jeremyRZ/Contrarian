@@ -12,6 +12,8 @@ import time
 
 import requests
 
+from .modules import notification_ledger
+
 logger = logging.getLogger("hk-notify")
 
 # fingerprint -> 上次成功推送的时间戳
@@ -19,24 +21,29 @@ _LAST_PUSH: dict[str, float] = {}
 _DEFAULT_INTERVAL = 600  # 同指纹最短推送间隔（秒）
 
 
-def push_wecom(text: str, webhook: str = "", timeout: int = 5) -> bool:
-    """推送 markdown 消息到企业微信群机器人。无 webhook 时降级为日志，返回是否真正推送。"""
+def _send_wecom(text: str, webhook: str = "", timeout: int = 5) -> tuple[bool, str]:
+    """Low-level sender. Audit is owned by the public notification functions."""
     if not webhook:
         logger.warning("[WeCom-降级] %s", text.replace("\n", " | "))
-        return False
+        return False, "WEBHOOK_NOT_CONFIGURED"
     try:
-        r = requests.post(
-            webhook,
-            json={"msgtype": "markdown", "markdown": {"content": text}},
-            timeout=timeout,
-        )
+        r = requests.post(webhook, json={"msgtype": "markdown", "markdown": {"content": text}},
+                          timeout=timeout)
         if r.status_code == 200:
-            return True
+            return True, "HTTP_200"
         logger.error("[WeCom-失败] HTTP %s: %s", r.status_code, r.text[:200])
-        return False
-    except Exception as e:  # noqa: BLE001
-        logger.error("[WeCom-异常] %s", e)
-        return False
+        return False, f"HTTP_{r.status_code}"
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[WeCom-异常] %s", exc)
+        return False, type(exc).__name__
+
+
+def push_wecom(text: str, webhook: str = "", timeout: int = 5) -> bool:
+    """推送 markdown 消息到企业微信群机器人。无 webhook 时降级为日志，返回是否真正推送。"""
+    fingerprint = f"direct:{hash(text)}"
+    ok, detail = _send_wecom(text, webhook, timeout)
+    notification_ledger.record(fingerprint, text, "SENT" if ok else "FAILED", detail=detail)
+    return ok
 
 
 def push_if_new(fingerprint: str, text: str, webhook: str = "",
@@ -46,8 +53,11 @@ def push_if_new(fingerprint: str, text: str, webhook: str = "",
     last = _LAST_PUSH.get(fingerprint)
     if last and (now - last) < min_interval:
         logger.info("[WeCom-限频] 跳过重复推送 fingerprint=%s", fingerprint[:16])
+        notification_ledger.record(fingerprint, text, "SKIPPED_DUPLICATE",
+                                   detail=f"min_interval={min_interval}")
         return False
-    ok = push_wecom(text, webhook)
+    ok, detail = _send_wecom(text, webhook)
+    notification_ledger.record(fingerprint, text, "SENT" if ok else "FAILED", detail=detail)
     if ok:
         _LAST_PUSH[fingerprint] = now
     return ok

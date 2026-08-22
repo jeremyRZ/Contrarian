@@ -221,6 +221,32 @@ class FutuClient:
         except Exception as e:  # noqa: BLE001
             return None, str(e)
 
+    def option_expiration_dates(self, code: str) -> Tuple[Optional[object], Optional[str]]:
+        """Available option expiries for an underlying; read-only quote request."""
+        ok, msg = self._ensure_quote()
+        if not ok:
+            return None, msg
+        try:
+            ret, data = self._quote.get_option_expiration_date(code)
+            if ret != ft.RET_OK:
+                return None, str(data)
+            return data, None
+        except Exception as e:  # noqa: BLE001
+            return None, str(e)
+
+    def option_chain(self, code: str, start: str, end: str) -> Tuple[Optional[object], Optional[str]]:
+        """Option contracts for one expiry range; read-only quote request."""
+        ok, msg = self._ensure_quote()
+        if not ok:
+            return None, msg
+        try:
+            ret, data = self._quote.get_option_chain(code, start=start, end=end)
+            if ret != ft.RET_OK:
+                return None, str(data)
+            return data, None
+        except Exception as e:  # noqa: BLE001
+            return None, str(e)
+
     # ---------- 研究数据（错杀猎手增强） ----------
     def capital_distribution(self, code: str) -> Tuple[Optional[object], Optional[str]]:
         """个股资金流向分布（超大/大/中/小单 净流入/流出）。返回 (DataFrame, error)。

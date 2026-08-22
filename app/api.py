@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .futu_client import build_client_from_config, load_config
-from .modules import valuation, screener, monitor, ipo, missed_scan, price_alert, analyze, buybacks, news, southbound, reverse_signals, capital_flow, southbound_risk, fundamentals, filters, dividend, earnings, divergence, daily_report, intraday, backtest, strategy_config, decision, strategy_center, forward_ledger, westock_research, cn_research
+from .modules import valuation, screener, monitor, ipo, missed_scan, price_alert, analyze, buybacks, news, southbound, reverse_signals, capital_flow, southbound_risk, fundamentals, filters, dividend, earnings, divergence, daily_report, intraday, backtest, strategy_config, decision, strategy_center, forward_ledger, notification_ledger, westock_research, cn_research, research_assets, xiaomi_directional, xiaomi_options
 from .markets import cn_lot_size, cn_price_limit, get_market_rules, resolve_security
 from .providers import MarketDataRouter, TigerPositionsProvider
 from .modules.screener import LEADERS
@@ -107,7 +107,19 @@ def _startup_scheduler():
     def daily_jobs():
         status = strategy_center.get_status(client(), refresh=True)
         forward_ledger.record_status(status)
-        return daily_report.run_daily_report(client(), _webhook())
+        report = daily_report.run_daily_report(client(), _webhook())
+        directional, err = xiaomi_directional.live_status(client(), CONFIG)
+        if not err and directional:
+            message = xiaomi_directional.notification(directional)
+            if message:
+                notify.push_if_new(message[0], message[1], _webhook(), min_interval=86_400)
+        option_result, option_err = xiaomi_options.analyze(client(), CONFIG)
+        if not option_err and option_result:
+            option_message = xiaomi_options.notification(option_result)
+            if option_message:
+                notify.push_if_new(option_message[0], option_message[1], _webhook(),
+                                   min_interval=30 * 86_400)
+        return report
     scheduler.start_scheduler(daily_jobs, hour=hh, minute=mm, enabled=enabled)
 
 
@@ -119,6 +131,26 @@ def health():
             "system": CONFIG.get("system", {}),
             "futu": {k: futu_cfg.get(k) for k in ("host", "port", "trd_env", "watchlist_group")
                      if k in futu_cfg}}
+
+
+@app.get("/api/xiaomi-directional")
+def get_xiaomi_directional():
+    """Read-only Xiaomi long/flat/short state; this endpoint never pushes or trades."""
+    result, error = xiaomi_directional.live_status(client(), CONFIG)
+    return _wrap(result, error)
+
+
+@app.get("/api/xiaomi-options")
+def get_xiaomi_options():
+    """Read-only CALL/PUT recommendation; this endpoint never pushes or trades."""
+    result, error = xiaomi_options.analyze(client(), CONFIG)
+    return _wrap(result, error)
+
+
+@app.get("/api/notification-ledger")
+def get_notification_ledger(limit: int = 200):
+    """Read-only audit trail of sent, failed, and deduplicated notifications."""
+    return _wrap(notification_ledger.dashboard(max(1, min(limit, 1000))), None)
 
 
 @app.get("/api/markets")
@@ -187,6 +219,12 @@ def get_market_positions(market: str = ""):
     if frame is None or frame.empty: return _wrap({"market": market.upper() or "ALL", "items": []}, None)
     rows = frame.where(frame.notna(), None).to_dict("records")
     return _wrap({"market": market.upper() or "ALL", "items": rows}, None)
+
+
+@app.get("/api/research-assets")
+def get_research_assets():
+    """Expose observation status without adding assets to portfolio accounting."""
+    return _wrap(research_assets.status(), None)
 
 
 @app.get("/api/cn/candidates")

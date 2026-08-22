@@ -7,6 +7,7 @@
   <meta name="description" content="把港股、A股和美股持仓放进同一条投资决策流程。">
   <link rel="stylesheet" href="investor.css?v=20260814-1">
   <link rel="stylesheet" href="investor-fixes.css?v=20260814-1">
+  <link rel="stylesheet" href="observation.css?v=20260822-1">
 </head>
 <body>
 <!--
@@ -76,7 +77,17 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       </div>
     </article>
   </section>
+
+  <section class="workspace observation-workspace" aria-labelledby="observation_title">
+    <div class="section-heading">
+      <div><h2 id="observation_title">观察研究</h2><p>尚未持有，不计入组合资产、盈亏和正式交易信号。</p></div>
+      <span class="observation-boundary">只读 · 不连接交易权限</span>
+    </div>
+    <div id="observation_assets" class="observation-assets">
+      <div class="observation-empty">正在读取本地研究状态…</div>
+    </div>
+  </section>
 </main>
-<script src="investor.js?v=20260814-1"></script>
+  <script src="investor.js?v=20260822-1"></script>
 </body>
 </html>
