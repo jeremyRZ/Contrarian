@@ -88,14 +88,12 @@ function renderResearchAssets(data) {
     const latest = item.latest;
     const detail = item.asset === 'BTC'
       ? '价格、波动、回撤和模拟仓位将在配置数据源后显示。'
-      : latest
-        ? `${esc(latest.question || '最近观察')} · 成本后边际 ${number(latest.net_edge, 4)} · ${esc(item.message)}`
-        : esc(item.message);
+      : esc(item.message);
     const time = latest?.observed_at
       ? `最近记录 ${new Date(latest.observed_at).toLocaleString('zh-CN', {hour12:false})}`
       : '当前没有可展示的实时数据';
     return `<article class="observation-asset">
-      <div class="observation-title"><div><span>${esc(item.asset === 'BTC' ? 'Bitcoin' : 'Polymarket')}</span><b>${esc(item.stage_label)}</b></div><em>${esc(item.data_state)}</em></div>
+      <div class="observation-title"><div><span>${esc(item.asset === 'BTC' ? 'Bitcoin' : item.asset)}</span><b>${esc(item.stage_label)}</b></div><em>${esc(item.data_state)}</em></div>
       <p>${detail}</p><small>${time}</small>
       <div class="observation-rule">不计入实盘组合 · 不产生 BUY/SELL 推送 · 不自动下单</div>
     </article>`;

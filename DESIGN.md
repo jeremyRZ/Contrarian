@@ -4,7 +4,7 @@
 
 Contrarian is an investor decision desk, not a collection of market modules. Every primary surface follows the same order: portfolio state, risk, required action, research opportunity, evidence. HK, CN, and US are filters and provenance labels rather than separate product destinations.
 
-Funded A-share, HK-share, and US-share positions belong to the live portfolio. BTC remains a watch asset until a data and position provider is configured. Polymarket remains a read-only experiment based on local paper observations. Watch and experiment assets never enter portfolio value, P&L, or formal trade notifications.
+Funded A-share, HK-share, and US-share positions belong to the live portfolio. BTC remains a watch asset until a data and position provider is configured. Watch assets never enter portfolio value, P&L, or formal trade notifications.
 
 ## Navigation
 

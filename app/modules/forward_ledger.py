@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from .supertrend_research import SuperTrendParams, supertrend
+
 ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / ".runtime" / "forward_ledger.sqlite3"
 DAILY_DIR = ROOT / ".universal_daily_60"
@@ -22,7 +24,104 @@ def _connect():
         strategy_id TEXT NOT NULL, strategy_name TEXT NOT NULL, action TEXT NOT NULL,
         reason TEXT NOT NULL, payload TEXT NOT NULL,
         UNIQUE(signal_date, strategy_id, action))""")
+    db.execute("""CREATE TABLE IF NOT EXISTS shadow_events (
+        id INTEGER PRIMARY KEY, recorded_at TEXT NOT NULL, signal_date TEXT NOT NULL,
+        strategy_id TEXT NOT NULL, code TEXT NOT NULL, direction TEXT NOT NULL,
+        signal_close REAL NOT NULL, payload TEXT NOT NULL,
+        UNIQUE(signal_date, strategy_id, direction))""")
+    db.execute("""CREATE TABLE IF NOT EXISTS shadow_meta (
+        strategy_id TEXT PRIMARY KEY, started_at TEXT NOT NULL)""")
     return db
+
+
+def record_supertrend_exit_shadow(bars: pd.DataFrame | None = None) -> int:
+    """Record a new Xiaomi/SuperTrend disagreement event, never an order."""
+    strategy_id = "xiaomi_supertrend_exit_shadow_v1"
+    now = datetime.now().isoformat(timespec="seconds")
+    with _connect() as db:
+        db.execute("INSERT OR IGNORE INTO shadow_meta(strategy_id,started_at) VALUES(?,?)",
+                   (strategy_id, now))
+    if bars is None:
+        path = DAILY_DIR / "HK_01810.csv"
+        if not path.exists():
+            return 0
+        bars = pd.read_csv(path)
+    frame = bars.copy().sort_values("time_key").drop_duplicates("time_key", keep="last")
+    if len(frame) < 35:
+        return 0
+    frame["time_key"] = pd.to_datetime(frame["time_key"], format="mixed")
+    close = pd.to_numeric(frame["close"], errors="coerce")
+    base = pd.Series(0, index=frame.index, dtype=int)
+    momentum = close.pct_change(20)
+    base.loc[momentum > .05] = 1
+    base.loc[momentum < -.05] = -1
+    trend = supertrend(frame, SuperTrendParams(14, 3.5))["st_direction"]
+    conflict = (base != 0) & (trend == -base)
+    if not bool(conflict.iloc[-1]) or bool(conflict.iloc[-2]):
+        return 0
+    latest = frame.iloc[-1]
+    direction = "EXIT_LONG" if int(base.iloc[-1]) == 1 else "EXIT_SHORT"
+    payload = {
+        "research_only": True, "notification": False, "order": False,
+        "base": "20日动量阈值正负5%", "supertrend": {"atr_period": 14, "multiplier": 3.5},
+        "momentum_20d_pct": float(momentum.iloc[-1] * 100),
+        "supertrend_direction": int(trend.iloc[-1]),
+    }
+    with _connect() as db:
+        cur = db.execute(
+            "INSERT OR IGNORE INTO shadow_events(recorded_at,signal_date,strategy_id,code,direction,signal_close,payload) VALUES(?,?,?,?,?,?,?)",
+            (now, str(latest.time_key.date()), strategy_id, "HK.01810", direction,
+             float(latest.close), json.dumps(payload, ensure_ascii=False, separators=(",", ":"))))
+        return cur.rowcount
+
+
+def _shadow_dashboard() -> dict:
+    strategy_id = "xiaomi_supertrend_exit_shadow_v1"
+    with _connect() as db:
+        meta = db.execute("SELECT started_at FROM shadow_meta WHERE strategy_id=?",
+                          (strategy_id,)).fetchone()
+        rows = [dict(row) for row in db.execute(
+            "SELECT recorded_at,signal_date,direction,signal_close,payload FROM shadow_events WHERE strategy_id=? ORDER BY signal_date DESC,id DESC",
+            (strategy_id,))]
+    started_at = meta["started_at"] if meta else None
+    elapsed_days = ((datetime.now() - datetime.fromisoformat(started_at)).days
+                    if started_at else 0)
+    path = DAILY_DIR / "HK_01810.csv"
+    bars = None
+    if path.exists():
+        try:
+            bars = pd.read_csv(path)
+            bars["time_key"] = pd.to_datetime(bars["time_key"], format="mixed")
+            bars = bars.sort_values("time_key")
+        except Exception:  # noqa: BLE001
+            bars = None
+    for row in rows:
+        row["details"] = json.loads(row.pop("payload"))
+        row["next_open"] = None
+        row["returns"] = {}
+        if bars is None:
+            continue
+        future = bars[bars.time_key > pd.Timestamp(row["signal_date"])]
+        if future.empty:
+            continue
+        entry = float(future.iloc[0].open)
+        row["next_open"] = entry
+        side = -1 if row["direction"] == "EXIT_LONG" else 1
+        for horizon in (5, 10, 20):
+            if len(future) >= horizon:
+                hold_return = float(future.iloc[horizon - 1].close) / entry - 1
+                row["returns"][str(horizon)] = round(side * hold_return * 100, 2)
+    mature = [row["returns"]["20"] for row in rows if "20" in row["returns"]]
+    return {
+        "strategy_id": strategy_id, "name": "小米 SuperTrend 退出影子记录",
+        "status": "READY_FOR_REVIEW" if len(rows) >= 30 or elapsed_days >= 183 else "COLLECTING",
+        "started_at": started_at, "elapsed_days": elapsed_days, "event_count": len(rows),
+        "target_events": 30, "target_days": 183,
+        "mature_20d_count": len(mature),
+        "average_saved_return_20d_pct": round(sum(mature) / len(mature), 2) if mature else None,
+        "events": rows,
+        "note": "正数表示影子退出优于继续持有；仅研究记录，不产生通知或订单。",
+    }
 
 
 def record_status(status: dict) -> int:
@@ -98,5 +197,6 @@ def dashboard(limit: int = 200) -> dict:
             "unavailable": unavailable, "trades": len(mature_returns), "return_pct": avg_return,
             "profit_factor": None, "max_drawdown_pct": None},
             "evaluations": evaluations, "strategy_stats": strategy_stats,
+            "shadow": _shadow_dashboard(),
             "note": ("收益为信号后5/20交易日收盘的前向观察值，不等同真实成交收益。"
                      if evaluations else "尚无到期样本；系统会在信号后第5和第20个交易日自动评价。")}

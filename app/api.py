@@ -107,6 +107,7 @@ def _startup_scheduler():
     def daily_jobs():
         status = strategy_center.get_status(client(), refresh=True)
         forward_ledger.record_status(status)
+        forward_ledger.record_supertrend_exit_shadow()
         report = daily_report.run_daily_report(client(), _webhook())
         directional, err = xiaomi_directional.live_status(client(), CONFIG)
         if not err and directional:
@@ -400,6 +401,7 @@ def get_strategy_center_status(refresh: int = 0):
     try:
         status = strategy_center.get_status(client(), refresh=bool(refresh))
         forward_ledger.record_status(status)
+        forward_ledger.record_supertrend_exit_shadow()
         return _wrap(status, None)
     except Exception as e:  # noqa: BLE001
         return _wrap(None, f"策略中心更新失败: {e}")

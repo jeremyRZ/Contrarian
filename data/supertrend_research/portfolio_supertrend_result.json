@@ -1,0 +1,338 @@
+{
+  "research_only": true,
+  "universe_loaded": 53,
+  "supertrend": {
+    "atr_period": 10,
+    "multiplier": 3.0
+  },
+  "modes": {
+    "baseline": {
+      "folds": [
+        {
+          "test_year": 2022,
+          "params": null,
+          "train_return_pct": 0,
+          "test_return_pct": 0,
+          "test_profit_factor": 0,
+          "test_max_drawdown_pct": 0,
+          "test_trades": 0
+        },
+        {
+          "test_year": 2023,
+          "params": null,
+          "train_return_pct": 0,
+          "test_return_pct": 0,
+          "test_profit_factor": 0,
+          "test_max_drawdown_pct": 0,
+          "test_trades": 0
+        },
+        {
+          "test_year": 2024,
+          "params": null,
+          "train_return_pct": 0,
+          "test_return_pct": 0,
+          "test_profit_factor": 0,
+          "test_max_drawdown_pct": 0,
+          "test_trades": 0
+        },
+        {
+          "test_year": 2025,
+          "params": {
+            "family": "breakout",
+            "lookback": 120,
+            "threshold": 1.5,
+            "exit_ma": 10,
+            "max_hold": 40,
+            "stop_atr": 2.5,
+            "trailing_pct": 0.1
+          },
+          "train_return_pct": 9.286612533019479,
+          "test_return_pct": 10.648569690446074,
+          "test_profit_factor": 4.920349736303635,
+          "test_max_drawdown_pct": -1.9605427575094092,
+          "test_trades": 10
+        },
+        {
+          "test_year": 2026,
+          "params": {
+            "family": "breakout",
+            "lookback": 120,
+            "threshold": 1.5,
+            "exit_ma": 20,
+            "max_hold": 40,
+            "stop_atr": 2.5,
+            "trailing_pct": 0.15
+          },
+          "train_return_pct": 31.372498507477744,
+          "test_return_pct": -2.5992322567480186,
+          "test_profit_factor": 0.0,
+          "test_max_drawdown_pct": -3.485740526113845,
+          "test_trades": 4
+        }
+      ],
+      "oos": {
+        "ending_hkd": 21554.511275084336,
+        "return_pct": 7.772556375421691,
+        "trade_count": 14,
+        "profit_factor": 2.3898817704973436,
+        "max_drawdown_pct": -4.304569942645642,
+        "positive_year_rate": 0.2
+      },
+      "distinct_stocks": 9,
+      "delta_vs_baseline": {
+        "return_pct": 0.0,
+        "profit_factor": 0.0,
+        "max_drawdown_pct": 0.0,
+        "trade_count": 0
+      }
+    },
+    "entry_confirmation": {
+      "folds": [
+        {
+          "test_year": 2022,
+          "params": null,
+          "train_return_pct": 0,
+          "test_return_pct": 0,
+          "test_profit_factor": 0,
+          "test_max_drawdown_pct": 0,
+          "test_trades": 0
+        },
+        {
+          "test_year": 2023,
+          "params": null,
+          "train_return_pct": 0,
+          "test_return_pct": 0,
+          "test_profit_factor": 0,
+          "test_max_drawdown_pct": 0,
+          "test_trades": 0
+        },
+        {
+          "test_year": 2024,
+          "params": null,
+          "train_return_pct": 0,
+          "test_return_pct": 0,
+          "test_profit_factor": 0,
+          "test_max_drawdown_pct": 0,
+          "test_trades": 0
+        },
+        {
+          "test_year": 2025,
+          "params": {
+            "family": "breakout",
+            "lookback": 120,
+            "threshold": 1.5,
+            "exit_ma": 10,
+            "max_hold": 40,
+            "stop_atr": 2.5,
+            "trailing_pct": 0.1
+          },
+          "train_return_pct": 9.286612533019479,
+          "test_return_pct": 10.648569690446074,
+          "test_profit_factor": 4.920349736303635,
+          "test_max_drawdown_pct": -1.9605427575094092,
+          "test_trades": 10
+        },
+        {
+          "test_year": 2026,
+          "params": {
+            "family": "breakout",
+            "lookback": 120,
+            "threshold": 1.5,
+            "exit_ma": 20,
+            "max_hold": 40,
+            "stop_atr": 2.5,
+            "trailing_pct": 0.15
+          },
+          "train_return_pct": 31.372498507477744,
+          "test_return_pct": -2.5992322567480186,
+          "test_profit_factor": 0.0,
+          "test_max_drawdown_pct": -3.485740526113845,
+          "test_trades": 4
+        }
+      ],
+      "oos": {
+        "ending_hkd": 21554.511275084336,
+        "return_pct": 7.772556375421691,
+        "trade_count": 14,
+        "profit_factor": 2.3898817704973436,
+        "max_drawdown_pct": -4.304569942645642,
+        "positive_year_rate": 0.2
+      },
+      "distinct_stocks": 9,
+      "delta_vs_baseline": {
+        "return_pct": 0.0,
+        "profit_factor": 0.0,
+        "max_drawdown_pct": 0.0,
+        "trade_count": 0
+      }
+    },
+    "exit_overlay": {
+      "folds": [
+        {
+          "test_year": 2022,
+          "params": null,
+          "train_return_pct": 0,
+          "test_return_pct": 0,
+          "test_profit_factor": 0,
+          "test_max_drawdown_pct": 0,
+          "test_trades": 0
+        },
+        {
+          "test_year": 2023,
+          "params": null,
+          "train_return_pct": 0,
+          "test_return_pct": 0,
+          "test_profit_factor": 0,
+          "test_max_drawdown_pct": 0,
+          "test_trades": 0
+        },
+        {
+          "test_year": 2024,
+          "params": null,
+          "train_return_pct": 0,
+          "test_return_pct": 0,
+          "test_profit_factor": 0,
+          "test_max_drawdown_pct": 0,
+          "test_trades": 0
+        },
+        {
+          "test_year": 2025,
+          "params": {
+            "family": "breakout",
+            "lookback": 120,
+            "threshold": 1.5,
+            "exit_ma": 10,
+            "max_hold": 40,
+            "stop_atr": 2.5,
+            "trailing_pct": 0.1
+          },
+          "train_return_pct": 9.286612533019479,
+          "test_return_pct": 10.648569690446074,
+          "test_profit_factor": 4.920349736303635,
+          "test_max_drawdown_pct": -1.9605427575094092,
+          "test_trades": 10
+        },
+        {
+          "test_year": 2026,
+          "params": {
+            "family": "breakout",
+            "lookback": 120,
+            "threshold": 1.5,
+            "exit_ma": 20,
+            "max_hold": 40,
+            "stop_atr": 2.5,
+            "trailing_pct": 0.15
+          },
+          "train_return_pct": 31.372498507477744,
+          "test_return_pct": -2.5992322567480186,
+          "test_profit_factor": 0.0,
+          "test_max_drawdown_pct": -3.485740526113845,
+          "test_trades": 4
+        }
+      ],
+      "oos": {
+        "ending_hkd": 21554.511275084336,
+        "return_pct": 7.772556375421691,
+        "trade_count": 14,
+        "profit_factor": 2.3898817704973436,
+        "max_drawdown_pct": -4.304569942645642,
+        "positive_year_rate": 0.2
+      },
+      "distinct_stocks": 9,
+      "delta_vs_baseline": {
+        "return_pct": 0.0,
+        "profit_factor": 0.0,
+        "max_drawdown_pct": 0.0,
+        "trade_count": 0
+      }
+    },
+    "hybrid": {
+      "folds": [
+        {
+          "test_year": 2022,
+          "params": null,
+          "train_return_pct": 0,
+          "test_return_pct": 0,
+          "test_profit_factor": 0,
+          "test_max_drawdown_pct": 0,
+          "test_trades": 0
+        },
+        {
+          "test_year": 2023,
+          "params": null,
+          "train_return_pct": 0,
+          "test_return_pct": 0,
+          "test_profit_factor": 0,
+          "test_max_drawdown_pct": 0,
+          "test_trades": 0
+        },
+        {
+          "test_year": 2024,
+          "params": null,
+          "train_return_pct": 0,
+          "test_return_pct": 0,
+          "test_profit_factor": 0,
+          "test_max_drawdown_pct": 0,
+          "test_trades": 0
+        },
+        {
+          "test_year": 2025,
+          "params": {
+            "family": "breakout",
+            "lookback": 120,
+            "threshold": 1.5,
+            "exit_ma": 10,
+            "max_hold": 40,
+            "stop_atr": 2.5,
+            "trailing_pct": 0.1
+          },
+          "train_return_pct": 9.286612533019479,
+          "test_return_pct": 10.648569690446074,
+          "test_profit_factor": 4.920349736303635,
+          "test_max_drawdown_pct": -1.9605427575094092,
+          "test_trades": 10
+        },
+        {
+          "test_year": 2026,
+          "params": {
+            "family": "breakout",
+            "lookback": 120,
+            "threshold": 1.5,
+            "exit_ma": 20,
+            "max_hold": 40,
+            "stop_atr": 2.5,
+            "trailing_pct": 0.15
+          },
+          "train_return_pct": 31.372498507477744,
+          "test_return_pct": -2.5992322567480186,
+          "test_profit_factor": 0.0,
+          "test_max_drawdown_pct": -3.485740526113845,
+          "test_trades": 4
+        }
+      ],
+      "oos": {
+        "ending_hkd": 21554.511275084336,
+        "return_pct": 7.772556375421691,
+        "trade_count": 14,
+        "profit_factor": 2.3898817704973436,
+        "max_drawdown_pct": -4.304569942645642,
+        "positive_year_rate": 0.2
+      },
+      "distinct_stocks": 9,
+      "delta_vs_baseline": {
+        "return_pct": 0.0,
+        "profit_factor": 0.0,
+        "max_drawdown_pct": 0.0,
+        "trade_count": 0
+      }
+    }
+  },
+  "assumptions": {
+    "selection": "rolling prior 3 years; next calendar year untouched",
+    "comparison": "base parameters selected once without SuperTrend, then held fixed across overlays",
+    "execution": "close signal, next-open fill",
+    "capital_hkd": 20000,
+    "supertrend_parameters": "fixed before portfolio comparison; not fitted per stock",
+    "costs": "minimum brokerage, platform fee, statutory levies, stamp duty, 8bps slippage per side"
+  }
+}

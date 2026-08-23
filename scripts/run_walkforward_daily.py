@@ -9,6 +9,7 @@ It intentionally does not reuse the legacy six-strategy score.
 import itertools
 import json
 import math
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -16,6 +17,10 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from app.modules.supertrend_research import SuperTrendParams, supertrend
+
 DATA = ROOT / ".universal_daily_60"
 UNIVERSE = ROOT / ".universal_daily" / "research_universe_60.csv"
 
@@ -57,6 +62,7 @@ def load_data() -> tuple[dict[str, pd.DataFrame], pd.DataFrame, dict, dict]:
         x["vol_ratio"] = x.volume / x.volume.rolling(20).mean()
         x["ret3"] = c.pct_change(3)
         for n in (20, 60, 120): x[f"prior_high{n}"] = x.high.rolling(n).max().shift(1)
+        x["st_direction"] = supertrend(x, SuperTrendParams(10, 3.0))["st_direction"]
         out[code] = x
     idx = pd.read_csv(DATA / "HK_800000.csv"); idx.time_key = pd.to_datetime(idx.time_key)
     idx = idx.sort_values("time_key").drop_duplicates("time_key", keep="last").set_index("time_key")
@@ -90,7 +96,10 @@ def entry_signal(x: pd.DataFrame, i: int, p: Params) -> tuple[bool, float]:
 
 
 def simulate(data, index, lots, p: Params, start, end, capital=20_000., slippage_bps=8.0, omit=None,
-             per_position_allocation=.15, family_override=None):
+             per_position_allocation=.15, family_override=None,
+             supertrend_mode="baseline"):
+    if supertrend_mode not in {"baseline", "entry_confirmation", "exit_overlay", "hybrid"}:
+        raise ValueError(supertrend_mode)
     omit = set(omit or []); dates = [d for d in index.index if start <= d <= end]
     cash = float(capital); pos = {}; pending_buy = []; pending_sell = set(); curve=[]; trades=[]
     slip = slippage_bps / 10_000
@@ -128,9 +137,13 @@ def simulate(data, index, lots, p: Params, start, end, capital=20_000., slippage
                 trail=p.trailing_pct>0 and z.close <= h["peak"]*(1-p.trailing_pct)
                 if p.family=="rsi_pullback": exit_sig=z.close>z[f"ma{p.exit_ma}"] or z.rsi2>70
                 else: exit_sig=z.close<z[f"ma{p.exit_ma}"]
+                if supertrend_mode in {"exit_overlay", "hybrid"}:
+                    exit_sig = exit_sig or z.st_direction < 0
                 if stop or trail or exit_sig or h["bars"]>=p.max_hold or not market_ok: pending_sell.add(code)
             elif market_ok:
                 ok,score=entry_signal(x,i,p)
+                if supertrend_mode in {"entry_confirmation", "hybrid"}:
+                    ok = ok and x.iloc[i].st_direction > 0
                 if family_override is None or p.family == family_override:
                     if ok: candidates.append((score,code))
         pending_buy=sorted(candidates,reverse=True)[:max(0,4-len(pos))]
