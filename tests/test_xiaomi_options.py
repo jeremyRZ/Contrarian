@@ -1,6 +1,8 @@
 import pandas as pd
 
-from app.modules.xiaomi_options import breakout_signal, notification, rank_contracts, rank_convex_contracts
+from app.modules.xiaomi_options import (breakout_signal, momentum_supertrend_signal,
+                                        notification, rank_contracts,
+                                        rank_convex_contracts)
 
 
 def _row(**overrides):
@@ -39,6 +41,29 @@ def test_breakout_signal_uses_only_prior_55_days():
 
 
 def test_convex_ranker_targets_otm_strike():
-    frame = pd.DataFrame([_row(code="NEAR", option_strike_price=33),
-                          _row(code="FAR", option_strike_price=40)])
+    frame = pd.DataFrame([_row(code="NEAR", option_strike_price=33, option_delta=.30),
+                          _row(code="FAR", option_strike_price=40, option_delta=.05)])
     assert rank_convex_contracts(frame, "CALL", 30, target_otm_pct=10)[0]["code"] == "NEAR"
+
+
+def test_convex_ranker_rejects_lottery_delta_and_far_strike():
+    frame = pd.DataFrame([_row(code="LOTTERY", option_strike_price=38, option_delta=.07)])
+    assert rank_convex_contracts(frame, "CALL", 29.02, target_otm_pct=15) == []
+
+
+def test_momentum_supertrend_requires_new_confirmed_state(monkeypatch):
+    bars = pd.DataFrame({"time_key": pd.date_range("2025-01-01", periods=30, freq="B"),
+                         "open": [10] * 30, "high": [11] * 30, "low": [9] * 30,
+                         "close": [10] * 29 + [11]})
+    monkeypatch.setattr("app.modules.xiaomi_options.supertrend", lambda *_args, **_kwargs:
+                        pd.DataFrame({"st_direction": [1] * 30}))
+    assert momentum_supertrend_signal(bars)["action"] == "BUY_CALL"
+
+
+def test_momentum_supertrend_rejects_unconfirmed_direction(monkeypatch):
+    bars = pd.DataFrame({"time_key": pd.date_range("2025-01-01", periods=30, freq="B"),
+                         "open": [10] * 30, "high": [11] * 30, "low": [9] * 30,
+                         "close": [10] * 29 + [11]})
+    monkeypatch.setattr("app.modules.xiaomi_options.supertrend", lambda *_args, **_kwargs:
+                        pd.DataFrame({"st_direction": [-1] * 30}))
+    assert momentum_supertrend_signal(bars)["action"] == "WAIT"

@@ -1,0 +1,1706 @@
+{
+  "method": {
+    "source": "HKEX DTOP official settlements",
+    "signal": "underlying close; strike target fixed using signal close",
+    "entry": "next-session option settlement plus slippage",
+    "selection": "development only; validation and test excluded",
+    "risk_per_trade_pct": 1
+  },
+  "grid_count": 768,
+  "selected": {
+    "params": {
+      "mode": "momentum_confirm",
+      "atr_period": 7,
+      "multiplier": 2.5,
+      "dte": [
+        30,
+        60
+      ],
+      "otm_pct": 15,
+      "hold": 10
+    },
+    "periods": {
+      "development": {
+        "count": 11,
+        "win_rate": 0.8181818181818182,
+        "mean_return_pct": 192.2984158698444,
+        "median_return_pct": 99.04761904761902,
+        "max_trade_return_pct": 1021.9047619047617,
+        "min_trade_return_pct": -88.69047619047619,
+        "profit_factor": 18.50578682401342,
+        "portfolio_return_pct": 22.733655085775297,
+        "max_drawdown_pct": -0.886904761904761
+      },
+      "validation": {
+        "count": 8,
+        "win_rate": 0.625,
+        "mean_return_pct": 31.481481481481467,
+        "median_return_pct": 28.835978835978835,
+        "max_trade_return_pct": 239.2857142857142,
+        "min_trade_return_pct": -69.84126984126983,
+        "profit_factor": 2.2869212571814796,
+        "portfolio_return_pct": 2.507466763363597,
+        "max_drawdown_pct": -1.3545124716553447
+      },
+      "untouched_test": {
+        "count": 9,
+        "win_rate": 0.5555555555555556,
+        "mean_return_pct": 29.937201405294388,
+        "median_return_pct": 12.190476190476174,
+        "max_trade_return_pct": 227.2543059777102,
+        "min_trade_return_pct": -84.40065681444992,
+        "profit_factor": 2.1574431210211915,
+        "portfolio_return_pct": 2.6834503463957216,
+        "max_drawdown_pct": -1.2940844728463796
+      }
+    },
+    "trades": [
+      {
+        "signal_date": "2021-07-12",
+        "entry_date": "2021-07-13",
+        "exit_date": "2021-07-27",
+        "kind": "momentum_confirm",
+        "direction": -1,
+        "side": "put",
+        "expiry": "2021-08-30",
+        "strike": 23.0,
+        "spot": 26.65,
+        "entry_settle": 0.12,
+        "exit_settle": 0.82,
+        "return_pct": 518.2539682539682
+      },
+      {
+        "signal_date": "2021-09-06",
+        "entry_date": "2021-09-07",
+        "exit_date": "2021-09-21",
+        "kind": "momentum_confirm",
+        "direction": -1,
+        "side": "put",
+        "expiry": "2021-10-28",
+        "strike": 21.0,
+        "spot": 24.95,
+        "entry_settle": 0.13,
+        "exit_settle": 0.33,
+        "return_pct": 129.67032967032966
+      },
+      {
+        "signal_date": "2021-11-18",
+        "entry_date": "2021-11-19",
+        "exit_date": "2021-12-03",
+        "kind": "momentum_confirm",
+        "direction": -1,
+        "side": "put",
+        "expiry": "2021-12-30",
+        "strike": 18.0,
+        "spot": 21.15,
+        "entry_settle": 0.08,
+        "exit_settle": 0.21,
+        "return_pct": 137.49999999999994
+      },
+      {
+        "signal_date": "2021-12-06",
+        "entry_date": "2021-12-07",
+        "exit_date": "2021-12-21",
+        "kind": "momentum_confirm",
+        "direction": -1,
+        "side": "put",
+        "expiry": "2022-01-28",
+        "strike": 16.5,
+        "spot": 19.12,
+        "entry_settle": 0.21,
+        "exit_settle": 0.29,
+        "return_pct": 24.943310657596363
+      },
+      {
+        "signal_date": "2022-01-11",
+        "entry_date": "2022-01-12",
+        "exit_date": "2022-01-26",
+        "kind": "momentum_confirm",
+        "direction": -1,
+        "side": "put",
+        "expiry": "2022-02-25",
+        "strike": 15.5,
+        "spot": 18.16,
+        "entry_settle": 0.05,
+        "exit_settle": 0.11,
+        "return_pct": 99.04761904761902
+      },
+      {
+        "signal_date": "2022-04-11",
+        "entry_date": "2022-04-12",
+        "exit_date": "2022-04-28",
+        "kind": "momentum_confirm",
+        "direction": -1,
+        "side": "put",
+        "expiry": "2022-05-30",
+        "strike": 10.5,
+        "spot": 12.36,
+        "entry_settle": 0.2,
+        "exit_settle": 0.32,
+        "return_pct": 44.76190476190474
+      },
+      {
+        "signal_date": "2022-06-17",
+        "entry_date": "2022-06-20",
+        "exit_date": "2022-07-05",
+        "kind": "momentum_confirm",
+        "direction": 1,
+        "side": "call",
+        "expiry": "2022-07-28",
+        "strike": 13.5,
+        "spot": 11.8,
+        "entry_settle": 0.19,
+        "exit_settle": 0.62,
+        "return_pct": 195.2380952380952
+      },
+      {
+        "signal_date": "2022-08-15",
+        "entry_date": "2022-08-16",
+        "exit_date": "2022-08-30",
+        "kind": "momentum_confirm",
+        "direction": -1,
+        "side": "put",
+        "expiry": "2022-09-29",
+        "strike": 10.5,
+        "spot": 12.12,
+        "entry_settle": 0.24,
+        "exit_settle": 0.18,
+        "return_pct": -32.14285714285715
+      },
+      {
+        "signal_date": "2022-09-01",
+        "entry_date": "2022-09-02",
+        "exit_date": "2022-09-19",
+        "kind": "momentum_confirm",
+        "direction": -1,
+        "side": "put",
+        "expiry": "2022-10-28",
+        "strike": 10.0,
+        "spot": 11.38,
+        "entry_settle": 0.28,
+        "exit_settle": 0.51,
+        "return_pct": 64.7959183673469
+      },
+      {
+        "signal_date": "2022-10-24",
+        "entry_date": "2022-10-25",
+        "exit_date": "2022-11-08",
+        "kind": "momentum_confirm",
+        "direction": -1,
+        "side": "put",
+        "expiry": "2022-11-29",
+        "strike": 7.0,
+        "spot": 8.45,
+        "entry_settle": 0.08,
+        "exit_settle": 0.01,
+        "return_pct": -88.69047619047619
+      },
+      {
+        "signal_date": "2022-11-25",
+        "entry_date": "2022-11-28",
+        "exit_date": "2022-12-12",
+        "kind": "momentum_confirm",
+        "direction": 1,
+        "side": "call",
+        "expiry": "2022-12-29",
+        "strike": 11.0,
+        "spot": 9.49,
+        "entry_settle": 0.05,
+        "exit_settle": 0.62,
+        "return_pct": 1021.9047619047617
+      },
+      {
+        "signal_date": "2023-01-09",
+        "entry_date": "2023-01-10",
+        "exit_date": "2023-01-27",
+        "kind": "momentum_confirm",
+        "direction": 1,
+        "side": "call",
+        "expiry": "2023-02-27",
+        "strike": 14.0,
+        "spot": 12.1,
+        "entry_settle": 0.24,
+        "exit_settle": 0.49,
+        "return_pct": 84.72222222222221
+      },
+      {
+        "signal_date": "2023-02-23",
+        "entry_date": "2023-02-24",
+        "exit_date": "2023-03-10",
+        "kind": "momentum_confirm",
+        "direction": -1,
+        "side": "put",
+        "expiry": "2023-03-30",
+        "strike": 10.5,
+        "spot": 12.14,
+        "entry_settle": 0.18,
+        "exit_settle": 0.2,
+        "return_pct": 0.5291005291005346
+      },
+      {
+        "signal_date": "2023-04-20",
+        "entry_date": "2023-04-21",
+        "exit_date": "2023-05-08",
+        "kind": "momentum_confirm",
+        "direction": 1,
+        "side": "call",
+        "expiry": "2023-05-30",
+        "strike": 13.5,
+        "spot": 11.96,
+        "entry_settle": 0.09,
+        "exit_settle": 0.04,
+        "return_pct": -59.78835978835979
+      },
+      {
+        "signal_date": "2023-05-09",
+        "entry_date": "2023-05-10",
+        "exit_date": "2023-05-24",
+        "kind": "momentum_confirm",
+        "direction": -1,
+        "side": "put",
+        "expiry": "2023-06-29",
+        "strike": 9.75,
+        "spot": 11.32,
+        "entry_settle": 0.12,
+        "exit_settle": 0.22,
+        "return_pct": 65.87301587301586
+      },
+      {
+        "signal_date": "2023-07-13",
+        "entry_date": "2023-07-14",
+        "exit_date": "2023-07-31",
+        "kind": "momentum_confirm",
+        "direction": 1,
+        "side": "call",
+        "expiry": "2023-08-30",
+        "strike": 13.0,
+        "spot": 11.54,
+        "entry_settle": 0.19,
+        "exit_settle": 0.33,
+        "return_pct": 57.14285714285714
+      },
+      {
+        "signal_date": "2023-10-17",
+        "entry_date": "2023-10-18",
+        "exit_date": "2023-11-02",
+        "kind": "momentum_confirm",
+        "direction": 1,
+        "side": "call",
+        "expiry": "2023-11-29",
+        "strike": 15.0,
+        "spot": 13.04,
+        "entry_settle": 0.2,
+        "exit_settle": 0.75,
+        "return_pct": 239.2857142857142
+      },
+      {
+        "signal_date": "2024-06-06",
+        "entry_date": "2024-06-07",
+        "exit_date": "2024-06-24",
+        "kind": "momentum_confirm",
+        "direction": -1,
+        "side": "put",
+        "expiry": "2024-07-30",
+        "strike": 15.5,
+        "spot": 17.96,
+        "entry_settle": 0.16,
+        "exit_settle": 0.06,
+        "return_pct": -66.07142857142858
+      },
+      {
+        "signal_date": "2024-08-08",
+        "entry_date": "2024-08-09",
+        "exit_date": "2024-08-23",
+        "kind": "momentum_confirm",
+        "direction": -1,
+        "side": "put",
+        "expiry": "2024-09-27",
+        "strike": 13.0,
+        "spot": 15.84,
+        "entry_settle": 0.03,
+        "exit_settle": 0.01,
+        "return_pct": -69.84126984126983
+      },
+      {
+        "signal_date": "2025-06-09",
+        "entry_date": "2025-06-10",
+        "exit_date": "2025-06-24",
+        "kind": "momentum_confirm",
+        "direction": 1,
+        "side": "call",
+        "expiry": "2025-07-30",
+        "strike": 62.5,
+        "spot": 54.15,
+        "entry_settle": 1.0,
+        "exit_settle": 1.24,
+        "return_pct": 12.190476190476174
+      },
+      {
+        "signal_date": "2025-07-18",
+        "entry_date": "2025-07-21",
+        "exit_date": "2025-08-04",
+        "kind": "momentum_confirm",
+        "direction": 1,
+        "side": "call",
+        "expiry": "2025-08-28",
+        "strike": 65.0,
+        "spot": 57.0,
+        "entry_settle": 0.99,
+        "exit_settle": 0.24,
+        "return_pct": -78.06637806637808
+      },
+      {
+        "signal_date": "2025-09-15",
+        "entry_date": "2025-09-16",
+        "exit_date": "2025-09-30",
+        "kind": "momentum_confirm",
+        "direction": 1,
+        "side": "call",
+        "expiry": "2025-10-30",
+        "strike": 65.0,
+        "spot": 56.2,
+        "entry_settle": 0.6,
+        "exit_settle": 0.32,
+        "return_pct": -51.74603174603174
+      },
+      {
+        "signal_date": "2025-10-09",
+        "entry_date": "2025-10-10",
+        "exit_date": "2025-10-24",
+        "kind": "momentum_confirm",
+        "direction": -1,
+        "side": "put",
+        "expiry": "2025-11-27",
+        "strike": 45.0,
+        "spot": 53.35,
+        "entry_settle": 0.47,
+        "exit_settle": 1.7,
+        "return_pct": 227.2543059777102
+      },
+      {
+        "signal_date": "2026-01-06",
+        "entry_date": "2026-01-07",
+        "exit_date": "2026-01-21",
+        "kind": "momentum_confirm",
+        "direction": -1,
+        "side": "put",
+        "expiry": "2026-02-26",
+        "strike": 33.0,
+        "spot": 38.76,
+        "entry_settle": 0.31,
+        "exit_settle": 0.55,
+        "return_pct": 60.52227342549921
+      },
+      {
+        "signal_date": "2026-03-02",
+        "entry_date": "2026-03-03",
+        "exit_date": "2026-03-17",
+        "kind": "momentum_confirm",
+        "direction": -1,
+        "side": "put",
+        "expiry": "2026-04-29",
+        "strike": 28.0,
+        "spot": 33.14,
+        "entry_settle": 0.58,
+        "exit_settle": 0.1,
+        "return_pct": -84.40065681444992
+      },
+      {
+        "signal_date": "2026-05-07",
+        "entry_date": "2026-05-08",
+        "exit_date": "2026-05-22",
+        "kind": "momentum_confirm",
+        "direction": -1,
+        "side": "put",
+        "expiry": "2026-06-29",
+        "strike": 26.0,
+        "spot": 31.12,
+        "entry_settle": 0.2,
+        "exit_settle": 0.18,
+        "return_pct": -18.571428571428584
+      },
+      {
+        "signal_date": "2026-05-27",
+        "entry_date": "2026-05-28",
+        "exit_date": "2026-06-11",
+        "kind": "momentum_confirm",
+        "direction": -1,
+        "side": "put",
+        "expiry": "2026-06-29",
+        "strike": 24.0,
+        "spot": 28.4,
+        "entry_settle": 0.1,
+        "exit_settle": 0.25,
+        "return_pct": 126.19047619047615
+      },
+      {
+        "signal_date": "2026-07-16",
+        "entry_date": "2026-07-17",
+        "exit_date": "2026-07-31",
+        "kind": "momentum_confirm",
+        "direction": 1,
+        "side": "call",
+        "expiry": "2026-08-28",
+        "strike": 32.0,
+        "spot": 27.5,
+        "entry_settle": 0.37,
+        "exit_settle": 0.72,
+        "return_pct": 76.06177606177604
+      }
+    ]
+  },
+  "stress": {
+    "5": {
+      "development": {
+        "count": 11,
+        "win_rate": 0.8181818181818182,
+        "mean_return_pct": 195.38283145425999,
+        "median_return_pct": 99.04761904761902,
+        "max_trade_return_pct": 1021.9047619047617,
+        "min_trade_return_pct": -88.69047619047619,
+        "profit_factor": 18.786575001353324,
+        "portfolio_return_pct": 23.14442476106675,
+        "max_drawdown_pct": -0.886904761904761
+      },
+      "validation": {
+        "count": 7,
+        "win_rate": 0.7142857142857143,
+        "mean_return_pct": 41.50415721844292,
+        "median_return_pct": 57.14285714285714,
+        "max_trade_return_pct": 239.2857142857142,
+        "min_trade_return_pct": -90.95238095238095,
+        "profit_factor": 2.8502232330890394,
+        "portfolio_return_pct": 2.904790950231484,
+        "max_drawdown_pct": -1.564228741496576
+      },
+      "untouched_test": {
+        "count": 9,
+        "win_rate": 0.5555555555555556,
+        "mean_return_pct": 29.937201405294388,
+        "median_return_pct": 12.190476190476174,
+        "max_trade_return_pct": 227.2543059777102,
+        "min_trade_return_pct": -84.40065681444992,
+        "profit_factor": 2.1574431210211915,
+        "portfolio_return_pct": 2.6834503463957216,
+        "max_drawdown_pct": -1.2940844728463796
+      }
+    },
+    "10": {
+      "development": {
+        "count": 11,
+        "win_rate": 0.8181818181818182,
+        "mean_return_pct": 167.11653179356526,
+        "median_return_pct": 79.99999999999999,
+        "max_trade_return_pct": 914.5454545454545,
+        "min_trade_return_pct": -89.77272727272727,
+        "profit_factor": 15.315823254528423,
+        "portfolio_return_pct": 19.538053907914698,
+        "max_drawdown_pct": -0.8977272727272778
+      },
+      "validation": {
+        "count": 7,
+        "win_rate": 0.5714285714285714,
+        "mean_return_pct": 27.9630895420369,
+        "median_return_pct": 42.10526315789473,
+        "max_trade_return_pct": 206.81818181818178,
+        "min_trade_return_pct": -91.81818181818183,
+        "profit_factor": 2.1498840559342276,
+        "portfolio_return_pct": 1.9439087048238823,
+        "max_drawdown_pct": -1.6049989669421505
+      },
+      "untouched_test": {
+        "count": 9,
+        "win_rate": 0.5555555555555556,
+        "mean_return_pct": 17.50301945263465,
+        "median_return_pct": 1.454545454545464,
+        "max_trade_return_pct": 195.93810444874276,
+        "min_trade_return_pct": -85.8934169278997,
+        "profit_factor": 1.6331834927475166,
+        "portfolio_return_pct": 1.5511561824979925,
+        "max_drawdown_pct": -1.3607708489857262
+      }
+    },
+    "15": {
+      "development": {
+        "count": 11,
+        "win_rate": 0.8181818181818182,
+        "mean_return_pct": 141.30817123380055,
+        "median_return_pct": 62.60869565217393,
+        "max_trade_return_pct": 816.5217391304349,
+        "min_trade_return_pct": -90.76086956521739,
+        "profit_factor": 12.48625456133383,
+        "portfolio_return_pct": 16.321597179158644,
+        "max_drawdown_pct": -1.0076147747328124
+      },
+      "validation": {
+        "count": 7,
+        "win_rate": 0.5714285714285714,
+        "mean_return_pct": 15.599506011405339,
+        "median_return_pct": 28.375286041189952,
+        "max_trade_return_pct": 177.17391304347828,
+        "min_trade_return_pct": -92.6086956521739,
+        "profit_factor": 1.5974673682819358,
+        "portfolio_return_pct": 1.0727443005015713,
+        "max_drawdown_pct": -1.6422190453686092
+      },
+      "untouched_test": {
+        "count": 9,
+        "win_rate": 0.4444444444444444,
+        "mean_return_pct": 6.150070713249662,
+        "median_return_pct": -8.34782608695651,
+        "max_trade_return_pct": 167.3450508788159,
+        "min_trade_return_pct": -87.25637181409294,
+        "profit_factor": 1.2036868003840009,
+        "portfolio_return_pct": 0.5263682954362192,
+        "max_drawdown_pct": -1.4216414809723021
+      }
+    }
+  },
+  "parameter_stability": {
+    "neighbors": 16,
+    "validation_positive_share": 1.0,
+    "test_positive_share": 0.6875
+  },
+  "gate": {
+    "validation_count_8": true,
+    "validation_pf_1_25": true,
+    "test_count_8": true,
+    "test_pf_1_25": true,
+    "stress_15pct_positive_all_periods": true,
+    "neighbor_test_positive_75pct": false,
+    "passed": false
+  },
+  "walk_forward": {
+    "folds": [
+      {
+        "year": 2023,
+        "params": {
+          "mode": "momentum_confirm",
+          "atr_period": 7,
+          "multiplier": 2.5,
+          "dte": [
+            30,
+            60
+          ],
+          "otm_pct": 15,
+          "hold": 10
+        },
+        "train": {
+          "count": 11,
+          "win_rate": 0.8181818181818182,
+          "mean_return_pct": 192.2984158698444,
+          "median_return_pct": 99.04761904761902,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -88.69047619047619,
+          "profit_factor": 18.50578682401342,
+          "portfolio_return_pct": 22.733655085775297,
+          "max_drawdown_pct": -0.886904761904761
+        },
+        "test": {
+          "count": 6,
+          "win_rate": 0.8333333333333334,
+          "mean_return_pct": 64.6274250440917,
+          "median_return_pct": 61.5079365079365,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -59.78835978835979,
+          "profit_factor": 7.485619469026547,
+          "portfolio_return_pct": 3.9150085136020474,
+          "max_drawdown_pct": -0.5978835978835972
+        }
+      },
+      {
+        "year": 2024,
+        "params": {
+          "mode": "momentum_confirm",
+          "atr_period": 7,
+          "multiplier": 2.5,
+          "dte": [
+            30,
+            60
+          ],
+          "otm_pct": 15,
+          "hold": 10
+        },
+        "train": {
+          "count": 17,
+          "win_rate": 0.8235294117647058,
+          "mean_return_pct": 147.23806616663757,
+          "median_return_pct": 65.87301587301586,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -88.69047619047619,
+          "profit_factor": 14.857954056196455,
+          "portfolio_return_pct": 27.53868813143836,
+          "max_drawdown_pct": -0.886904761904761
+        },
+        "test": {
+          "count": 2,
+          "win_rate": 0.0,
+          "mean_return_pct": -67.95634920634922,
+          "median_return_pct": -67.95634920634922,
+          "max_trade_return_pct": -66.07142857142858,
+          "min_trade_return_pct": -69.84126984126983,
+          "profit_factor": 0.0,
+          "portfolio_return_pct": -1.3545124716553225,
+          "max_drawdown_pct": -0.6984126984126982
+        }
+      },
+      {
+        "year": 2025,
+        "params": {
+          "mode": "breakout_confirm",
+          "atr_period": 7,
+          "multiplier": 2.0,
+          "dte": [
+            30,
+            60
+          ],
+          "otm_pct": 15,
+          "hold": 10
+        },
+        "train": {
+          "count": 18,
+          "win_rate": 0.5,
+          "mean_return_pct": 163.1890964240172,
+          "median_return_pct": -3.8075828157349942,
+          "max_trade_return_pct": 2097.2789115646256,
+          "min_trade_return_pct": -97.3775017253278,
+          "profit_factor": 5.52766032826298,
+          "portfolio_return_pct": 31.231276591831403,
+          "max_drawdown_pct": -1.605788328937019
+        },
+        "test": {
+          "count": 5,
+          "win_rate": 0.6,
+          "mean_return_pct": 24.994198742435508,
+          "median_return_pct": 8.24092193955206,
+          "max_trade_return_pct": 244.36345966958214,
+          "min_trade_return_pct": -97.08141321044546,
+          "profit_factor": 1.7216163533297508,
+          "portfolio_return_pct": 1.2189788645813548,
+          "max_drawdown_pct": -1.2768004801774646
+        }
+      },
+      {
+        "year": 2026,
+        "params": {
+          "mode": "breakout_confirm",
+          "atr_period": 7,
+          "multiplier": 2.0,
+          "dte": [
+            30,
+            60
+          ],
+          "otm_pct": 15,
+          "hold": 10
+        },
+        "train": {
+          "count": 23,
+          "win_rate": 0.5217391304347826,
+          "mean_return_pct": 133.14672736280383,
+          "median_return_pct": 8.24092193955206,
+          "max_trade_return_pct": 2097.2789115646256,
+          "min_trade_return_pct": -97.3775017253278,
+          "profit_factor": 4.725740535329644,
+          "portfolio_return_pct": 32.83095811720609,
+          "max_drawdown_pct": -1.605788328937019
+        },
+        "test": {
+          "count": 6,
+          "win_rate": 0.3333333333333333,
+          "mean_return_pct": -8.612075737063678,
+          "median_return_pct": -38.390022675736965,
+          "max_trade_return_pct": 126.19047619047615,
+          "min_trade_return_pct": -84.40065681444992,
+          "profit_factor": 0.7550094956855433,
+          "portfolio_return_pct": -0.5301096616676215,
+          "max_drawdown_pct": -1.7881934712246528
+        }
+      }
+    ],
+    "combined": {
+      "count": 19,
+      "win_rate": 0.5263157894736842,
+      "mean_return_pct": 17.113178481139325,
+      "median_return_pct": 0.5291005291005346,
+      "max_trade_return_pct": 244.36345966958214,
+      "min_trade_return_pct": -97.08141321044546,
+      "profit_factor": 1.5607982243567702,
+      "portfolio_return_pct": 3.206985177233612,
+      "max_drawdown_pct": -3.343369176703481
+    },
+    "stress_10pct": {
+      "count": 18,
+      "win_rate": 0.4444444444444444,
+      "mean_return_pct": 9.27181466850457,
+      "median_return_pct": -5.603985056039851,
+      "max_trade_return_pct": 211.4100185528757,
+      "min_trade_return_pct": -97.36070381231671,
+      "profit_factor": 1.294357278791085,
+      "portfolio_return_pct": 1.606622519292089,
+      "max_drawdown_pct": -3.6000942166632743
+    },
+    "passed": true
+  },
+  "top_summaries": [
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 7,
+        "multiplier": 2.5,
+        "dte": [
+          30,
+          60
+        ],
+        "otm_pct": 15,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 11,
+          "win_rate": 0.8181818181818182,
+          "mean_return_pct": 192.2984158698444,
+          "median_return_pct": 99.04761904761902,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -88.69047619047619,
+          "profit_factor": 18.50578682401342,
+          "portfolio_return_pct": 22.733655085775297,
+          "max_drawdown_pct": -0.886904761904761
+        },
+        "validation": {
+          "count": 8,
+          "win_rate": 0.625,
+          "mean_return_pct": 31.481481481481467,
+          "median_return_pct": 28.835978835978835,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -69.84126984126983,
+          "profit_factor": 2.2869212571814796,
+          "portfolio_return_pct": 2.507466763363597,
+          "max_drawdown_pct": -1.3545124716553447
+        },
+        "untouched_test": {
+          "count": 9,
+          "win_rate": 0.5555555555555556,
+          "mean_return_pct": 29.937201405294388,
+          "median_return_pct": 12.190476190476174,
+          "max_trade_return_pct": 227.2543059777102,
+          "min_trade_return_pct": -84.40065681444992,
+          "profit_factor": 2.1574431210211915,
+          "portfolio_return_pct": 2.6834503463957216,
+          "max_drawdown_pct": -1.2940844728463796
+        }
+      }
+    },
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 7,
+        "multiplier": 3.0,
+        "dte": [
+          30,
+          60
+        ],
+        "otm_pct": 15,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 11,
+          "win_rate": 0.8181818181818182,
+          "mean_return_pct": 192.2984158698444,
+          "median_return_pct": 99.04761904761902,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -88.69047619047619,
+          "profit_factor": 18.50578682401342,
+          "portfolio_return_pct": 22.733655085775297,
+          "max_drawdown_pct": -0.886904761904761
+        },
+        "validation": {
+          "count": 8,
+          "win_rate": 0.5,
+          "mean_return_pct": 21.629629629629616,
+          "median_return_pct": -1.3227513227513255,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -78.28571428571429,
+          "profit_factor": 1.6315525215560935,
+          "portfolio_return_pct": 1.6995988066908607,
+          "max_drawdown_pct": -1.3760601662887506
+        },
+        "untouched_test": {
+          "count": 8,
+          "win_rate": 0.5,
+          "mean_return_pct": 5.2725633337424025,
+          "median_return_pct": -3.190476190476205,
+          "max_trade_return_pct": 126.19047619047615,
+          "min_trade_return_pct": -84.40065681444992,
+          "profit_factor": 1.1811998115854296,
+          "portfolio_return_pct": 0.4017767372602066,
+          "max_drawdown_pct": -1.7176841636981743
+        }
+      }
+    },
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 10,
+        "multiplier": 2.5,
+        "dte": [
+          30,
+          60
+        ],
+        "otm_pct": 15,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 11,
+          "win_rate": 0.8181818181818182,
+          "mean_return_pct": 192.2984158698444,
+          "median_return_pct": 99.04761904761902,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -88.69047619047619,
+          "profit_factor": 18.50578682401342,
+          "portfolio_return_pct": 22.733655085775297,
+          "max_drawdown_pct": -0.886904761904761
+        },
+        "validation": {
+          "count": 9,
+          "win_rate": 0.5555555555555556,
+          "mean_return_pct": 21.89888300999411,
+          "median_return_pct": 0.5291005291005346,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -69.84126984126983,
+          "profit_factor": 1.786902561394243,
+          "portfolio_return_pct": 1.9461163501356626,
+          "max_drawdown_pct": -1.3545124716553336
+        },
+        "untouched_test": {
+          "count": 9,
+          "win_rate": 0.5555555555555556,
+          "mean_return_pct": 29.937201405294388,
+          "median_return_pct": 12.190476190476174,
+          "max_trade_return_pct": 227.2543059777102,
+          "min_trade_return_pct": -84.40065681444992,
+          "profit_factor": 2.1574431210211915,
+          "portfolio_return_pct": 2.6834503463957216,
+          "max_drawdown_pct": -1.2940844728463796
+        }
+      }
+    },
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 14,
+        "multiplier": 2.5,
+        "dte": [
+          30,
+          60
+        ],
+        "otm_pct": 15,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 11,
+          "win_rate": 0.8181818181818182,
+          "mean_return_pct": 192.2984158698444,
+          "median_return_pct": 99.04761904761902,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -88.69047619047619,
+          "profit_factor": 18.50578682401342,
+          "portfolio_return_pct": 22.733655085775297,
+          "max_drawdown_pct": -0.886904761904761
+        },
+        "validation": {
+          "count": 9,
+          "win_rate": 0.5555555555555556,
+          "mean_return_pct": 21.89888300999411,
+          "median_return_pct": 0.5291005291005346,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -69.84126984126983,
+          "profit_factor": 1.786902561394243,
+          "portfolio_return_pct": 1.9461163501356626,
+          "max_drawdown_pct": -1.3545124716553336
+        },
+        "untouched_test": {
+          "count": 9,
+          "win_rate": 0.5555555555555556,
+          "mean_return_pct": 29.937201405294388,
+          "median_return_pct": 12.190476190476174,
+          "max_trade_return_pct": 227.2543059777102,
+          "min_trade_return_pct": -84.40065681444992,
+          "profit_factor": 2.1574431210211915,
+          "portfolio_return_pct": 2.6834503463957216,
+          "max_drawdown_pct": -1.2940844728463796
+        }
+      }
+    },
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 20,
+        "multiplier": 2.5,
+        "dte": [
+          30,
+          60
+        ],
+        "otm_pct": 15,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 11,
+          "win_rate": 0.8181818181818182,
+          "mean_return_pct": 192.2984158698444,
+          "median_return_pct": 99.04761904761902,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -88.69047619047619,
+          "profit_factor": 18.50578682401342,
+          "portfolio_return_pct": 22.733655085775297,
+          "max_drawdown_pct": -0.886904761904761
+        },
+        "validation": {
+          "count": 9,
+          "win_rate": 0.5555555555555556,
+          "mean_return_pct": 21.89888300999411,
+          "median_return_pct": 0.5291005291005346,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -69.84126984126983,
+          "profit_factor": 1.786902561394243,
+          "portfolio_return_pct": 1.9461163501356626,
+          "max_drawdown_pct": -1.3545124716553336
+        },
+        "untouched_test": {
+          "count": 10,
+          "win_rate": 0.5,
+          "mean_return_pct": 21.65578285206653,
+          "median_return_pct": -3.190476190476205,
+          "max_trade_return_pct": 227.2543059777102,
+          "min_trade_return_pct": -84.40065681444992,
+          "profit_factor": 1.7580925122707167,
+          "portfolio_return_pct": 2.1404912289886724,
+          "max_drawdown_pct": -1.551486689188819
+        }
+      }
+    },
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 10,
+        "multiplier": 3.0,
+        "dte": [
+          30,
+          60
+        ],
+        "otm_pct": 15,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 11,
+          "win_rate": 0.7272727272727273,
+          "mean_return_pct": 181.87994545137397,
+          "median_return_pct": 99.04761904761902,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -88.69047619047619,
+          "profit_factor": 11.49263701958811,
+          "portfolio_return_pct": 21.333356438894203,
+          "max_drawdown_pct": -0.8869047619047721
+        },
+        "validation": {
+          "count": 8,
+          "win_rate": 0.5,
+          "mean_return_pct": 21.629629629629616,
+          "median_return_pct": -1.3227513227513255,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -78.28571428571429,
+          "profit_factor": 1.6315525215560935,
+          "portfolio_return_pct": 1.6995988066908607,
+          "max_drawdown_pct": -1.3760601662887506
+        },
+        "untouched_test": {
+          "count": 7,
+          "win_rate": 0.42857142857142855,
+          "mean_return_pct": -2.6202523936514264,
+          "median_return_pct": -18.571428571428584,
+          "max_trade_return_pct": 126.19047619047615,
+          "min_trade_return_pct": -84.40065681444992,
+          "profit_factor": 0.9212070943988935,
+          "portfolio_return_pct": -0.20222210285462117,
+          "max_drawdown_pct": -2.3089327122599146
+        }
+      }
+    },
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 10,
+        "multiplier": 3.0,
+        "dte": [
+          15,
+          45
+        ],
+        "otm_pct": 15,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 10,
+          "win_rate": 0.6,
+          "mean_return_pct": 195.27248677248673,
+          "median_return_pct": 68.38624338624338,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -88.69047619047619,
+          "profit_factor": 13.01676841676841,
+          "portfolio_return_pct": 20.69830463673885,
+          "max_drawdown_pct": -0.886904761904761
+        },
+        "validation": {
+          "count": 8,
+          "win_rate": 0.5,
+          "mean_return_pct": 51.66471260221258,
+          "median_return_pct": 35.7142857142857,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -91.77489177489177,
+          "profit_factor": 2.914846796657381,
+          "portfolio_return_pct": 4.153713990408603,
+          "max_drawdown_pct": -1.5101454453835372
+        },
+        "untouched_test": {
+          "count": 7,
+          "win_rate": 0.2857142857142857,
+          "mean_return_pct": -21.510157295427938,
+          "median_return_pct": -51.74603174603174,
+          "max_trade_return_pct": 126.19047619047615,
+          "min_trade_return_pct": -96.7687074829932,
+          "profit_factor": 0.5732394138566943,
+          "portfolio_return_pct": -1.5181687898768392,
+          "max_drawdown_pct": -3.005653481415771
+        }
+      }
+    },
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 7,
+        "multiplier": 3.5,
+        "dte": [
+          30,
+          60
+        ],
+        "otm_pct": 15,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 10,
+          "win_rate": 0.8,
+          "mean_return_pct": 192.00444793301935,
+          "median_return_pct": 81.92176870748295,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -88.69047619047619,
+          "profit_factor": 16.890023277215388,
+          "portfolio_return_pct": 20.383314189690836,
+          "max_drawdown_pct": -0.886904761904761
+        },
+        "validation": {
+          "count": 7,
+          "win_rate": 0.5714285714285714,
+          "mean_return_pct": 35.90325018896445,
+          "median_return_pct": 57.14285714285714,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -69.84126984126983,
+          "profit_factor": 2.2842176410949637,
+          "portfolio_return_pct": 2.502043374825247,
+          "max_drawdown_pct": -1.3545124716553336
+        },
+        "untouched_test": {
+          "count": 9,
+          "win_rate": 0.4444444444444444,
+          "mean_return_pct": -1.1884974952272107,
+          "median_return_pct": -18.571428571428584,
+          "max_trade_return_pct": 126.19047619047615,
+          "min_trade_return_pct": -84.40065681444992,
+          "profit_factor": 0.9625554083024781,
+          "portfolio_return_pct": -0.12911757822552383,
+          "max_drawdown_pct": -2.2373714091421193
+        }
+      }
+    },
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 10,
+        "multiplier": 3.5,
+        "dte": [
+          30,
+          60
+        ],
+        "otm_pct": 15,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 10,
+          "win_rate": 0.8,
+          "mean_return_pct": 192.00444793301935,
+          "median_return_pct": 81.92176870748295,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -88.69047619047619,
+          "profit_factor": 16.890023277215388,
+          "portfolio_return_pct": 20.383314189690836,
+          "max_drawdown_pct": -0.886904761904761
+        },
+        "validation": {
+          "count": 8,
+          "win_rate": 0.5,
+          "mean_return_pct": 21.629629629629616,
+          "median_return_pct": -1.3227513227513255,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -78.28571428571429,
+          "profit_factor": 1.6315525215560935,
+          "portfolio_return_pct": 1.6995988066908607,
+          "max_drawdown_pct": -1.3760601662887506
+        },
+        "untouched_test": {
+          "count": 8,
+          "win_rate": 0.5,
+          "mean_return_pct": 5.2725633337424025,
+          "median_return_pct": -3.190476190476205,
+          "max_trade_return_pct": 126.19047619047615,
+          "min_trade_return_pct": -84.40065681444992,
+          "profit_factor": 1.1811998115854296,
+          "portfolio_return_pct": 0.4017767372602066,
+          "max_drawdown_pct": -1.7176841636981743
+        }
+      }
+    },
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 14,
+        "multiplier": 3.0,
+        "dte": [
+          30,
+          60
+        ],
+        "otm_pct": 15,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 10,
+          "win_rate": 0.8,
+          "mean_return_pct": 192.00444793301935,
+          "median_return_pct": 81.92176870748295,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -88.69047619047619,
+          "profit_factor": 16.890023277215388,
+          "portfolio_return_pct": 20.383314189690836,
+          "max_drawdown_pct": -0.886904761904761
+        },
+        "validation": {
+          "count": 9,
+          "win_rate": 0.5555555555555556,
+          "mean_return_pct": 21.89888300999411,
+          "median_return_pct": 0.5291005291005346,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -69.84126984126983,
+          "profit_factor": 1.786902561394243,
+          "portfolio_return_pct": 1.9461163501356626,
+          "max_drawdown_pct": -1.3545124716553336
+        },
+        "untouched_test": {
+          "count": 7,
+          "win_rate": 0.42857142857142855,
+          "mean_return_pct": -2.6202523936514264,
+          "median_return_pct": -18.571428571428584,
+          "max_trade_return_pct": 126.19047619047615,
+          "min_trade_return_pct": -84.40065681444992,
+          "profit_factor": 0.9212070943988935,
+          "portfolio_return_pct": -0.20222210285462117,
+          "max_drawdown_pct": -2.3089327122599146
+        }
+      }
+    },
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 14,
+        "multiplier": 3.5,
+        "dte": [
+          30,
+          60
+        ],
+        "otm_pct": 15,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 10,
+          "win_rate": 0.8,
+          "mean_return_pct": 192.00444793301935,
+          "median_return_pct": 81.92176870748295,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -88.69047619047619,
+          "profit_factor": 16.890023277215388,
+          "portfolio_return_pct": 20.383314189690836,
+          "max_drawdown_pct": -0.886904761904761
+        },
+        "validation": {
+          "count": 8,
+          "win_rate": 0.5,
+          "mean_return_pct": 21.629629629629616,
+          "median_return_pct": -1.3227513227513255,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -78.28571428571429,
+          "profit_factor": 1.6315525215560935,
+          "portfolio_return_pct": 1.6995988066908607,
+          "max_drawdown_pct": -1.3760601662887506
+        },
+        "untouched_test": {
+          "count": 8,
+          "win_rate": 0.5,
+          "mean_return_pct": 5.2725633337424025,
+          "median_return_pct": -3.190476190476205,
+          "max_trade_return_pct": 126.19047619047615,
+          "min_trade_return_pct": -84.40065681444992,
+          "profit_factor": 1.1811998115854296,
+          "portfolio_return_pct": 0.4017767372602066,
+          "max_drawdown_pct": -1.7176841636981743
+        }
+      }
+    },
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 20,
+        "multiplier": 3.0,
+        "dte": [
+          30,
+          60
+        ],
+        "otm_pct": 15,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 10,
+          "win_rate": 0.8,
+          "mean_return_pct": 192.00444793301935,
+          "median_return_pct": 81.92176870748295,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -88.69047619047619,
+          "profit_factor": 16.890023277215388,
+          "portfolio_return_pct": 20.383314189690836,
+          "max_drawdown_pct": -0.886904761904761
+        },
+        "validation": {
+          "count": 9,
+          "win_rate": 0.5555555555555556,
+          "mean_return_pct": 21.89888300999411,
+          "median_return_pct": 0.5291005291005346,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -69.84126984126983,
+          "profit_factor": 1.786902561394243,
+          "portfolio_return_pct": 1.9461163501356626,
+          "max_drawdown_pct": -1.3545124716553336
+        },
+        "untouched_test": {
+          "count": 7,
+          "win_rate": 0.42857142857142855,
+          "mean_return_pct": -2.6202523936514264,
+          "median_return_pct": -18.571428571428584,
+          "max_trade_return_pct": 126.19047619047615,
+          "min_trade_return_pct": -84.40065681444992,
+          "profit_factor": 0.9212070943988935,
+          "portfolio_return_pct": -0.20222210285462117,
+          "max_drawdown_pct": -2.3089327122599146
+        }
+      }
+    },
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 10,
+        "multiplier": 3.0,
+        "dte": [
+          15,
+          45
+        ],
+        "otm_pct": 10,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 10,
+          "win_rate": 0.6,
+          "mean_return_pct": 182.8992884510126,
+          "median_return_pct": 103.57142857142856,
+          "max_trade_return_pct": 895.2380952380953,
+          "min_trade_return_pct": -93.96825396825396,
+          "profit_factor": 11.432462808885282,
+          "portfolio_return_pct": 19.361326828229465,
+          "max_drawdown_pct": -0.9396825396825514
+        },
+        "validation": {
+          "count": 8,
+          "win_rate": 0.5,
+          "mean_return_pct": 55.50595238095235,
+          "median_return_pct": 59.841269841269806,
+          "max_trade_return_pct": 213.65079365079364,
+          "min_trade_return_pct": -95.47619047619048,
+          "profit_factor": 2.470433639947437,
+          "portfolio_return_pct": 4.455641654876641,
+          "max_drawdown_pct": -1.5416312358276563
+        },
+        "untouched_test": {
+          "count": 7,
+          "win_rate": 0.2857142857142857,
+          "mean_return_pct": -12.795900129986363,
+          "median_return_pct": -49.10714285714286,
+          "max_trade_return_pct": 154.97835497835496,
+          "min_trade_return_pct": -94.90274983232729,
+          "profit_factor": 0.7054928064849126,
+          "portfolio_return_pct": -0.915617766192367,
+          "max_drawdown_pct": -2.69299165347201
+        }
+      }
+    },
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 7,
+        "multiplier": 2.5,
+        "dte": [
+          15,
+          45
+        ],
+        "otm_pct": 15,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 11,
+          "win_rate": 0.5454545454545454,
+          "mean_return_pct": 168.42953342953336,
+          "median_return_pct": 35.7142857142857,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -100.0,
+          "profit_factor": 8.05799949609473,
+          "portfolio_return_pct": 19.491321590371456,
+          "max_drawdown_pct": -1.4121969387755007
+        },
+        "validation": {
+          "count": 8,
+          "win_rate": 0.625,
+          "mean_return_pct": 63.20271164021162,
+          "median_return_pct": 40.74074074074073,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -59.78835978835979,
+          "profit_factor": 5.0751599147121516,
+          "portfolio_return_pct": 5.123999133266555,
+          "max_drawdown_pct": -0.6423356009070402
+        },
+        "untouched_test": {
+          "count": 9,
+          "win_rate": 0.4444444444444444,
+          "mean_return_pct": 23.3756977649317,
+          "median_return_pct": -48.86128364389234,
+          "max_trade_return_pct": 325.2380952380951,
+          "min_trade_return_pct": -96.7687074829932,
+          "profit_factor": 1.596279350288438,
+          "portfolio_return_pct": 2.047995656849877,
+          "max_drawdown_pct": -1.7340085438937503
+        }
+      }
+    },
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 7,
+        "multiplier": 3.0,
+        "dte": [
+          15,
+          45
+        ],
+        "otm_pct": 15,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 11,
+          "win_rate": 0.5454545454545454,
+          "mean_return_pct": 168.42953342953336,
+          "median_return_pct": 35.7142857142857,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -100.0,
+          "profit_factor": 8.05799949609473,
+          "portfolio_return_pct": 19.491321590371456,
+          "max_drawdown_pct": -1.4121969387755007
+        },
+        "validation": {
+          "count": 8,
+          "win_rate": 0.5,
+          "mean_return_pct": 51.66471260221258,
+          "median_return_pct": 35.7142857142857,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -91.77489177489177,
+          "profit_factor": 2.914846796657381,
+          "portfolio_return_pct": 4.153713990408603,
+          "max_drawdown_pct": -1.5101454453835372
+        },
+        "untouched_test": {
+          "count": 8,
+          "win_rate": 0.375,
+          "mean_return_pct": -14.357101919213736,
+          "median_return_pct": -50.30365769496205,
+          "max_trade_return_pct": 126.19047619047615,
+          "min_trade_return_pct": -96.7687074829932,
+          "profit_factor": 0.6744636819732917,
+          "portfolio_return_pct": -1.1664479641263936,
+          "max_drawdown_pct": -2.659245100992258
+        }
+      }
+    },
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 10,
+        "multiplier": 2.5,
+        "dte": [
+          15,
+          45
+        ],
+        "otm_pct": 15,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 11,
+          "win_rate": 0.5454545454545454,
+          "mean_return_pct": 168.42953342953336,
+          "median_return_pct": 35.7142857142857,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -100.0,
+          "profit_factor": 8.05799949609473,
+          "portfolio_return_pct": 19.491321590371456,
+          "max_drawdown_pct": -1.4121969387755007
+        },
+        "validation": {
+          "count": 9,
+          "win_rate": 0.5555555555555556,
+          "mean_return_pct": 50.09553203997646,
+          "median_return_pct": 0.5291005291005346,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -59.78835978835979,
+          "profit_factor": 3.5210798816568034,
+          "portfolio_return_pct": 4.548320090393898,
+          "max_drawdown_pct": -0.6423356009070291
+        },
+        "untouched_test": {
+          "count": 9,
+          "win_rate": 0.4444444444444444,
+          "mean_return_pct": 23.3756977649317,
+          "median_return_pct": -48.86128364389234,
+          "max_trade_return_pct": 325.2380952380951,
+          "min_trade_return_pct": -96.7687074829932,
+          "profit_factor": 1.596279350288438,
+          "portfolio_return_pct": 2.047995656849877,
+          "max_drawdown_pct": -1.7340085438937503
+        }
+      }
+    },
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 14,
+        "multiplier": 2.5,
+        "dte": [
+          15,
+          45
+        ],
+        "otm_pct": 15,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 11,
+          "win_rate": 0.5454545454545454,
+          "mean_return_pct": 168.42953342953336,
+          "median_return_pct": 35.7142857142857,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -100.0,
+          "profit_factor": 8.05799949609473,
+          "portfolio_return_pct": 19.491321590371456,
+          "max_drawdown_pct": -1.4121969387755007
+        },
+        "validation": {
+          "count": 9,
+          "win_rate": 0.5555555555555556,
+          "mean_return_pct": 50.09553203997646,
+          "median_return_pct": 0.5291005291005346,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -59.78835978835979,
+          "profit_factor": 3.5210798816568034,
+          "portfolio_return_pct": 4.548320090393898,
+          "max_drawdown_pct": -0.6423356009070291
+        },
+        "untouched_test": {
+          "count": 9,
+          "win_rate": 0.4444444444444444,
+          "mean_return_pct": 23.3756977649317,
+          "median_return_pct": -48.86128364389234,
+          "max_trade_return_pct": 325.2380952380951,
+          "min_trade_return_pct": -96.7687074829932,
+          "profit_factor": 1.596279350288438,
+          "portfolio_return_pct": 2.047995656849877,
+          "max_drawdown_pct": -1.7340085438937503
+        }
+      }
+    },
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 20,
+        "multiplier": 2.5,
+        "dte": [
+          15,
+          45
+        ],
+        "otm_pct": 15,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 11,
+          "win_rate": 0.5454545454545454,
+          "mean_return_pct": 168.42953342953336,
+          "median_return_pct": 35.7142857142857,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -100.0,
+          "profit_factor": 8.05799949609473,
+          "portfolio_return_pct": 19.491321590371456,
+          "max_drawdown_pct": -1.4121969387755007
+        },
+        "validation": {
+          "count": 9,
+          "win_rate": 0.5555555555555556,
+          "mean_return_pct": 50.09553203997646,
+          "median_return_pct": 0.5291005291005346,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -59.78835978835979,
+          "profit_factor": 3.5210798816568034,
+          "portfolio_return_pct": 4.548320090393898,
+          "max_drawdown_pct": -0.6423356009070291
+        },
+        "untouched_test": {
+          "count": 10,
+          "win_rate": 0.4,
+          "mean_return_pct": 15.750429575740116,
+          "median_return_pct": -50.30365769496205,
+          "max_trade_return_pct": 325.2380952380951,
+          "min_trade_return_pct": -96.7687074829932,
+          "profit_factor": 1.388228160588817,
+          "portfolio_return_pct": 1.5083966321961073,
+          "max_drawdown_pct": -2.2536094709384336
+        }
+      }
+    },
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 20,
+        "multiplier": 3.5,
+        "dte": [
+          30,
+          60
+        ],
+        "otm_pct": 15,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 10,
+          "win_rate": 0.7,
+          "mean_return_pct": 180.54413047270182,
+          "median_return_pct": 81.92176870748295,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -88.69047619047619,
+          "profit_factor": 10.468703616882596,
+          "portfolio_return_pct": 19.009831163791603,
+          "max_drawdown_pct": -1.2597987504002428
+        },
+        "validation": {
+          "count": 7,
+          "win_rate": 0.5714285714285714,
+          "mean_return_pct": 33.26077097505667,
+          "median_return_pct": 57.14285714285714,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -78.28571428571429,
+          "profit_factor": 2.086961354625958,
+          "portfolio_return_pct": 2.3113012959204537,
+          "max_drawdown_pct": -1.3545124716553225
+        },
+        "untouched_test": {
+          "count": 8,
+          "win_rate": 0.5,
+          "mean_return_pct": -0.5838412435924062,
+          "median_return_pct": -3.190476190476205,
+          "max_trade_return_pct": 126.19047619047615,
+          "min_trade_return_pct": -98.59726836471022,
+          "profit_factor": 0.9832970918330406,
+          "portfolio_return_pct": -0.07106476978856469,
+          "max_drawdown_pct": -2.1805440835767964
+        }
+      }
+    },
+    {
+      "params": {
+        "mode": "momentum_confirm",
+        "atr_period": 20,
+        "multiplier": 3.5,
+        "dte": [
+          15,
+          45
+        ],
+        "otm_pct": 15,
+        "hold": 10
+      },
+      "periods": {
+        "development": {
+          "count": 9,
+          "win_rate": 0.5555555555555556,
+          "mean_return_pct": 195.2763080540858,
+          "median_return_pct": 35.7142857142857,
+          "max_trade_return_pct": 1021.9047619047617,
+          "min_trade_return_pct": -88.69047619047619,
+          "profit_factor": 11.815303215303212,
+          "portfolio_return_pct": 18.386940559155306,
+          "max_drawdown_pct": -0.886904761904761
+        },
+        "validation": {
+          "count": 7,
+          "win_rate": 0.5714285714285714,
+          "mean_return_pct": 67.58658008658008,
+          "median_return_pct": 80.95238095238093,
+          "max_trade_return_pct": 239.2857142857142,
+          "min_trade_return_pct": -91.77489177489177,
+          "profit_factor": 4.031553398058251,
+          "portfolio_return_pct": 4.780177485427295,
+          "max_drawdown_pct": -0.9177489177489173
+        },
+        "untouched_test": {
+          "count": 8,
+          "win_rate": 0.375,
+          "mean_return_pct": -20.213506496548547,
+          "median_return_pct": -63.121118012422365,
+          "max_trade_return_pct": 126.19047619047615,
+          "min_trade_return_pct": -98.59726836471022,
+          "profit_factor": 0.5954007183766705,
+          "portfolio_return_pct": -1.6319039272605917,
+          "max_drawdown_pct": -3.1176707458307806
+        }
+      }
+    }
+  ]
+}

@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .futu_client import build_client_from_config, load_config
-from .modules import valuation, screener, monitor, ipo, missed_scan, price_alert, analyze, buybacks, news, southbound, reverse_signals, capital_flow, southbound_risk, fundamentals, filters, dividend, earnings, divergence, daily_report, intraday, backtest, strategy_config, decision, strategy_center, forward_ledger, notification_ledger, westock_research, cn_research, research_assets, xiaomi_directional, xiaomi_options
+from .modules import valuation, screener, monitor, ipo, missed_scan, price_alert, analyze, buybacks, news, southbound, reverse_signals, capital_flow, southbound_risk, fundamentals, filters, dividend, earnings, divergence, daily_report, intraday, backtest, strategy_config, decision, strategy_center, forward_ledger, notification_ledger, westock_research, cn_research, research_assets, xiaomi_directional, xiaomi_options, option_mapper
 from .markets import cn_lot_size, cn_price_limit, get_market_rules, resolve_security
 from .providers import MarketDataRouter, TigerPositionsProvider
 from .modules.screener import LEADERS
@@ -145,6 +145,14 @@ def get_xiaomi_directional():
 def get_xiaomi_options():
     """Read-only CALL/PUT recommendation; this endpoint never pushes or trades."""
     result, error = xiaomi_options.analyze(client(), CONFIG)
+    return _wrap(result, error)
+
+
+@app.get("/api/option-map")
+def get_option_map(code: str, action: str = "WAIT"):
+    """Read-only generic option map; never submits or pushes an order."""
+    portfolio = strategy_center._portfolio_payload(client())
+    result, error = option_mapper.analyze(client(), code, action.upper(), portfolio)
     return _wrap(result, error)
 
 

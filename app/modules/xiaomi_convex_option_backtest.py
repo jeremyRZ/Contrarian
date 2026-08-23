@@ -11,6 +11,8 @@ from itertools import product
 import numpy as np
 import pandas as pd
 
+from .supertrend_research import SuperTrendParams, supertrend
+
 
 @dataclass(frozen=True)
 class ConvexSignal:
@@ -50,8 +52,54 @@ def build_convex_signals(stock: pd.DataFrame) -> list[ConvexSignal]:
             entry_i = i + 1
             signals.append(ConvexSignal(
                 str(x.loc[i, "time_key"].date()), str(x.loc[entry_i, "time_key"].date()),
-                entry_i, direction, kind, float(x.loc[entry_i, "close"]),
+                entry_i, direction, kind, float(x.loc[i, "close"]),
             ))
+    return signals
+
+
+def build_supertrend_signals(stock: pd.DataFrame, *, mode: str,
+                             atr_period: int, multiplier: float) -> list[ConvexSignal]:
+    """Build close-known directional events for option research."""
+    if mode not in {"breakout_confirm", "breakout_recent_flip",
+                    "momentum_confirm", "flip_with_momentum"}:
+        raise ValueError(mode)
+    x = stock.copy()
+    x["time_key"] = pd.to_datetime(x.time_key)
+    x = x[x.time_key >= "2021-01-01"].sort_values("time_key").reset_index(drop=True)
+    direction = supertrend(x, SuperTrendParams(atr_period, multiplier))["st_direction"]
+    flip = direction.ne(direction.shift(1)) & direction.ne(0)
+    last_flip = pd.Series(np.nan, index=x.index)
+    last = None
+    for i, value in enumerate(flip):
+        if value:
+            last = i
+        last_flip.iloc[i] = last
+    momentum = x.close.pct_change(20)
+    prior_high = x.high.shift(1).rolling(55).max()
+    prior_low = x.low.shift(1).rolling(55).min()
+    signals = []
+    for i in range(55, len(x) - 1):
+        trend = int(direction.iloc[i])
+        breakout = 1 if x.close.iloc[i] > prior_high.iloc[i] else (
+            -1 if x.close.iloc[i] < prior_low.iloc[i] else 0)
+        mom = 1 if momentum.iloc[i] > .05 else (-1 if momentum.iloc[i] < -.05 else 0)
+        signal_direction = 0
+        if mode == "breakout_confirm" and breakout == trend:
+            signal_direction = breakout
+        elif (mode == "breakout_recent_flip" and breakout == trend
+              and pd.notna(last_flip.iloc[i]) and i - int(last_flip.iloc[i]) <= 10):
+            signal_direction = breakout
+        elif mode == "momentum_confirm" and mom == trend and mom != 0:
+            previous_mom = 1 if momentum.iloc[i - 1] > .05 else (
+                -1 if momentum.iloc[i - 1] < -.05 else 0)
+            if previous_mom != mom:
+                signal_direction = mom
+        elif mode == "flip_with_momentum" and bool(flip.iloc[i]) and mom == trend:
+            signal_direction = trend
+        if signal_direction:
+            signals.append(ConvexSignal(
+                str(x.time_key.iloc[i].date()), str(x.time_key.iloc[i + 1].date()),
+                i + 1, signal_direction, mode, float(x.close.iloc[i])))
     return signals
 
 
@@ -95,6 +143,8 @@ def evaluate(signal: ConvexSignal, stock: pd.DataFrame, frames: dict[str, pd.Dat
     if chain.empty:
         return None
     row = chain.loc[(chain.strike - target).abs().idxmin()]
+    if abs(float(row.strike) / target - 1) > .05:
+        return None
     matched = exit_[(exit_.expiry == expiry) & (exit_.strike == row.strike)]
     if matched.empty:
         return None
@@ -133,3 +183,15 @@ def metrics(rows: list[dict]) -> dict:
         "portfolio_return_pct": float((curve[-1] - 1) * 100),
         "max_drawdown_pct": float(drawdown.min() * 100),
     }
+
+
+def non_overlapping(rows: list[dict]) -> list[dict]:
+    """Keep at most one option position open; discard clustered duplicate entries."""
+    kept, last_exit = [], None
+    for row in sorted(rows, key=lambda item: (item["entry_date"], item["exit_date"])):
+        entry = pd.Timestamp(row["entry_date"])
+        if last_exit is not None and entry <= last_exit:
+            continue
+        kept.append(row)
+        last_exit = pd.Timestamp(row["exit_date"])
+    return kept

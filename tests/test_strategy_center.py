@@ -8,6 +8,27 @@ def test_strategy_center_has_no_order_placement_api():
     assert not hasattr(strategy_center, "submit_order")
 
 
+def test_capability_roadmap_separates_running_learning_and_next(tmp_path, monkeypatch):
+    candidate = tmp_path / "candidate.json"
+    candidate.write_text('{"historical_2022_2026":{"net_return_pct":61.4,"profit_factor":2.61}}',
+                         encoding="utf-8")
+    monkeypatch.setattr(strategy_center, "CANDIDATE_RESULT_FILE", candidate)
+    roadmap = strategy_center._capability_roadmap([
+        {"id": "s1", "name": "策略一", "action": "WAIT",
+         "validation": {"return_pct": 12.3}},
+    ])
+    assert roadmap["active"][0]["state"] == "RUNNING"
+    assert roadmap["learning"][0]["state"] == "VALIDATING"
+    assert "61.40%" in roadmap["learning"][0]["evidence"]
+    assert [item["order"] for item in roadmap["next"]] == [1, 2, 3, 4]
+
+
+def test_serial_rejects_plain_python_nan():
+    assert strategy_center._serial(float("nan")) is None
+    assert strategy_center._serial(float("inf")) is None
+    assert strategy_center._serial(1.25) == 1.25
+
+
 def test_positions_degrades_to_empty_on_error():
     class Broken:
         def positions(self):

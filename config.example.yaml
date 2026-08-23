@@ -56,10 +56,10 @@ xiaomi_directional:
 # 小米期权选择层：55日突破后选择约10%虚值、30–60天到期的Call/Put。
 xiaomi_options:
   enabled: true
-  historical_gate_passed: true
+  historical_gate_passed: false
   min_days_to_expiry: 30
   max_days_to_expiry: 60
-  target_otm_pct: 10.0
+  target_otm_pct: 15.0
   max_spread_pct: 25.0
   max_premium_risk_pct: 1.0
   execution_mode: "READ_ONLY_USER_CONFIRMATION_REQUIRED"

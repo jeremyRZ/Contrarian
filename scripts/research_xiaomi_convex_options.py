@@ -9,7 +9,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from app.modules.xiaomi_convex_option_backtest import (
-    build_convex_signals, evaluate, metrics, parameter_grid,
+    build_convex_signals, evaluate, metrics, non_overlapping, parameter_grid,
 )
 from app.modules.xiaomi_option_backtest import parse_dtop
 
@@ -31,7 +31,7 @@ def main() -> None:
         rows = [evaluate(s, stock, frames, dte=params["dte"],
                          otm_pct=params["otm_pct"], hold=params["hold"])
                 for s in selected]
-        rows = [r for r in rows if r]
+        rows = non_overlapping([r for r in rows if r])
         split = {name: metrics([r for r in rows if start <= r["entry_date"] < end])
                  for name, (start, end) in periods.items()}
         runs.append({"params": params, "periods": split, "trades": rows})
@@ -50,7 +50,7 @@ def main() -> None:
                              otm_pct=params["otm_pct"], hold=params["hold"],
                              slippage_pct=slippage, min_turnover=min_turnover,
                              min_oi=min_oi) for s in selected]
-            rows = [r for r in rows if r]
+            rows = non_overlapping([r for r in rows if r])
             robustness.append({
                 "params": params, "slippage_pct_per_side": slippage,
                 "min_turnover": min_turnover, "min_oi": min_oi,

@@ -1,0 +1,40 @@
+{
+  "status": "research_candidate_forward_validation_required",
+  "generated_at": "2026-08-23",
+  "strategy": {
+    "family": "cross_sectional_risk_adjusted_momentum",
+    "lookback_days": 200,
+    "skip_recent_days": 20,
+    "rebalance_days": 20,
+    "positions": 4,
+    "market_gate": "Hang Seng Index close above 200-day moving average",
+    "liquidity_gate": "20-day average turnover at least HKD100m",
+    "execution": "close signal, next-open fill"
+  },
+  "historical_2022_2026": {
+    "net_return_pct": 61.3953,
+    "hang_seng_buy_hold_pct": 11.7497,
+    "trade_count": 46,
+    "profit_factor": 2.6111,
+    "max_drawdown_pct": -14.7148,
+    "year_returns_pct": [0.0, 7.10, 7.13, 26.64, 11.07],
+    "stress_25bps_per_side_return_pct": 57.98,
+    "distinct_stocks": 28
+  },
+  "robustness": {
+    "local_parameter_variants": 16,
+    "positive_return_share_pct": 93.75,
+    "profit_factor_at_least_1_25_share_pct": 81.25,
+    "leave_one_stock_out_min_return_pct": 35.5169,
+    "leave_one_stock_out_min_profit_factor": 2.1057
+  },
+  "current_signal_2026_08_21": {
+    "market_gate_passed": true,
+    "targets": ["HK.00966", "HK.03988", "HK.01398", "HK.00939"]
+  },
+  "limitations": [
+    "The 150-stock universe is selected from the current Futu investable universe and is not point-in-time historical membership.",
+    "The rule was selected during this research pass, so these results are exploratory rather than a pristine untouched test.",
+    "No real order is authorized; forward validation is required before promotion."
+  ]
+}

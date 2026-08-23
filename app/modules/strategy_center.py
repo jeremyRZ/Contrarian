@@ -1,4 +1,4 @@
-"""Read-only strategy centre for the two qualified daily strategies.
+"""Read-only strategy centre for the three qualified daily strategies.
 
 This module deliberately has no order-placement function.  It may read Futu
 positions to make a signal position-aware, but all output is a proposed order.
@@ -15,7 +15,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from .orb_universe import HK_LIQUID_SEED
-from . import monitor, forward_ledger
+from . import monitor, forward_ledger, strategy_portfolio
 from ..futu_client import load_config
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -24,6 +24,71 @@ UNIVERSE_FILE = ROOT / ".universal_daily" / "research_universe_60.csv"
 UNIVERSE_META_FILE = ROOT / ".universal_daily" / "research_universe_60.meta.json"
 CAPITAL = 20_000.0
 DYNAMIC_POOL_SIZE = 60
+CANDIDATE_RESULT_FILE = ROOT / "data" / "risk_adjusted_momentum_candidate.json"
+
+
+def _capability_roadmap(strategies: list[dict]) -> dict:
+    """Expose auditable capability states for the investor dashboard."""
+    active = []
+    for strategy in strategies:
+        validation = strategy.get("validation") or {}
+        active.append({
+            "id": strategy.get("id"), "name": strategy.get("name"),
+            "state": "RUNNING" if strategy.get("action") != "UNAVAILABLE" else "UNAVAILABLE",
+            "evidence": (f"历史收益 {validation.get('return_pct'):.2f}%"
+                         if validation.get("return_pct") is not None else "验证数据不可用"),
+            "output": "生成 BUY / SELL / HOLD / WAIT，并经过账户风险门控",
+        })
+    active.extend([
+        {"id": "portfolio_risk", "name": "富途持仓与组合风控", "state": "RUNNING",
+         "evidence": "读取实际持仓、现金、集中度、杠杆与期权到期风险",
+         "output": "阻止不满足风险预算的新仓位"},
+        {"id": "forward_ledger", "name": "前向信号成绩单", "state": "RUNNING",
+         "evidence": "按信号日期记录并在第5、20个交易日评价",
+         "output": "策略失效时自动暂停新增仓位"},
+        {"id": "point_in_time_universe", "name": "点时股票池与影子成交", "state": "RUNNING",
+         "evidence": "每日股票池、下一开盘、8bps滑点、费用和机会成本入库",
+         "output": "阻止幸存者偏差并验证可执行收益"},
+        {"id": "strategy_portfolio", "name": "多策略风险预算", "state": "RUNNING",
+         "evidence": "样本不足使用回撤代理，达到5个对齐样本后切换等风险贡献",
+         "output": "公开权重方法和样本状态，不伪装成熟风险平价"},
+        {"id": "option_mapper", "name": "正股到期权硬门控", "state": "RUNNING",
+         "evidence": "方向、Delta、IV、期限、价差、流动性、历史稳健性和1%风险预算",
+         "output": "任一门控失败即BLOCKED；退出信号不自动映射Put"},
+    ])
+    candidate = {}
+    try:
+        candidate = json.loads(CANDIDATE_RESULT_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pass
+    history = candidate.get("historical_2022_2026", {})
+    learning = [
+        {"id": "risk_adjusted_momentum_200", "name": "200日风险调整动量",
+         "state": "VALIDATING", "progress": "已接入信号引擎、点时股票池和前向影子成交",
+         "evidence": (f"历史收益 {history.get('net_return_pct', 0):.2f}% · PF {history.get('profit_factor', 0):.2f}"
+                      if history else "候选报告不可用"),
+         "blocker": "当前150只历史研究池仍有选择偏差，正式提醒保持REVIEW而非自动交易"},
+        {"id": "xiaomi_supertrend_options", "name": "SuperTrend小米期权",
+         "state": "REJECTED", "progress": "继续寻找稳定的方向、期限与行权价组合",
+         "evidence": "固定参数邻域稳定性未达到75%门槛",
+         "blocker": "历史门槛关闭，不产生期权买入提醒"},
+        {"id": "intraday_research", "name": "港股日内策略",
+         "state": "REJECTED", "progress": "研究ORB、恐慌反转与分钟级执行",
+         "evidence": "现有样本外结果未通过质量门槛",
+         "blocker": "交易成本和稳定性不足"},
+    ]
+    next_actions = [
+        {"order": 1, "name": "200日调仓引擎", "deliverable": "已完成：BUY / SELL / HOLD / CASH及账户差异",
+         "acceptance": "正式调仓日才生成订单；不误卖非策略持仓"},
+        {"order": 2, "name": "点时股票池与影子成交", "deliverable": "已完成：逐日快照、开盘成交、滑点、费用和机会成本",
+         "acceptance": "数据库唯一约束确保同日重复刷新不重复记账"},
+        {"order": 3, "name": "策略组合", "deliverable": "已完成：前向样本成熟后自动切换等风险贡献",
+         "acceptance": "不足5个对齐样本明确显示COLLECTING"},
+        {"order": 4, "name": "期权映射层", "deliverable": "已完成：正股方向与期权赔率双重硬门控",
+         "acceptance": "未通过历史稳健性与风险预算只显示BLOCKED"},
+    ]
+    return {"active": active, "learning": learning, "next": next_actions,
+            "rule": "只有真实运行代码进入正在做；研究代码不得冒充可执行策略"}
 
 
 def _risk_settings() -> dict:
@@ -210,6 +275,8 @@ def _serial(v: Any) -> Any:
         return int(v)
     if isinstance(v, (np.floating,)):
         return None if not np.isfinite(v) else float(v)
+    if isinstance(v, float):
+        return None if not np.isfinite(v) else v
     return v
 
 
@@ -679,56 +746,92 @@ def _rotation_status(positions: dict[str, float], portfolio: dict | None = None)
     names = {str(r.code): str(r["name"]) for _, r in universe.iterrows()}
     idx = _read_daily(DAILY_DIR / "HK_800000.csv")
     latest_date = idx.index[-1]
-    idx_ma120 = idx.close.rolling(120).mean().iloc[-1]
-    market_ok = idx.close.iloc[-1] > idx_ma120
+    idx_ma200 = idx.close.rolling(200).mean().iloc[-1]
+    market_ok = idx.close.iloc[-1] > idx_ma200
     candidates = []
     for path in DAILY_DIR.glob("HK_*.csv"):
         x = _read_daily(path)
-        if len(x) < 121 or latest_date not in x.index:
+        if len(x) < 221 or latest_date not in x.index:
             continue
         code = str(x.iloc[-1].get("code", ""))
         if code not in lots:
             continue
         close = x.close
         r = x.loc[latest_date]
-        ma20, ma60, ma120 = (close.rolling(n).mean().loc[latest_date] for n in (20, 60, 120))
+        ma200 = close.rolling(200).mean().loc[latest_date]
         turn20 = x.turnover.rolling(20).mean().loc[latest_date]
         vol60 = close.pct_change().rolling(60).std().loc[latest_date] * np.sqrt(252)
-        mom = r.close / close.iloc[-121] - 1
-        eligible = (market_ok and turn20 >= 100_000_000 and .12 <= vol60 <= .70
-                    and r.close > ma60 and ma20 > ma60 > ma120 and mom >= .10)
+        mom = close.iloc[-21] / close.iloc[-221] - 1
+        eligible = (market_ok and turn20 >= 100_000_000 and r.close >= 2
+                    and r.close > ma200 and mom > 0 and np.isfinite(vol60) and vol60 > 0)
         if not eligible:
             continue
         lot = lots[code]
-        stop = min(float(r.close) * .92, float(ma60))
-        sizing = _risk_position_size(float(r.close), stop, lot, portfolio, 15.0)
-        qty = sizing["qty"]
+        equity = float((portfolio or {}).get("total_assets") or CAPITAL)
+        cash = max(float((portfolio or {}).get("cash") or equity), 0)
+        allocation = min(equity * .25, cash)
+        qty = int(allocation // (float(r.close) * lot)) * lot
+        sizing = {"qty": qty, "target_weight_pct": 25.0,
+                  "estimated_amount_hkd": float(qty * r.close),
+                  "reason": "四只股票等权目标，按实际净资产、现金和港股手数取整"}
         candidates.append({
             "code": code, "name": names.get(code, code), "price": float(r.close),
             "momentum_pct": float(mom * 100), "volatility_pct": float(vol60 * 100),
             "score": float(mom / vol60), "lot_size": lot, "suggested_qty": qty,
             "estimated_amount": float(qty * r.close), "affordable": qty > 0,
             "sizing": sizing,
-            "trade_plan": {"trigger": float(r.close), "stop": stop,
-                           "target": float(r.close + 2 * (r.close - stop)),
-                           "risk_reward": 2.0, "validity": "仅正式调仓日复核"},
+            "trade_plan": {"trigger": float(r.close), "stop": None, "target": None,
+                           "risk_reward": None, "validity": "仅正式调仓日执行排名退出"},
         })
     candidates.sort(key=lambda z: z["score"], reverse=True)
     dates = list(idx.index)
-    review_dates = [d for i, d in enumerate(dates[:-1]) if i % 20 == 0]
+    review_dates = [d for i, d in enumerate(dates) if i >= 220 and (i - 220) % 20 == 0]
     is_review = latest_date in review_dates
+    prior_reviews = [d for d in review_dates if d <= latest_date]
+    elapsed = len(dates) - 1 - 220
+    trading_days_until_review = 0 if is_review else 20 - (elapsed % 20)
     held_codes = {c for c, q in positions.items() if q > 0}
     proposed = [c for c in candidates if c["affordable"]][:4]
-    action = "REVIEW" if is_review and proposed else "WAIT"
-    reason = ("正式调仓日：请核对建议订单" if action == "REVIEW"
-              else "今天不是正式20交易日调仓点；候选仅供预览")
+    target_codes = {item["code"] for item in proposed}
+    managed = forward_ledger.managed_codes("hk_liquid_trend_rotation_v2")
+    strategy_holdings = held_codes & managed
+    orders = []
+    if is_review:
+        if not market_ok:
+            orders = [{"code": code, "name": names.get(code, code), "action": "SELL",
+                       "current_qty": int(positions.get(code, 0)), "target_qty": 0,
+                       "difference_qty": -int(positions.get(code, 0)), "reason": "恒指低于MA200，调仓日转为现金"}
+                      for code in sorted(strategy_holdings)]
+        else:
+            for item in proposed:
+                current = int(positions.get(item["code"], 0)); target = int(item["suggested_qty"])
+                orders.append({"code": item["code"], "name": item["name"],
+                               "action": "BUY" if target > current else "HOLD",
+                               "current_qty": current, "target_qty": target,
+                               "difference_qty": max(0, target - current),
+                               "reason": "进入风险调整动量前4"})
+            for code in sorted(strategy_holdings - target_codes):
+                current = int(positions.get(code, 0))
+                orders.append({"code": code, "name": names.get(code, code), "action": "SELL",
+                               "current_qty": current, "target_qty": 0, "difference_qty": -current,
+                               "reason": "跌出前4或不再满足流动性/趋势条件"})
+    action = "REVIEW" if is_review and orders else ("CASH" if is_review and not market_ok else "WAIT")
+    reason = ("正式调仓日：已生成持仓差异订单" if action == "REVIEW"
+              else ("正式调仓日且恒指门控关闭，保持现金" if action == "CASH"
+                    else "今天不是正式20交易日调仓点；不产生买卖动作"))
     return {
-        "id": "hk_liquid_trend_rotation_v1", "name": "港股流动性趋势轮动", "status": "已通过历史研究",
+        "id": "hk_liquid_trend_rotation_v2", "name": "港股200日风险调整动量", "status": "历史候选·前向验证中",
         "as_of": str(latest_date.date()), "action": action, "reason": reason,
-        "market": {"hsi_close": float(idx.close.iloc[-1]), "hsi_ma120": float(idx_ma120), "eligible": bool(market_ok)},
-        "is_review_day": is_review, "current_strategy_holdings": sorted(held_codes & set(lots)),
-        "candidates": candidates[:10], "proposed": proposed,
-        "validation": {"return_pct": 47.1442, "max_drawdown_pct": -11.8561, "distinct_stocks": 12},
+        "market": {"hsi_close": float(idx.close.iloc[-1]), "hsi_ma200": float(idx_ma200), "eligible": bool(market_ok)},
+        "is_review_day": is_review, "current_strategy_holdings": sorted(strategy_holdings),
+        "last_review_date": str(prior_reviews[-1].date()) if prior_reviews else None,
+        "next_review_date": "今天" if is_review else f"约{trading_days_until_review}个交易日后",
+        "days_until_review": trading_days_until_review,
+        "candidates": candidates[:10], "proposed": proposed, "orders": orders,
+        "parameters": {"lookback_days": 200, "skip_recent_days": 20,
+                       "rebalance_trading_days": 20, "positions": 4, "market_ma": 200},
+        "validation": {"return_pct": 61.3953, "max_drawdown_pct": -14.7148,
+                       "profit_factor": 2.6111, "trades": 46, "distinct_stocks": 28},
     }
 
 
@@ -791,14 +894,14 @@ def get_status(client, refresh: bool = False) -> dict:
             return {"id": strategy_id, "name": name, "status": "数据不可用",
                     "action": "UNAVAILABLE", "reason": str(exc), "as_of": None,
                     "price": None, "ma20": None, "ma60": None, "suggested_qty": 0,
-                    "market": {"hsi_close": None, "hsi_ma120": None, "eligible": False},
+                    "market": {"hsi_close": None, "hsi_ma200": None, "eligible": False},
                     "market_eligible": False, "is_review_day": False,
                     "validation": {"return_pct": None, "max_drawdown_pct": None,
                                    "profit_factor": None, "distinct_stocks": 0, "trades": 0},
                     "candidates": []}
     strategies = [
         safe(_xiaomi_status, "xiaomi_trend_v1", "小米专属趋势"),
-        safe(_rotation_status, "hk_liquid_trend_rotation_v1", "港股流动性趋势轮动"),
+        safe(_rotation_status, "hk_liquid_trend_rotation_v2", "港股200日风险调整动量"),
         safe(_breakout_status, "hk_long_term_high_breakout_v1", "港股长期新高突破"),
     ]
     forward = forward_ledger.dashboard(limit=1000)
@@ -812,6 +915,9 @@ def get_status(client, refresh: bool = False) -> dict:
             strategy["reason"] = "前向验证表现失效，策略已自动降级，暂停新增仓位"
     _apply_portfolio_gate(strategies, portfolio["gate"])
     universe_payload = _universe_payload()
+    forward_ledger.record_universe_snapshot(
+        universe_payload, next((s.get("as_of") for s in strategies if s.get("as_of")), None))
+    forward_ledger.record_rotation_shadow(strategies[1])
     rotation_codes = {x.get("code") for x in strategies[1].get("candidates", [])}
     breakout_codes = {x.get("code") for x in strategies[2].get("candidates", [])}
     for stock in universe_payload.get("stocks", []):
@@ -837,8 +943,12 @@ def get_status(client, refresh: bool = False) -> dict:
         "forward_scoreboard": {"summary": forward.get("summary", {}),
                                "strategy_stats": forward.get("strategy_stats", []),
                                "note": forward.get("note")},
+        "paper_execution": forward.get("paper_execution", {}),
+        "strategy_portfolio": strategy_portfolio.build_allocation(
+            strategies, forward.get("evaluations", [])),
         "refresh_errors": errors[:8],
         "strategies": strategies,
+        "capability_roadmap": _capability_roadmap(strategies),
         "workflow": _workflow(strategies, portfolio["gate"]),
         "intraday": {
             "name": "港股日内策略", "status": "禁用：样本外未通过", "action": "NO_TRADE",

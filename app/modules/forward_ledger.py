@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -31,7 +32,117 @@ def _connect():
         UNIQUE(signal_date, strategy_id, direction))""")
     db.execute("""CREATE TABLE IF NOT EXISTS shadow_meta (
         strategy_id TEXT PRIMARY KEY, started_at TEXT NOT NULL)""")
+    db.execute("""CREATE TABLE IF NOT EXISTS universe_snapshots (
+        id INTEGER PRIMARY KEY, recorded_at TEXT NOT NULL, snapshot_date TEXT NOT NULL,
+        code TEXT NOT NULL, payload TEXT NOT NULL, UNIQUE(snapshot_date,code))""")
+    db.execute("""CREATE TABLE IF NOT EXISTS paper_orders (
+        id INTEGER PRIMARY KEY, recorded_at TEXT NOT NULL, signal_date TEXT NOT NULL,
+        strategy_id TEXT NOT NULL, code TEXT NOT NULL, action TEXT NOT NULL,
+        current_qty INTEGER NOT NULL, target_qty INTEGER NOT NULL, difference_qty INTEGER NOT NULL,
+        signal_price REAL, payload TEXT NOT NULL,
+        UNIQUE(signal_date,strategy_id,code,action))""")
     return db
+
+
+def record_universe_snapshot(universe: dict, snapshot_date: str | None = None) -> int:
+    """Append the exact investable universe visible on a date; never backfill it."""
+    now = datetime.now().isoformat(timespec="seconds")
+    snapshot_date = snapshot_date or now[:10]
+    count = 0
+    with _connect() as db:
+        for stock in universe.get("stocks", []):
+            code = str(stock.get("code") or "")
+            if not code:
+                continue
+            cur = db.execute(
+                "INSERT OR IGNORE INTO universe_snapshots(recorded_at,snapshot_date,code,payload) VALUES(?,?,?,?)",
+                (now, snapshot_date, code,
+                 json.dumps(stock, ensure_ascii=False, separators=(",", ":"), allow_nan=False)))
+            count += cur.rowcount
+    return count
+
+
+def managed_codes(strategy_id: str) -> set[str]:
+    """Codes previously entered by the strategy's shadow book and not exited."""
+    with _connect() as db:
+        rows = db.execute(
+            "SELECT code,action FROM paper_orders WHERE strategy_id=? ORDER BY signal_date,id",
+            (strategy_id,)).fetchall()
+    managed: set[str] = set()
+    for row in rows:
+        if row["action"] == "BUY":
+            managed.add(row["code"])
+        elif row["action"] == "SELL":
+            managed.discard(row["code"])
+    return managed
+
+
+def record_rotation_shadow(strategy: dict) -> int:
+    """Persist review-day target-vs-position orders for later executable evaluation."""
+    if strategy.get("id") != "hk_liquid_trend_rotation_v2" or not strategy.get("is_review_day"):
+        return 0
+    now = datetime.now().isoformat(timespec="seconds")
+    signal_date = strategy.get("as_of") or now[:10]
+    prices = {str(x.get("code")): x.get("price") for x in strategy.get("candidates", [])}
+    count = 0
+    with _connect() as db:
+        for order in strategy.get("orders", []):
+            if order.get("action") not in {"BUY", "SELL"} or not order.get("difference_qty"):
+                continue
+            code = str(order.get("code") or "")
+            cur = db.execute(
+                """INSERT OR IGNORE INTO paper_orders(
+                    recorded_at,signal_date,strategy_id,code,action,current_qty,target_qty,
+                    difference_qty,signal_price,payload) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                (now, signal_date, strategy["id"], code, order["action"],
+                 int(order.get("current_qty") or 0), int(order.get("target_qty") or 0),
+                 int(order.get("difference_qty") or 0), prices.get(code),
+                 json.dumps(order, ensure_ascii=False, separators=(",", ":"))))
+            count += cur.rowcount
+    return count
+
+
+def _order_cost(notional: float) -> float:
+    return (max(3.0, notional * .0003) + 15.0 +
+            notional * (.000027 + .0000015 + .0000565 + .000042) +
+            math.ceil(notional * .001))
+
+
+def _paper_dashboard() -> dict:
+    with _connect() as db:
+        snapshots = db.execute(
+            "SELECT COUNT(DISTINCT snapshot_date),COUNT(*) FROM universe_snapshots").fetchone()
+        rows = [dict(row) for row in db.execute(
+            "SELECT signal_date,strategy_id,code,action,current_qty,target_qty,difference_qty,signal_price,payload FROM paper_orders ORDER BY signal_date DESC,id DESC")]
+    for row in rows:
+        row["details"] = json.loads(row.pop("payload"))
+        row.update({"next_open": None, "fill_price": None, "estimated_fee_hkd": None,
+                    "slippage_bps": 8.0, "return_20d_pct": None,
+                    "opportunity_cost_20d_pct": None, "status": "WAITING_FILL"})
+        path = DAILY_DIR / f"{row['code'].replace('.', '_')}.csv"
+        if not path.exists():
+            continue
+        bars = pd.read_csv(path)
+        bars["time_key"] = pd.to_datetime(bars["time_key"], format="mixed")
+        future = bars[bars.time_key > pd.Timestamp(row["signal_date"])].sort_values("time_key")
+        if future.empty:
+            continue
+        next_open = float(future.iloc[0].open)
+        side = 1 if row["action"] == "BUY" else -1
+        fill = next_open * (1 + side * .0008)
+        qty = abs(int(row["difference_qty"]))
+        row["next_open"] = next_open; row["fill_price"] = fill
+        row["estimated_fee_hkd"] = round(_order_cost(fill * qty), 2)
+        row["status"] = "FILLED_SHADOW"
+        if len(future) >= 20:
+            close20 = float(future.iloc[19].close)
+            raw = (close20 / fill - 1) * 100
+            row["return_20d_pct"] = round(raw if row["action"] == "BUY" else -raw, 2)
+            row["opportunity_cost_20d_pct"] = round(-raw if row["action"] == "SELL" else 0.0, 2)
+            row["status"] = "MATURE"
+    return {"snapshot_days": int(snapshots[0] or 0), "snapshot_rows": int(snapshots[1] or 0),
+            "orders": rows, "order_count": len(rows),
+            "note": "影子成交采用下一交易日开盘加减8bps滑点，并计入港股小额订单费用。"}
 
 
 def record_supertrend_exit_shadow(bars: pd.DataFrame | None = None) -> int:
@@ -198,5 +309,6 @@ def dashboard(limit: int = 200) -> dict:
             "profit_factor": None, "max_drawdown_pct": None},
             "evaluations": evaluations, "strategy_stats": strategy_stats,
             "shadow": _shadow_dashboard(),
+            "paper_execution": _paper_dashboard(),
             "note": ("收益为信号后5/20交易日收盘的前向观察值，不等同真实成交收益。"
                      if evaluations else "尚无到期样本；系统会在信号后第5和第20个交易日自动评价。")}

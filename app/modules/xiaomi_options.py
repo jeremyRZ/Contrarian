@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from . import xiaomi_directional
+from .supertrend_research import SuperTrendParams, supertrend
 
 
 def _num(row: pd.Series, name: str) -> float | None:
@@ -65,9 +66,33 @@ def breakout_signal(bars: pd.DataFrame, lookback: int = 55) -> dict:
                       "收盘跌破前55日低点" if action == "BUY_PUT" else "未突破55日区间"}
 
 
+def momentum_supertrend_signal(bars: pd.DataFrame, threshold: float = .05) -> dict:
+    """Qualified option event: a new 20-day momentum state confirmed by ST(7,2.5)."""
+    x = bars.copy().sort_values("time_key").reset_index(drop=True)
+    if len(x) < 30:
+        return {"action": "WAIT", "reason": "方向数据不足"}
+    momentum = pd.to_numeric(x.close, errors="coerce").pct_change(20)
+    trend = supertrend(x, SuperTrendParams(7, 2.5))["st_direction"]
+
+    def state(value: float) -> int:
+        return 1 if value > threshold else -1 if value < -threshold else 0
+
+    current, previous = state(float(momentum.iloc[-1])), state(float(momentum.iloc[-2]))
+    confirmed = current != 0 and current == int(trend.iloc[-1])
+    transition = current != previous
+    action = ("BUY_CALL" if current == 1 else "BUY_PUT"
+              if current == -1 else "WAIT") if confirmed and transition else "WAIT"
+    return {"action": action, "as_of": str(x.iloc[-1].time_key)[:10],
+            "close": float(x.iloc[-1].close), "momentum_20d_pct": float(momentum.iloc[-1] * 100),
+            "supertrend_direction": int(trend.iloc[-1]), "transition": transition,
+            "reason": "20日动量状态切换且SuperTrend同向" if action != "WAIT" else
+                      "动量未切换或SuperTrend未确认，不买期权"}
+
+
 def rank_convex_contracts(snapshot: pd.DataFrame, side: str, spot: float,
                           *, target_otm_pct: float = 10.0,
-                          max_spread_pct: float = 25.0) -> list[dict]:
+                          max_spread_pct: float = 25.0,
+                          max_target_error_pct: float = 5.0) -> list[dict]:
     """Rank liquid OTM contracts matching the out-of-sample-tested structure."""
     target = spot * (1 + target_otm_pct / 100) if side == "CALL" else spot * (1 - target_otm_pct / 100)
     rows = []
@@ -78,19 +103,23 @@ def rank_convex_contracts(snapshot: pd.DataFrame, side: str, spot: float,
         volume = _num(row, "volume") or 0
         oi = _num(row, "option_open_interest") or 0
         strike = _num(row, "option_strike_price")
+        delta = _num(row, "option_delta")
         if not bid or not ask or ask <= bid or strike is None or volume < 10 or oi < 100:
             continue
         mid = (bid + ask) / 2
         spread_pct = (ask - bid) / mid * 100
-        if spread_pct > max_spread_pct:
+        target_error_pct = abs(strike / target - 1) * 100
+        if (spread_pct > max_spread_pct or target_error_pct > max_target_error_pct
+                or delta is None or not .15 <= abs(delta) <= .40):
             continue
         rows.append({"code": str(row.code), "side": side, "strike": strike,
                      "bid": bid, "ask": ask, "mid": mid, "spread_pct": spread_pct,
                      "iv_pct": _num(row, "option_implied_volatility"),
-                     "delta": _num(row, "option_delta"), "theta": _num(row, "option_theta"),
+                     "delta": delta, "theta": _num(row, "option_theta"),
                      "vega": _num(row, "option_vega"), "volume": int(volume),
                      "open_interest": int(oi), "contract_size": int(_num(row, "lot_size") or 0),
-                     "target_strike": target, "distance_to_target": abs(strike - target)})
+                     "target_strike": target, "target_error_pct": target_error_pct,
+                     "distance_to_target": abs(strike - target)})
     return sorted(rows, key=lambda item: (item["distance_to_target"], item["spread_pct"]))
 
 
@@ -109,10 +138,10 @@ def analyze(client, cfg: dict | None = None) -> tuple[dict | None, str | None]:
     bars, bar_err = client.history_kline("HK.01810", max_count=160, start=start, end=end)
     if bar_err or bars is None or len(bars) < 57:
         return None, bar_err or "55日突破数据不足"
-    option_signal = breakout_signal(bars)
+    option_signal = momentum_supertrend_signal(bars)
     base["option_signal"] = option_signal
     if option_signal["action"] == "WAIT":
-        base["recommendation"] = "保留正股状态；小米未突破55日区间，不买Call或Put"
+        base["recommendation"] = "动量状态未切换或SuperTrend未确认，不买Call或Put"
         return base, None
     side = "CALL" if option_signal["action"] == "BUY_CALL" else "PUT"
     realized = float(pd.Series(bars.close, dtype=float).pct_change().tail(20).std() * np.sqrt(252) * 100)
@@ -157,8 +186,8 @@ def analyze(client, cfg: dict | None = None) -> tuple[dict | None, str | None]:
         base.update({"instrument": "STOCK", "action": direction["action"],
                      "option_candidate": candidates[0],
                      "research_gate": {"passed": False,
-                                       "reason": "55日突破凸性策略的历史门槛尚未启用"},
-                     "recommendation": f"{side}出现突破候选，但历史收益门槛未启用；不买期权"})
+                                       "reason": "固定参数的邻域稳定性未达到研究门槛"},
+                     "recommendation": f"{side}出现方向候选，但稳健性门槛未通过；不买期权"})
         return base, None
     risk_pct = float(settings.get("max_premium_risk_pct", 1.0))
     cash_ratio = cash = total_assets = None
@@ -189,7 +218,7 @@ def analyze(client, cfg: dict | None = None) -> tuple[dict | None, str | None]:
                          "max_loss_pct": risk_pct, "max_loss_budget_hkd": risk_budget,
                          "passed": True, "max_contracts": int(risk_budget // best["max_loss_per_contract_hkd"])}
     base.update({"instrument": side, "action": "BUY", "contract": best,
-                 "recommendation": f"55日突破、合约流动性与风险预算均通过，可关注买入{side}；最多持有10个交易日，下单前人工复核实时盘口"})
+                 "recommendation": f"动量切换与SuperTrend确认、合约流动性及风险预算均通过，可关注买入{side}；最多持有10个交易日，下单前人工复核实时盘口"})
     return base, None
 
 
@@ -204,6 +233,6 @@ def notification(result: dict) -> tuple[str, str] | None:
             f"执行价：{c['strike']:.2f}，参考卖价：{c['ask']:.2f}，Delta：{c['delta']:.2f}\n"
             f"IV：{c['iv_pct']:.1f}% / 20日实现波动率：{c['realized_vol_20d_pct']:.1f}%\n"
             f"价差：{c['spread_pct']:.1f}%，到期盈亏平衡：{c['expiry_break_even']:.2f}\n"
-            f"策略：55日突破、目标约10%虚值、最多持有10个交易日。\n"
+            f"策略：20日动量切换 + SuperTrend(7,2.5)、目标约15%虚值、最多持有10个交易日。\n"
             f"单张最大权利金损失：约 {c['max_loss_per_contract_hkd']:.0f} 港元。仅为候选，人工确认后才下单。")
     return fp, text
