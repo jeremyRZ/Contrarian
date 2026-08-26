@@ -21,11 +21,23 @@ def test_get_endpoints_cannot_trigger_push_side_effects():
     assert "push" not in inspect.signature(api.get_daily_divergence).parameters
 
 
-def test_intraday_scheduler_only_runs_price_risk(monkeypatch):
+def test_intraday_scheduler_runs_formal_execution_before_price_risk(monkeypatch):
     captured = []
     monkeypatch.setattr(api.intraday_scheduler, "start", lambda cfg, fns: captured.extend(fns))
     api._start_intraday_scheduler()
-    assert captured == [api._price_alert_run]
+    assert captured == [api._formal_execution_run, api._price_alert_run, api._position_risk_run]
+
+
+def test_formal_execution_run_pushes_time_aware_alert(monkeypatch):
+    alert = {"fingerprint": "execution:xiaomi:test", "message": "formal",
+             "title": "title", "phase": "PREOPEN"}
+    pushed = []
+    monkeypatch.setattr(api, "_formal_execution_payload", lambda: alert)
+    monkeypatch.setattr(api.notify, "push_if_new",
+                        lambda *args, **kwargs: pushed.append((args, kwargs)) or True)
+    result = api._formal_execution_run()
+    assert result["pushed"] == 1
+    assert pushed[0][0][0] == alert["fingerprint"]
 
 
 def test_xiaomi_directional_get_is_read_only(monkeypatch):
@@ -42,6 +54,29 @@ def test_xiaomi_options_get_is_read_only(monkeypatch):
     monkeypatch.setattr(api, "client", lambda: object())
     result = api.get_xiaomi_options()
     assert result == {"ok": True, "data": {"instrument": "NONE"}}
+
+
+def test_daily_job_publishes_only_canonical_strategy_notifications(monkeypatch):
+    status = {"mode": "READ_ONLY_PAPER_ADVICE",
+              "data_freshness": {"status": "CURRENT"}, "strategies": []}
+    pushed = []
+    monkeypatch.setattr(api.strategy_center, "get_status", lambda *_args, **_kwargs: status)
+    monkeypatch.setattr(api.forward_ledger, "record_status", lambda _status: None)
+    monkeypatch.setattr(api.forward_ledger, "record_supertrend_exit_shadow", lambda: None)
+    monkeypatch.setattr(api.daily_report, "run_daily_report", lambda *_args: {"ok": True})
+    monkeypatch.setattr(api.signal_governance, "production_notifications",
+                        lambda _status: [("production:test", "formal")])
+    monkeypatch.setattr(api.notify, "push_if_new",
+                        lambda fp, text, *_args, **_kwargs: pushed.append((fp, text)))
+    monkeypatch.setattr(api.xiaomi_directional, "notification",
+                        lambda _status: (_ for _ in ()).throw(AssertionError("research push called")))
+    monkeypatch.setattr(api.xiaomi_options, "notification",
+                        lambda _status: (_ for _ in ()).throw(AssertionError("option push called")))
+
+    result = api._daily_jobs()
+
+    assert result == {"ok": True}
+    assert pushed == [("production:test", "formal")]
 
 
 def test_app_lifespan_starts_and_stops_both_schedulers(monkeypatch):

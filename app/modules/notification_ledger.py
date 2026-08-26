@@ -34,17 +34,36 @@ def category_for(fingerprint: str) -> str:
         "intraday": "INTRADAY_SIGNAL",
         "screener": "BUY_SCAN",
         "rebalance": "REBALANCE_REVIEW",
+        "production": "PRODUCTION_SIGNAL",
+        "execution": "EXECUTION_REMINDER",
     }.get(prefix, prefix.upper() or "GENERAL")
 
 
-def record(fingerprint: str, message: str, status: str, *, detail: str = "") -> int:
+def record(fingerprint: str, message: str, status: str, *, detail: str = "",
+           channel: str = "WECOM") -> int:
     with _connect() as db:
         cur = db.execute(
             "INSERT INTO notification_events(attempted_at,fingerprint,category,status,channel,message,detail) VALUES(?,?,?,?,?,?,?)",
             (datetime.now().isoformat(timespec="seconds"), str(fingerprint),
-             category_for(fingerprint), str(status), "WECOM", str(message), str(detail)[:500]),
+             category_for(fingerprint), str(status), str(channel), str(message), str(detail)[:500]),
         )
         return int(cur.lastrowid)
+
+
+def was_sent_recently(fingerprint: str, seconds: int) -> bool:
+    with _connect() as db:
+        row = db.execute(
+            "SELECT attempted_at FROM notification_events "
+            "WHERE fingerprint=? AND status='SENT' ORDER BY id DESC LIMIT 1",
+            (str(fingerprint),),
+        ).fetchone()
+    if not row:
+        return False
+    try:
+        age = (datetime.now() - datetime.fromisoformat(row["attempted_at"])).total_seconds()
+        return age < max(0, int(seconds))
+    except (TypeError, ValueError):
+        return False
 
 
 def dashboard(limit: int = 200) -> dict:

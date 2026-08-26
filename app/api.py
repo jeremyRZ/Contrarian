@@ -16,13 +16,15 @@ import threading
 import time
 from contextlib import asynccontextmanager
 
+import pandas as pd
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .futu_client import build_client_from_config, load_config
-from .modules import valuation, screener, monitor, ipo, missed_scan, price_alert, analyze, buybacks, news, southbound, reverse_signals, capital_flow, southbound_risk, fundamentals, filters, dividend, earnings, divergence, daily_report, intraday, backtest, strategy_config, decision, strategy_center, forward_ledger, notification_ledger, westock_research, cn_research, research_assets, xiaomi_directional, xiaomi_options, option_mapper
+from .modules import valuation, screener, monitor, ipo, missed_scan, price_alert, analyze, buybacks, news, southbound, reverse_signals, capital_flow, southbound_risk, fundamentals, filters, dividend, earnings, divergence, daily_report, intraday, backtest, strategy_config, decision, strategy_center, forward_ledger, notification_ledger, signal_governance, execution_alerts, westock_research, cn_research, research_assets, xiaomi_directional, xiaomi_options, option_mapper
 from .markets import cn_lot_size, cn_price_limit, get_market_rules, resolve_security
 from .providers import MarketDataRouter, TigerPositionsProvider
 from .modules.screener import LEADERS
@@ -94,6 +96,19 @@ def _webhook() -> str:
     return CONFIG.get("wecom", {}).get("webhook", "")
 
 
+def _daily_jobs():
+    """Record research, but publish trade language from one canonical source only."""
+    status = strategy_center.get_status(client(), refresh=True)
+    forward_ledger.record_status(status)
+    forward_ledger.record_supertrend_exit_shadow()
+    report = daily_report.run_daily_report(client(), _webhook())
+    for fingerprint, message in signal_governance.production_notifications(status):
+        notify.push_if_new(fingerprint, message, _webhook(), min_interval=86_400)
+    # Xiaomi momentum and option selectors remain readable research endpoints.
+    # They intentionally do not run through the trade-notification path.
+    return report
+
+
 def _startup_scheduler():
     """启动每日持仓资金面背离报告调度（默认 16:30 HK 收盘后推送）。"""
     sch = CONFIG.get("schedule", {})
@@ -104,24 +119,7 @@ def _startup_scheduler():
         hh, mm = int(hh), int(mm)
     except (ValueError, AttributeError):
         hh, mm = 16, 30
-    def daily_jobs():
-        status = strategy_center.get_status(client(), refresh=True)
-        forward_ledger.record_status(status)
-        forward_ledger.record_supertrend_exit_shadow()
-        report = daily_report.run_daily_report(client(), _webhook())
-        directional, err = xiaomi_directional.live_status(client(), CONFIG)
-        if not err and directional:
-            message = xiaomi_directional.notification(directional)
-            if message:
-                notify.push_if_new(message[0], message[1], _webhook(), min_interval=86_400)
-        option_result, option_err = xiaomi_options.analyze(client(), CONFIG)
-        if not option_err and option_result:
-            option_message = xiaomi_options.notification(option_result)
-            if option_message:
-                notify.push_if_new(option_message[0], option_message[1], _webhook(),
-                                   min_interval=30 * 86_400)
-        return report
-    scheduler.start_scheduler(daily_jobs, hour=hh, minute=mm, enabled=enabled)
+    scheduler.start_scheduler(_daily_jobs, hour=hh, minute=mm, enabled=enabled)
 
 
 @app.get("/health")
@@ -136,7 +134,7 @@ def health():
 
 @app.get("/api/xiaomi-directional")
 def get_xiaomi_directional():
-    """Read-only Xiaomi long/flat/short state; this endpoint never pushes or trades."""
+    """Read-only Xiaomi research observation; never a formal trade signal."""
     result, error = xiaomi_directional.live_status(client(), CONFIG)
     return _wrap(result, error)
 
@@ -162,14 +160,24 @@ def get_notification_ledger(limit: int = 200):
     return _wrap(notification_ledger.dashboard(max(1, min(limit, 1000))), None)
 
 
+@app.get("/api/execution-alert")
+def get_execution_alert():
+    """Current formal execution reminder; read-only and never pushes or orders."""
+    return _wrap(_formal_execution_payload(), None)
+
+
 @app.get("/api/markets")
 def get_markets():
     """Stable market metadata used by the shared HK/CN/US frontend."""
     markets = []
+    futu_accounts = (CONFIG.get("futu", {}) or {}).get("accounts", {}) or {}
+    tiger_enabled = bool((CONFIG.get("tiger", {}) or {}).get("enabled", False))
     for key, name, enabled in (("HK", "港股", True), ("CN", "A股", True),
-                               ("US", "美股", bool((CONFIG.get("tiger", {}) or {}).get("enabled", False)))):
+                               ("US", "美股", tiger_enabled)):
         rules = get_market_rules(key)
         markets.append({"market": key, "name": name, "enabled": enabled,
+                        "positions_enabled": (key == "HK" or tiger_enabled) if key != "CN"
+                        else bool(futu_accounts.get("CN")),
                         "currency": rules.currency, "benchmark": rules.benchmark,
                         "lot_size": rules.lot_size, "settlement": rules.settlement,
                         "timezone": rules.timezone,
@@ -190,7 +198,8 @@ def get_security_snapshot(code: str):
     except ValueError as exc: return _wrap(None, str(exc))
     frame, err = market_data().snapshot([security.code])
     if err or frame is None or frame.empty: return _wrap(None, err or "行情为空")
-    row = frame.iloc[0].replace({float("inf"): None, float("-inf"): None}).to_dict()
+    clean = frame.iloc[0].replace([float("inf"), float("-inf")], None)
+    row = clean.where(clean.notna(), None).to_dict()
     return _wrap({"security": security.to_dict(), "snapshot": row}, None)
 
 
@@ -226,6 +235,8 @@ def get_market_positions(market: str = ""):
     frame, err = market_data().positions(market or None)
     if err: return _wrap(None, err)
     if frame is None or frame.empty: return _wrap({"market": market.upper() or "ALL", "items": []}, None)
+    if "qty" in frame.columns:
+        frame = frame[pd.to_numeric(frame["qty"], errors="coerce").fillna(0) != 0].copy()
     rows = frame.where(frame.notna(), None).to_dict("records")
     return _wrap({"market": market.upper() or "ALL", "items": rows}, None)
 
@@ -630,7 +641,7 @@ def get_analyze_full(code: str):
     nw_data, nw_err = sources.get("news", (None, reverse_err))
     cf_data, cf_err = sources.get("capital_flow", (None, reverse_err))
     fund_data = sources.get("fundamentals") or {}
-    research_data = westock_research.get_research(code)
+    research_data = westock_research.get_research(code, cl)
 
     decision_result = decision.decide(
         code, cl, CONFIG,
@@ -983,9 +994,61 @@ def _price_alert_run():
     return {"pushed": 0, "scan_type": "price_alert"}
 
 
+def _position_risk_run():
+    """Scan actual positions for stop-loss/take-profit risk during HK hours."""
+    result, error = monitor.monitor_positions(client(), technical=False)
+    if error or not result:
+        return {"pushed": 0, "scan_type": "position_risk", "error": error}
+    alerts = result.get("alerts") or []
+    pushed = notify.notify_alerts(
+        alerts, _webhook(),
+        prefix=f"{CONFIG.get('system', {}).get('notify_prefix', '')} 持仓风险",
+    ) if alerts else 0
+    return {"pushed": pushed, "scan_type": "position_risk",
+            "positions_checked": len(result.get("positions") or []),
+            "alerts": len(alerts)}
+
+
+def _formal_execution_payload() -> dict | None:
+    """Build a time-aware reminder from the sole formal strategy source."""
+    status = strategy_center.get_status(client(), refresh=False)
+    xiaomi = next((item for item in status.get("strategies", [])
+                   if item.get("id") == "xiaomi_trend_v1"), {})
+    live_price = None
+    snap, snap_err = client().market_snapshot(["HK.01810"])
+    if not snap_err and snap is not None and not snap.empty:
+        try:
+            value = float(snap.iloc[0].get("last_price"))
+            live_price = value if value == value else None
+        except (TypeError, ValueError):
+            pass
+    option_review = None
+    if (xiaomi.get("raw_action") or xiaomi.get("action")) == "BUY":
+        account = dict(status.get("portfolio") or {})
+        account["total_assets"] = min(float(account.get("total_assets") or 20_000), 20_000)
+        account["cash"] = min(float(account.get("cash") or 20_000), 20_000)
+        option_review, _ = option_mapper.analyze(
+            client(), "HK.01810", "BUY", account,
+            historical_gate_passed=bool(
+                (CONFIG.get("xiaomi_options", {}) or {}).get("historical_gate_passed", False)))
+    return execution_alerts.build(status, option_review=option_review, live_price=live_price)
+
+
+def _formal_execution_run():
+    """Push formal stock timing and explicit option rejection/review every phase."""
+    alert = _formal_execution_payload()
+    if not alert:
+        return {"pushed": 0, "scan_type": "formal_execution", "alert": None}
+    pushed = notify.push_if_new(
+        alert["fingerprint"], alert["message"], _webhook(), min_interval=86_400,
+        title=alert["title"])
+    return {"pushed": int(bool(pushed)), "scan_type": "formal_execution", "alert": alert}
+
+
 def _start_intraday_scheduler():
-    """交易时段只执行价格风控；未经准入的买入策略不得自动运行。"""
-    intraday_scheduler.start(CONFIG.get("intraday", {}) or {}, [_price_alert_run])
+    """Run formal execution reminders plus risk checks; no intraday entry invention."""
+    intraday_scheduler.start(CONFIG.get("intraday", {}) or {},
+                             [_formal_execution_run, _price_alert_run, _position_risk_run])
 
 
 # 托管前端（/ 必须在 API 路由之后）

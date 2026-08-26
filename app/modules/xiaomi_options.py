@@ -131,7 +131,9 @@ def analyze(client, cfg: dict | None = None) -> tuple[dict | None, str | None]:
     if err or direction is None:
         return None, err or "正股方向不可用"
     base = {"id": "xiaomi_option_selector_v1", "as_of": direction["as_of"],
-            "underlying": direction, "action": "WAIT", "instrument": "NONE",
+            "underlying": direction, "action": "NO_TRADE", "instrument": "NONE",
+            "decision_role": "RESEARCH_ONLY", "actionable": False,
+            "decision_authority": "无交易决策权",
             "recommendation": "正股方向处于中性区，不买Call或Put", "contract": None}
     end = datetime.now().strftime("%Y-%m-%d")
     start = (datetime.now() - timedelta(days=180)).strftime("%Y-%m-%d")
@@ -153,8 +155,8 @@ def analyze(client, cfg: dict | None = None) -> tuple[dict | None, str | None]:
     valid = expiries[(expiries.option_expiry_date_distance >= min_dte)
                      & (expiries.option_expiry_date_distance <= max_dte)].sort_values("option_expiry_date_distance")
     if valid.empty:
-        base.update({"instrument": "STOCK", "action": direction["action"],
-                     "recommendation": "没有25–75天合约，保留正股方向，不买期权"})
+        base.update({"instrument": "NONE", "action": "NO_TRADE",
+                     "recommendation": "没有25–75天合约；研究观察不转换为正股交易动作"})
         return base, None
     expiry = str(valid.iloc[0].strike_time)
     dte = int(valid.iloc[0].option_expiry_date_distance)
@@ -170,7 +172,7 @@ def analyze(client, cfg: dict | None = None) -> tuple[dict | None, str | None]:
         target_otm_pct=float(settings.get("target_otm_pct", 10)),
         max_spread_pct=float(settings.get("max_spread_pct", 25)))
     if not candidates:
-        base.update({"instrument": "STOCK", "action": direction["action"], "expiry": expiry,
+        base.update({"instrument": "NONE", "action": "NO_TRADE", "expiry": expiry,
                      "days_to_expiry": dte, "realized_vol_20d_pct": realized,
                      "recommendation": f"{side}没有通过虚值距离、价差与流动性门槛；不买期权"})
         return base, None
@@ -183,7 +185,7 @@ def analyze(client, cfg: dict | None = None) -> tuple[dict | None, str | None]:
                                       else item["strike"] - item["ask"])
     historical_gate = bool(settings.get("historical_gate_passed", False))
     if not historical_gate:
-        base.update({"instrument": "STOCK", "action": direction["action"],
+        base.update({"instrument": "NONE", "action": "NO_TRADE",
                      "option_candidate": candidates[0],
                      "research_gate": {"passed": False,
                                        "reason": "固定参数的邻域稳定性未达到研究门槛"},
@@ -197,7 +199,7 @@ def analyze(client, cfg: dict | None = None) -> tuple[dict | None, str | None]:
         except Exception:  # noqa: BLE001
             pass
     if total_assets is None:
-        base.update({"instrument": "STOCK", "action": direction["action"],
+        base.update({"instrument": "NONE", "action": "NO_TRADE",
                      "option_candidate": candidates[0],
                      "recommendation": f"{side}通过市场门槛，但账户总资产不可用，风险预算无法验证；优先正股"})
         return base, None
@@ -206,7 +208,7 @@ def analyze(client, cfg: dict | None = None) -> tuple[dict | None, str | None]:
                   if item["max_loss_per_contract_hkd"] <= risk_budget
                   and item["max_loss_per_contract_hkd"] <= float(cash or 0)]
     if not affordable:
-        base.update({"instrument": "STOCK", "action": direction["action"],
+        base.update({"instrument": "NONE", "action": "NO_TRADE",
                      "option_candidate": candidates[0],
                      "risk_gate": {"total_assets_hkd": float(total_assets),
                                    "cash_hkd": float(cash or 0), "max_loss_pct": risk_pct,
@@ -217,22 +219,12 @@ def analyze(client, cfg: dict | None = None) -> tuple[dict | None, str | None]:
     base["risk_gate"] = {"total_assets_hkd": float(total_assets), "cash_hkd": float(cash or 0),
                          "max_loss_pct": risk_pct, "max_loss_budget_hkd": risk_budget,
                          "passed": True, "max_contracts": int(risk_budget // best["max_loss_per_contract_hkd"])}
-    base.update({"instrument": side, "action": "BUY", "contract": best,
-                 "recommendation": f"动量切换与SuperTrend确认、合约流动性及风险预算均通过，可关注买入{side}；最多持有10个交易日，下单前人工复核实时盘口"})
+    base.update({"instrument": side, "action": "NO_TRADE",
+                 "observed_action": f"BUY_{side}", "contract": best,
+                 "recommendation": f"{side}通过研究门槛，但研究模型没有交易决策权；仅记录候选，不生成买入建议"})
     return base, None
 
 
 def notification(result: dict) -> tuple[str, str] | None:
-    """Notify whenever an option first passes every direction, value and risk gate."""
-    if result.get("instrument") not in {"CALL", "PUT"} or not result.get("contract"):
-        return None
-    c = result["contract"]
-    fp = f"xiaomi-option:{c['code']}"
-    text = (f"**小米期权推荐：BUY {result['instrument']}**\n"
-            f"合约：{c['code']}，到期 {c['expiry']}（{c['days_to_expiry']}天）\n"
-            f"执行价：{c['strike']:.2f}，参考卖价：{c['ask']:.2f}，Delta：{c['delta']:.2f}\n"
-            f"IV：{c['iv_pct']:.1f}% / 20日实现波动率：{c['realized_vol_20d_pct']:.1f}%\n"
-            f"价差：{c['spread_pct']:.1f}%，到期盈亏平衡：{c['expiry_break_even']:.2f}\n"
-            f"策略：20日动量切换 + SuperTrend(7,2.5)、目标约15%虚值、最多持有10个交易日。\n"
-            f"单张最大权利金损失：约 {c['max_loss_per_contract_hkd']:.0f} 港元。仅为候选，人工确认后才下单。")
-    return fp, text
+    """Research option selectors are structurally unable to notify trades."""
+    return None

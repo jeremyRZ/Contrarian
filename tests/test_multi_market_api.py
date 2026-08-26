@@ -19,11 +19,22 @@ class FakeRouter:
                  "name": "洛阳钼业"}], None
 
 
-def test_markets_endpoint_enables_us_when_tiger_is_configured():
+def test_markets_endpoint_enables_us_when_tiger_is_configured(monkeypatch):
+    monkeypatch.setitem(api.CONFIG, "tiger", {"enabled": True})
     result = api.get_markets()["data"]
     markets = {item["market"]: item for item in result["markets"]}
     assert markets["CN"]["lot_size"] == 100
     assert markets["US"]["enabled"] is True
+    assert markets["US"]["positions_enabled"] is True
+
+
+def test_markets_distinguish_quotes_from_unconfigured_position_accounts(monkeypatch):
+    monkeypatch.setitem(api.CONFIG, "futu", {"accounts": {"CN": ""}})
+    monkeypatch.setitem(api.CONFIG, "tiger", {"enabled": False})
+    markets = {item["market"]: item for item in api.get_markets()["data"]["markets"]}
+    assert markets["CN"]["enabled"] is True
+    assert markets["CN"]["positions_enabled"] is False
+    assert markets["US"]["positions_enabled"] is False
 
 
 def test_market_bars_endpoint_is_json_serializable(monkeypatch):

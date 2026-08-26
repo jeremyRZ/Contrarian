@@ -37,13 +37,19 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   </header>
 
   <section id="today" class="decision-strip" aria-live="polite">
-    <div class="decision-main"><span>今日优先级</span><strong id="today_verdict">读取中</strong><p id="today_reason">等待组合和策略数据</p></div>
+    <div class="decision-main"><span>今日优先级</span><strong id="today_verdict">读取中</strong><p id="today_reason">等待组合和策略数据</p><div id="decision_integrity" class="decision-integrity-line">正在核对正式信号源与数据日期</div></div>
     <dl>
       <div><dt>必须处理</dt><dd id="must_count">—</dd></div>
       <div><dt>需要关注</dt><dd id="watch_count">—</dd></div>
       <div><dt>可研究机会</dt><dd id="opp_count">—</dd></div>
       <div><dt>数据异常</dt><dd id="error_count">—</dd></div>
     </dl>
+  </section>
+
+  <section id="execution_alert" class="execution-alert" aria-live="assertive" hidden>
+    <div><span id="execution_phase">正式策略提醒</span><strong id="execution_verdict">正在读取</strong></div>
+    <p id="execution_detail"></p>
+    <a href="strategy-center.html">查看完整依据</a>
   </section>
 
   <section id="portfolio" class="workspace">

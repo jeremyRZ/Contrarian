@@ -33,6 +33,11 @@ def test_notification_requires_qualified_option():
     assert notification(result) is None
 
 
+def test_research_option_cannot_notify_even_with_contract():
+    result = {"instrument": "PUT", "contract": {"code": "HK.TEST"}}
+    assert notification(result) is None
+
+
 def test_breakout_signal_uses_only_prior_55_days():
     bars = pd.DataFrame({"time_key": pd.date_range("2024-01-01", periods=56),
                          "high": [10] * 55 + [12], "low": [9] * 56,

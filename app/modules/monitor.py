@@ -297,6 +297,9 @@ def _advice(ptype, plr, stop_pct, lots, tp_hit):
         return f"已跌破{ptype}止损线(-{stop_pct}%)，建议止损离场"
     if tp_hit:
         last = tp_hit[-1]
+        if lots is not None and lots <= 1:
+            return (f"盈利{last['pct']}%，但仅1手无法分批；人工选择整手止盈，"
+                    "或继续持有并把止损上移至成本价")
         return f"盈利{last['pct']}%，建议：{last['action']}"
     if plr > 0:
         return f"持仓盈利 +{round(plr,2)}%，未到减仓线，持有观察"

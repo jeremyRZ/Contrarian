@@ -488,8 +488,10 @@ function renderResearch(j) {
   const r = d.rating || {}, rs = r.summary || {};
   if (r.status === 'available') h += '<div class="kv" style="margin-top:10px"><span>分析师评级</span><span class="pill good">'+(rs.forecastInstitutions||0)+' 家机构 · 买入 '+(rs.ratingBuyCnt||0)+' · 目标价 '+fmt(rs.targetPriceAvg,2)+' · 现价 '+fmt(rs.currentPrice,2)+'</span></div>';
   else h += '<div class="muted">分析师评级：'+esc(r.error||'无覆盖')+'</div>';
-  const c = d.consensus || {};
-  h += '<div class="kv"><span>一致预期</span><span class="muted">'+(c.status==='available'?'已获取':esc(c.status==='no_coverage'?'供应商未覆盖该股，不等于查询失败':(c.error||'无覆盖')))+'</span></div>';
+  const c = d.consensus || {}, cs = c.summary || {};
+  h += '<div class="kv"><span>一致预期</span><span class="muted">'+(c.status==='available'?
+    ((cs.institutions||0)+' 家机构 · 目标价 '+fmt(cs.targetPriceLow,2)+' / '+fmt(cs.targetPriceAvg,2)+' / '+fmt(cs.targetPriceHigh,2)+'（低/均/高） · 看多 '+fmt(cs.bullishPct,1)+'%'):
+    esc(c.status==='no_coverage'?'供应商未覆盖该股，不等于查询失败':(c.error||'无覆盖')))+'</span></div>';
   const br = d.broker_reports || {};
   h += '<div class="kv"><span>券商研报</span><span class="muted">'+esc(br.error||'无覆盖')+'</span></div>';
   const ns = d.notices || {};

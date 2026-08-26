@@ -12,6 +12,7 @@ import time
 
 import requests
 
+from . import local_notify
 from .modules import notification_ledger
 
 logger = logging.getLogger("hk-notify")
@@ -47,7 +48,7 @@ def push_wecom(text: str, webhook: str = "", timeout: int = 5) -> bool:
 
 
 def push_if_new(fingerprint: str, text: str, webhook: str = "",
-                min_interval: int = _DEFAULT_INTERVAL) -> bool:
+                min_interval: int = _DEFAULT_INTERVAL, *, title: str = "Contrarian交易提醒") -> bool:
     """指纹去重推送：同一指纹在 min_interval 内只推一次，避免重复轰炸。"""
     now = time.time()
     last = _LAST_PUSH.get(fingerprint)
@@ -56,8 +57,19 @@ def push_if_new(fingerprint: str, text: str, webhook: str = "",
         notification_ledger.record(fingerprint, text, "SKIPPED_DUPLICATE",
                                    detail=f"min_interval={min_interval}")
         return False
-    ok, detail = _send_wecom(text, webhook)
-    notification_ledger.record(fingerprint, text, "SENT" if ok else "FAILED", detail=detail)
+    if notification_ledger.was_sent_recently(fingerprint, min_interval):
+        logger.info("[提醒限频] 持久化台账已发送 fingerprint=%s", fingerprint[:24])
+        _LAST_PUSH[fingerprint] = now
+        return False
+    if webhook:
+        ok, detail = _send_wecom(text, webhook)
+        channel = "WECOM"
+    else:
+        summary = "；".join(line.strip("* ") for line in text.splitlines()[1:4] if line.strip())
+        ok, detail = local_notify.send(title, summary or text)
+        channel = "WINDOWS_TOAST"
+    notification_ledger.record(fingerprint, text, "SENT" if ok else "FAILED",
+                               detail=detail, channel=channel)
     if ok:
         _LAST_PUSH[fingerprint] = now
     return ok

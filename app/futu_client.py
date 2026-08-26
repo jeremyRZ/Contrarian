@@ -146,6 +146,32 @@ class FutuClient:
         except Exception as e:  # noqa: BLE001
             return None, str(e)
 
+    def financial_statements(self, code: str, num: int = 8) -> Tuple[Optional[dict], Optional[str]]:
+        """Return Futu F10 income-statement periods for HK/US/CN equities."""
+        ok, msg = self._ensure_quote()
+        if not ok:
+            return None, msg
+        try:
+            ret, data = self._quote.get_financials_statements(code, num=int(num))
+            if ret != ft.RET_OK:
+                return None, str(data)
+            return data, None
+        except Exception as e:  # noqa: BLE001
+            return None, str(e)
+
+    def analyst_consensus(self, code: str) -> Tuple[Optional[dict], Optional[str]]:
+        """Return Futu analyst consensus, target-price range and rating mix."""
+        ok, msg = self._ensure_quote()
+        if not ok:
+            return None, msg
+        try:
+            ret, data = self._quote.get_research_analyst_consensus(code)
+            if ret != ft.RET_OK:
+                return None, str(data)
+            return data, None
+        except Exception as e:  # noqa: BLE001
+            return None, str(e)
+
     def stock_basicinfo(self, market=ft.Market.HK,
                         sec_type=ft.SecurityType.STOCK) -> Tuple[Optional[object], Optional[str]]:
         ok, msg = self._ensure_quote()
@@ -437,9 +463,10 @@ class FutuClient:
     def positions_market(self, market: str) -> Tuple[Optional[object], Optional[str]]:
         """Read positions through an isolated HK/CN/US trade context.
 
-        If no account id is configured, discover accounts in that market
-        context and select one matching the configured REAL/SIMULATE
-        environment.  This keeps the common single-account setup zero-config.
+        If no account id is configured, discover every matching read-only
+        account and combine its positions.  A dashboard labelled "all
+        accounts" must not silently pick one account or fail merely because
+        the user has more than one securities account.
         """
         key = str(market or "").upper()
         if key not in {"HK", "CN", "US"}:
@@ -452,7 +479,7 @@ class FutuClient:
                 filter_trdmarket=getattr(ft.TrdMarket, key), host=self.host, port=self.port)
             configured = self.accounts.get(key)
             if configured:
-                acc = int(configured)
+                account_ids = [int(configured)]
             else:
                 ret, accounts = context.get_acc_list()
                 if ret != ft.RET_OK:
@@ -471,16 +498,28 @@ class FutuClient:
                                if str(c).lower() in {"acc_id", "account_id"}), None)
                 if not id_col:
                     return None, f"{key}账户列表缺少acc_id字段"
-                if len(candidates.index) > 1:
-                    return None, (
-                        f"发现多个{key} {str(self.trd_env).upper()}账户；"
-                        f"请在config.yaml的futu.accounts.{key}中指定acc_id"
-                    )
-                acc = int(candidates.iloc[0][id_col])
-            ret, data = context.position_list_query(trd_env=self._trd_env(), acc_id=acc)
-            if ret != ft.RET_OK:
-                return None, str(data)
-            return data, None
+                account_ids = [int(value) for value in candidates[id_col].dropna().unique()]
+                if not account_ids:
+                    return None, f"富途未返回可用的{key}账户编号"
+
+            frames, errors = [], []
+            successful_queries = 0
+            for account_id in account_ids:
+                ret, data = context.position_list_query(
+                    trd_env=self._trd_env(), acc_id=account_id)
+                if ret != ft.RET_OK:
+                    errors.append(f"账户{account_id}: {data}")
+                    continue
+                successful_queries += 1
+                if data is not None and not data.empty:
+                    frame = data.copy()
+                    frame["account_id"] = account_id
+                    frames.append(frame)
+            if frames:
+                return pd.concat(frames, ignore_index=True), None
+            if successful_queries:
+                return pd.DataFrame(), None
+            return None, "; ".join(errors) or f"{key}账户持仓读取失败"
         except Exception as exc:  # noqa: BLE001
             return None, str(exc)
         finally:

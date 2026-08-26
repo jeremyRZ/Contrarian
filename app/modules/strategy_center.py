@@ -5,17 +5,18 @@ positions to make a signal position-aware, but all output is a proposed order.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import inspect
 import json
 from pathlib import Path
 import re
+import time
 from typing import Any
 
 import numpy as np
 import pandas as pd
 from .orb_universe import HK_LIQUID_SEED
-from . import monitor, forward_ledger, strategy_portfolio
+from . import monitor, forward_ledger, signal_governance, strategy_portfolio
 from ..futu_client import load_config
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -25,6 +26,8 @@ UNIVERSE_META_FILE = ROOT / ".universal_daily" / "research_universe_60.meta.json
 CAPITAL = 20_000.0
 DYNAMIC_POOL_SIZE = 60
 CANDIDATE_RESULT_FILE = ROOT / "data" / "risk_adjusted_momentum_candidate.json"
+REFRESH_META_FILE = ROOT / ".runtime" / "strategy_cache_refresh.json"
+XIAOMI_POSITION_STATE_FILE = ROOT / ".runtime" / "xiaomi_trend_position_state.json"
 
 
 def _capability_roadmap(strategies: list[dict]) -> dict:
@@ -68,6 +71,10 @@ def _capability_roadmap(strategies: list[dict]) -> dict:
          "evidence": (f"历史收益 {history.get('net_return_pct', 0):.2f}% · PF {history.get('profit_factor', 0):.2f}"
                       if history else "候选报告不可用"),
          "blocker": "当前150只历史研究池仍有选择偏差，正式提醒保持REVIEW而非自动交易"},
+        {"id": "xiaomi_momentum_20d_v1", "name": "小米20日方向观察",
+         "state": "VALIDATING", "progress": "仅记录短期看多、看空或中性，不生成交易动作",
+         "evidence": "独立测试收益4.68% · Sharpe 0.29 · PF 1.06",
+         "blocker": "证据不足以取得交易决策权，也不得覆盖小米正式趋势策略"},
         {"id": "xiaomi_supertrend_options", "name": "SuperTrend小米期权",
          "state": "REJECTED", "progress": "继续寻找稳定的方向、期限与行权价组合",
          "evidence": "固定参数邻域稳定性未达到75%门槛",
@@ -94,6 +101,7 @@ def _capability_roadmap(strategies: list[dict]) -> dict:
 def _risk_settings() -> dict:
     monitor_cfg = load_config().get("monitor", {})
     return {
+        "portfolio_gate_enabled": bool(monitor_cfg.get("portfolio_gate_enabled", True)),
         "min_cash_pct": float(monitor_cfg.get("min_cash_pct", 15.0)),
         "max_single_position_pct": float(monitor_cfg.get("max_single_position_pct", 30.0)),
         "max_leveraged_position_pct": float(monitor_cfg.get("max_leveraged_position_pct", 15.0)),
@@ -123,8 +131,31 @@ def _risk_position_size(entry: float, stop: float, lot_size: int, portfolio: dic
             "reason": "按真实净资产、可用现金和止损距离计算"}
 
 
+def _fixed_allocation_size(entry: float, lot_size: int, portfolio: dict | None,
+                           capital: float, allocation_pct: float) -> dict:
+    """Apply the frozen strategy's allocation contract without inventing a stop."""
+    account = portfolio or {}
+    cash_raw = account.get("cash")
+    cash = max(float(cash_raw), 0.0) if cash_raw is not None else float(capital)
+    budget = min(cash, float(capital) * float(allocation_pct) / 100)
+    if entry <= 0 or lot_size <= 0 or budget <= 0:
+        return {"qty": 0, "estimated_amount_hkd": 0.0, "allocation_budget_hkd": budget,
+                "reason": "价格、现金或整手数据不足"}
+    qty = int(budget // (float(entry) * lot_size)) * lot_size
+    return {"qty": max(qty, 0), "estimated_amount_hkd": max(qty, 0) * float(entry),
+            "allocation_budget_hkd": budget, "capital_hkd": float(capital),
+            "allocation_pct": float(allocation_pct),
+            "reason": "严格按冻结策略的2万港币本金、50%配置和200股整手计算"}
+
+
 def _portfolio_gate(portfolio: dict) -> dict:
     settings = _risk_settings()
+    if not settings["portfolio_gate_enabled"]:
+        return {"allow_new_risk": True, "reasons": [], "disabled": True,
+                "note": "组合风险门控已由用户关闭；风险指标仅提示，不阻断交易信号",
+                "leveraged_weight_pct": sum(
+                    float(x.get("weight_pct") or 0) for x in portfolio.get("underlyings", [])
+                    if x.get("leveraged")), "settings": settings}
     reasons = []
     if not portfolio.get("available"):
         reasons.append("账户数据不可用，禁止新增风险")
@@ -140,7 +171,7 @@ def _portfolio_gate(portfolio: dict) -> dict:
                            for x in portfolio.get("underlyings", []) if x.get("leveraged"))
     if leveraged_weight >= settings["max_leveraged_position_pct"]:
         reasons.append(f"杠杆产品仓位{leveraged_weight:.1f}%超过{settings['max_leveraged_position_pct']:.0f}%")
-    return {"allow_new_risk": not reasons, "reasons": reasons,
+    return {"allow_new_risk": not reasons, "reasons": reasons, "disabled": False,
             "leveraged_weight_pct": leveraged_weight, "settings": settings}
 
 
@@ -162,19 +193,89 @@ def _apply_portfolio_gate(strategies: list[dict], gate: dict) -> None:
                 item["blocked_reason"] = gate_reason
 
 
+def _apply_execution_conflicts(strategies: list[dict], portfolio: dict) -> None:
+    """Disclose derivative overlap without overriding a formal stock signal."""
+    xiaomi = next((item for item in strategies
+                   if item.get("id") == "xiaomi_trend_v1"), None)
+    if not xiaomi or xiaomi.get("action") != "BUY":
+        return
+    holding = next((item for item in portfolio.get("underlyings", [])
+                    if item.get("code") == "HK.01810"), None)
+    derivatives = (holding or {}).get("derivatives") or []
+    if not derivatives:
+        return
+    price = float(xiaomi.get("price") or 0)
+    proposed_qty = int(xiaomi.get("suggested_qty") or 0)
+    current_delta_shares = None
+    if price > 0 and holding.get("delta_exposure_available"):
+        current_delta_shares = float(holding.get("estimated_directional_exposure_hkd") or 0) / price
+    projected_delta_shares = (current_delta_shares + proposed_qty
+                              if current_delta_shares is not None else None)
+    xiaomi["execution_conflict"] = {
+        "type": "EXISTING_DERIVATIVE_EXPOSURE",
+        "blocking": False,
+        "derivative_codes": [item.get("code") for item in derivatives],
+        "current_delta_equivalent_shares": current_delta_shares,
+        "proposed_stock_qty": proposed_qty,
+        "projected_delta_equivalent_shares": projected_delta_shares,
+        "resolution": "正股正式计划保留；执行前同时查看期权造成的净Delta敞口",
+    }
+    exposure = (f"当前Delta约{current_delta_shares:.0f}股，若买{proposed_qty}股后约"
+                f"{projected_delta_shares:.0f}股" if current_delta_shares is not None
+                else "现有期权Delta敞口无法完整核验")
+    xiaomi["reason"] = ("收盘价>MA60且MA20>MA60；正式正股计划为下一交易日开盘复核。"
+                        f"账户另有小米衍生品：{exposure}，该敞口只提示、不覆盖正股信号")
+
+
+def _apply_execution_timing(strategies: list[dict], now: datetime | None = None) -> None:
+    """Expire next-open entries after 10:00 without erasing the raw signal."""
+    now = now or datetime.now()
+    xiaomi = next((item for item in strategies
+                   if item.get("id") == "xiaomi_trend_v1"), None)
+    if not xiaomi or xiaomi.get("action") != "BUY" or not xiaomi.get("as_of"):
+        return
+    try:
+        signal_date = pd.Timestamp(xiaomi["as_of"]).date()
+    except (TypeError, ValueError):
+        return
+    if now.date() <= signal_date or now.time() <= datetime.strptime("10:00", "%H:%M").time():
+        return
+    xiaomi["raw_action"] = "BUY"
+    xiaomi["raw_suggested_qty"] = int(xiaomi.get("suggested_qty") or 0)
+    xiaomi["action"] = "WAIT"
+    xiaomi["suggested_qty"] = 0
+    xiaomi["execution_status"] = "MISSED_NEXT_OPEN_WINDOW"
+    xiaomi["reason"] = (
+        f"{signal_date}收盘产生BUY，但下一交易日开盘执行窗口已经结束；"
+        "不按盘中涨幅追价，等待今日收盘重新计算"
+    )
+
+
 def _action_queue(portfolio: dict, strategies: list[dict]) -> list[dict]:
     """Build one prioritized list so the user never has to reconcile panels manually."""
     queue = []
     gate = portfolio.get("gate") or {}
+    advisory_gate = bool(gate.get("disabled"))
     cash_ratio = portfolio.get("cash_ratio")
     if cash_ratio is not None and cash_ratio < gate.get("settings", {}).get("min_cash_pct", 15):
-        queue.append({"priority": 1, "level": "MUST", "action": "降低融资",
+        queue.append({"priority": 1, "level": "SHOULD" if advisory_gate else "MUST", "action": "降低融资",
                       "code": None, "name": "账户现金",
                       "reason": f"现金比例{cash_ratio:.1f}%，新增风险会继续扩大融资敞口",
                       "deadline": "下一次交易前", "allowed": True})
     for holding in portfolio.get("underlyings", []):
-        if holding.get("risk") == "集中度过高":
-            queue.append({"priority": 1, "level": "MUST", "action": "降低集中度",
+        position_risk = holding.get("position_risk") or {}
+        if holding.get("risk") == "止损触发":
+            queue.append({"priority": 0, "level": "MUST", "action": "止损复核",
+                          "code": holding["code"], "name": holding["name"],
+                          "reason": position_risk.get("advice") or "已触发持仓止损规则",
+                          "deadline": "今日开盘优先复核", "allowed": True})
+        elif holding.get("risk") == "止盈复核":
+            queue.append({"priority": 1, "level": "SHOULD", "action": "止盈复核",
+                          "code": holding["code"], "name": holding["name"],
+                          "reason": position_risk.get("advice") or "已触发持仓止盈规则",
+                          "deadline": "今日", "allowed": True})
+        elif holding.get("risk") == "集中度过高":
+            queue.append({"priority": 1, "level": "SHOULD" if advisory_gate else "MUST", "action": "降低集中度",
                           "code": holding["code"], "name": holding["name"],
                           "reason": f"占净资产{holding.get('weight_pct', 0):.1f}%，超过单一标的上限",
                           "deadline": "下一交易时段复核", "allowed": True})
@@ -193,13 +294,31 @@ def _action_queue(portfolio: dict, strategies: list[dict]) -> list[dict]:
                               "deadline": option.get("expiry"), "allowed": True})
     for strategy in strategies:
         action = strategy.get("action")
+        conflict = strategy.get("execution_conflict")
+        if conflict:
+            queue.append({"priority": 2, "level": "SHOULD", "action": "方向敞口复核",
+                          "code": "HK.01810", "name": "小米集团-W",
+                          "reason": strategy.get("reason"), "deadline": "新增小米仓位前",
+                          "allowed": True, "execution_conflict": conflict})
         if action == "SELL":
             queue.append({"priority": 1, "level": "MUST", "action": "卖出",
                           "code": "HK.01810" if strategy.get("id") == "xiaomi_trend_v1" else None,
                           "name": strategy.get("name"), "reason": strategy.get("reason"),
                           "deadline": "下一交易日开盘复核", "allowed": True})
         elif action in {"BUY", "REVIEW"}:
-            for item in strategy.get("proposed") or strategy.get("candidates") or []:
+            items = strategy.get("proposed") or strategy.get("candidates") or []
+            if not items and strategy.get("id") == "xiaomi_trend_v1":
+                qty = int(strategy.get("suggested_qty") or 0)
+                if qty:
+                    queue.append({"priority": 3, "level": "OPPORTUNITY",
+                                  "action": "买入复核", "code": "HK.01810",
+                                  "name": "小米集团-W", "reason": strategy.get("reason"),
+                                  "deadline": "今日开盘复核", "allowed": True,
+                                  "suggested_qty": qty,
+                                  "estimated_amount": qty * float(strategy.get("price") or 0),
+                                  "trade_plan": strategy.get("trade_plan"),
+                                  "sizing": strategy.get("sizing")})
+            for item in items:
                 queue.append({"priority": 3, "level": "OPPORTUNITY", "action": "买入复核",
                               "code": item.get("code"), "name": item.get("name"),
                               "reason": strategy.get("reason"), "deadline": "下一交易日开盘前",
@@ -284,6 +403,41 @@ def _read_daily(path: Path) -> pd.DataFrame:
     x = pd.read_csv(path)
     x["time_key"] = pd.to_datetime(x["time_key"], format="mixed")
     return x.sort_values("time_key").drop_duplicates("time_key", keep="last").set_index("time_key")
+
+
+def _xiaomi_trailing_state(*, held: bool, bar_date, high: float, close: float) -> dict:
+    """Persist the observed post-entry high needed by the frozen 15% trail."""
+    state = {}
+    try:
+        state = json.loads(XIAOMI_POSITION_STATE_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pass
+    date_text = str(pd.Timestamp(bar_date).date())
+    if not held:
+        if state.get("active"):
+            state.update({"active": False, "closed_detected_at": datetime.now().isoformat(timespec="seconds")})
+            XIAOMI_POSITION_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            temp = XIAOMI_POSITION_STATE_FILE.with_suffix(".tmp")
+            temp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+            temp.replace(XIAOMI_POSITION_STATE_FILE)
+        return {"active": False, "peak_high": None, "drawdown_pct": None,
+                "triggered": False, "quality": "NO_POSITION"}
+    if not state.get("active"):
+        state = {"active": True, "observed_since": datetime.now().date().isoformat(),
+                 "first_available_bar": date_text, "peak_high": float(high),
+                 "quality": "TRACKED_FROM_FIRST_DETECTED_POSITION"}
+    else:
+        state["peak_high"] = max(float(state.get("peak_high") or high), float(high))
+    state.update({"last_bar_date": date_text, "last_close": float(close),
+                  "updated_at": datetime.now().isoformat(timespec="seconds")})
+    peak = float(state["peak_high"])
+    drawdown = (float(close) / peak - 1) * 100 if peak > 0 else None
+    state["drawdown_pct"] = drawdown
+    XIAOMI_POSITION_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temp = XIAOMI_POSITION_STATE_FILE.with_suffix(".tmp")
+    temp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp.replace(XIAOMI_POSITION_STATE_FILE)
+    return {**state, "triggered": bool(drawdown is not None and drawdown <= -15.0)}
 
 
 def _snapshot_all(client, codes: list[str]) -> tuple[pd.DataFrame | None, list[str]]:
@@ -386,12 +540,23 @@ def _ensure_universe(client, force: bool = False) -> list[str]:
     return errors
 
 
+def _hk_position_frame(client):
+    """Use the same all-HK-account position source as the investor homepage."""
+    if hasattr(client, "positions_market"):
+        return client.positions_market("HK")
+    return client.positions()
+
+
 def _positions(client) -> dict[str, float]:
     try:
-        frame, err = client.positions()
+        frame, err = _hk_position_frame(client)
         if err or frame is None or frame.empty:
             return {}
-        return {str(r.code): float(getattr(r, "qty", 0) or 0) for _, r in frame.iterrows()}
+        quantities: dict[str, float] = {}
+        for _, row in frame.iterrows():
+            code = str(row.code)
+            quantities[code] = quantities.get(code, 0.0) + float(getattr(row, "qty", 0) or 0)
+        return quantities
     except Exception:  # noqa: BLE001 - status must degrade gracefully
         return {}
 
@@ -399,7 +564,7 @@ def _positions(client) -> dict[str, float]:
 def _portfolio_payload(client) -> dict:
     """Return a compact, read-only portfolio snapshot using Futu account fields."""
     try:
-        frame, err = client.positions()
+        frame, err = _hk_position_frame(client)
     except Exception as exc:  # noqa: BLE001
         return {"available": False, "error": str(exc), "positions": []}
     if err or frame is None:
@@ -554,6 +719,33 @@ def _portfolio_payload(client) -> dict:
     }
 
 
+def _merge_position_risk(portfolio: dict, scan: dict | None, error: str | None = None) -> None:
+    """Merge stop/take-profit findings into the decision-centre portfolio."""
+    portfolio["risk_scan_error"] = error
+    portfolio["risk_alert_count"] = 0
+    if not scan:
+        return
+    by_code = {str(item.get("code")): item for item in scan.get("positions") or []}
+    for group in portfolio.get("underlyings") or []:
+        item = by_code.get(str(group.get("code")))
+        if not item:
+            continue
+        signals = item.get("signals") or []
+        group["position_risk"] = {
+            "pl_ratio": item.get("pl_ratio"), "stop_loss_price": item.get("stop_loss_price"),
+            "stop_pct": item.get("stop_pct"), "signals": signals,
+            "advice": item.get("advice"), "lots": item.get("lots"),
+        }
+        if any("触及止损线" in str(signal) for signal in signals):
+            group["risk"] = "止损触发"
+            group["risk_severity"] = "DANGER"
+            portfolio["risk_alert_count"] += 1
+        elif any("减仓线" in str(signal) or "技术止盈" in str(signal) for signal in signals):
+            group["risk"] = "止盈复核"
+            group["risk_severity"] = "INFO"
+            portfolio["risk_alert_count"] += 1
+
+
 def _universe_payload() -> dict:
     """返回今日决策实际使用的研究股票池，供页面透明展示。"""
     if not UNIVERSE_FILE.exists():
@@ -671,15 +863,75 @@ def _workflow(strategies: list[dict], gate: dict | None = None) -> dict:
     }
 
 
+def _expected_completed_session(now: datetime | None = None):
+    """Latest session that should have a completed daily bar in Hong Kong."""
+    now = now or datetime.now()
+    day = now.date()
+    if now.weekday() >= 5 or (now.hour, now.minute) < (16, 15):
+        day -= timedelta(days=1)
+    while day.weekday() >= 5:
+        day -= timedelta(days=1)
+    return day
+
+
+def _cached_last_date(path: Path):
+    try:
+        frame = pd.read_csv(path, usecols=["time_key"])
+        return pd.to_datetime(frame["time_key"], format="mixed").max().date()
+    except (OSError, ValueError, KeyError, pd.errors.EmptyDataError):
+        return None
+
+
+def _refresh_meta() -> dict:
+    try:
+        return json.loads(REFRESH_META_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def _cache_needs_refresh(now: datetime | None = None) -> bool:
+    expected = _expected_completed_session(now)
+    latest = _cached_last_date(DAILY_DIR / "HK_800000.csv")
+    if latest is not None and latest >= expected:
+        return False
+    return _refresh_meta().get("expected_through") != str(expected)
+
+
+def _data_freshness(now: datetime | None = None) -> dict:
+    expected = _expected_completed_session(now)
+    index_date = _cached_last_date(DAILY_DIR / "HK_800000.csv")
+    xiaomi_date = _cached_last_date(DAILY_DIR / "HK_01810.csv")
+    latest = min((x for x in (index_date, xiaomi_date) if x is not None), default=None)
+    meta = _refresh_meta()
+    attempted = meta.get("expected_through") == str(expected)
+    errors = meta.get("errors") or [] if attempted else []
+    current = bool(latest and latest >= expected)
+    # A successful same-session refresh may legitimately return the prior bar on
+    # an HKEX holiday. Do not loop or pretend the transport failed.
+    no_new_session = bool(not current and attempted and not errors and latest)
+    return {"status": "CURRENT" if (current or no_new_session) else "STALE",
+            "latest_date": str(latest) if latest else None,
+            "expected_through": str(expected), "refresh_attempted": attempted,
+            "note": ("交易所当日没有新日线，已使用最近完成交易日"
+                     if no_new_session else None)}
+
+
 def _refresh_cache(client) -> list[str]:
     """Merge the latest adjusted daily bars into the research cache."""
     errors: list[str] = []
     errors.extend(_ensure_universe(client, force=True))
     if not UNIVERSE_FILE.exists():
         return errors
-    codes = pd.read_csv(UNIVERSE_FILE)["code"].astype(str).tolist() + ["HK.800000"]
+    pool = pd.read_csv(UNIVERSE_FILE)["code"].astype(str).tolist()
+    # Critical anchors first. Deduplication preserves order.
+    codes = list(dict.fromkeys(["HK.800000", "HK.01810", *pool]))
     DAILY_DIR.mkdir(exist_ok=True)
-    for code in codes:
+    expected = _expected_completed_session()
+    stale_codes = [code for code in codes if
+                   (_cached_last_date(DAILY_DIR / f"{code.replace('.', '_')}.csv") or
+                    datetime.min.date()) < expected]
+    pace_seconds = 0.55 if len(stale_codes) > 55 else 0.0
+    for code in stale_codes:
         frame, err = client.history_kline(code, max_count=260)
         if err or frame is None or frame.empty:
             # FutuOpenD occasionally drops a long refresh connection. Rebuild it
@@ -698,6 +950,17 @@ def _refresh_cache(client) -> list[str]:
             new = pd.concat([pd.read_csv(path), new], ignore_index=True)
         new["time_key"] = pd.to_datetime(new["time_key"], format="mixed")
         new.sort_values("time_key").drop_duplicates("time_key", keep="last").to_csv(path, index=False)
+        if pace_seconds:
+            time.sleep(pace_seconds)
+    try:
+        REFRESH_META_FILE.parent.mkdir(parents=True, exist_ok=True)
+        REFRESH_META_FILE.write_text(json.dumps({
+            "attempted_at": datetime.now().isoformat(timespec="seconds"),
+            "expected_through": str(expected), "errors": errors[:20],
+            "index_latest": str(_cached_last_date(DAILY_DIR / "HK_800000.csv") or ""),
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass
     return errors
 
 
@@ -707,37 +970,68 @@ def _xiaomi_status(positions: dict[str, float], portfolio: dict | None = None) -
     latest = x.iloc[-1]
     ma20, ma60 = close.rolling(20).mean().iloc[-1], close.rolling(60).mean().iloc[-1]
     held = positions.get("HK.01810", 0) > 0
+    trailing = _xiaomi_trailing_state(
+        held=held, bar_date=x.index[-1], high=float(latest.high), close=float(latest.close))
     entry_ok = latest.close > ma60 and ma20 > ma60
     exit_ok = held and latest.close < ma20
-    if exit_ok:
+    if trailing.get("triggered"):
+        action, reason = "SELL", (
+            f"收盘价较持仓后记录高点回撤{abs(float(trailing['drawdown_pct'])):.1f}%，"
+            "达到15%退出规则；下一交易日开盘卖出全部小米")
+    elif exit_ok:
         action, reason = "SELL", "收盘价跌破MA20；下一交易日开盘卖出全部小米"
     elif held:
-        action, reason = "HOLD", "趋势仍有效；15%持仓高点回撤需由持仓状态继续跟踪"
+        action, reason = "HOLD", "趋势仍有效；收盘跌破MA20时退出，15%高点回撤需有入场状态才能核验"
     elif entry_ok:
-        lot = 200
-        sizing = _risk_position_size(float(latest.close), float(ma60), lot, portfolio, 20.0)
+        sizing = _fixed_allocation_size(float(latest.close), 200, portfolio, CAPITAL, 50.0)
         qty = sizing["qty"]
         action, reason = "BUY" if qty else "WAIT", "收盘价>MA60且MA20>MA60；下一交易日开盘执行"
     else:
         action, reason = "WAIT", "小米趋势条件尚未同时成立"
-    stop_price = float(ma20 if action in {"HOLD", "SELL"} else ma60)
-    risk_per_share = max(float(latest.close) - stop_price, 0)
-    sizing = (_risk_position_size(float(latest.close), stop_price, 200, portfolio, 20.0)
+    exit_reference = float(ma20)
+    sizing = (_fixed_allocation_size(float(latest.close), 200, portfolio, CAPITAL, 50.0)
               if action != "SELL" else {"qty": int(positions.get("HK.01810", 0)),
-                                         "risk_hkd": None, "risk_pct": None,
+                                         "estimated_amount_hkd": None,
                                          "reason": "卖出全部现有持仓"})
     return {
         "id": "xiaomi_trend_v1", "name": "小米专属趋势", "status": "已通过历史研究",
         "as_of": str(x.index[-1].date()), "action": action, "reason": reason,
         "price": float(latest.close), "ma20": float(ma20), "ma60": float(ma60),
+        "trailing_state": trailing,
         "held_qty": positions.get("HK.01810", 0), "suggested_qty": int(sizing["qty"]),
         "sizing": sizing,
-        "trade_plan": {"trigger": float(latest.close), "stop": stop_price,
-                       "target": float(latest.close + 2 * risk_per_share) if risk_per_share else None,
-                       "risk_reward": 2.0 if risk_per_share else None,
+        "trade_plan": {"trigger": float(latest.close), "stop": exit_reference,
+                       "stop_type": "DAILY_CLOSE_BELOW_MA20",
+                       "target": None, "risk_reward": None,
+                       "trailing_drawdown_pct": 15.0,
                        "validity": "下一交易日开盘复核", "status": action},
+        "strategy_contract": {"capital_hkd": CAPITAL, "allocation_pct": 50.0,
+                              "board_lot": 200, "direction": "LONG_ONLY",
+                              "exit": ["DAILY_CLOSE_BELOW_MA20", "POSITION_HIGH_DRAWDOWN_15PCT"]},
         "validation": {"return_pct": 28.9729, "max_drawdown_pct": -14.4996, "profit_factor": 1.9091},
     }
+
+
+def _xiaomi_momentum_observation(formal_strategy: dict) -> dict:
+    """Expose the 20-day model as a non-actionable research observation."""
+    x = _read_daily(DAILY_DIR / "HK_01810.csv")
+    momentum = x.close.astype(float).pct_change(20).iloc[-1]
+    state = 1 if momentum > .05 else -1 if momentum < -.05 else 0
+    observation = signal_governance.research_observation(
+        "xiaomi_momentum_20d_v1", as_of=str(x.index[-1].date()), state=state,
+        value_pct=float(momentum * 100),
+    )
+    formal_intent = formal_strategy.get("trade_intent")
+    disagrees = bool((formal_intent == "OPEN_LONG" and state < 0)
+                     or (formal_intent == "EXIT_LONG" and state > 0))
+    observation["comparison_to_formal"] = "DISAGREES" if disagrees else "ALIGNED_OR_NEUTRAL"
+    observation["formal_strategy_id"] = formal_strategy.get("id")
+    observation["formal_trade_intent"] = formal_intent
+    observation["note"] = (
+        "与正式信号方向不同，但该模型无决策权、不会改变交易动作"
+        if disagrees else "仅作研究记录，不改变正式交易动作"
+    )
+    return observation
 
 
 def _rotation_status(positions: dict[str, float], portfolio: dict | None = None) -> dict:
@@ -883,9 +1177,17 @@ def _breakout_status(positions: dict[str, float], portfolio: dict | None = None)
 
 def get_status(client, refresh: bool = False) -> dict:
     required = [DAILY_DIR / "HK_01810.csv", DAILY_DIR / "HK_800000.csv"]
-    errors = _refresh_cache(client) if refresh or any(not p.exists() for p in required) else []
+    auto_refresh = any(not p.exists() for p in required) or _cache_needs_refresh()
+    refresh_attempted = bool(refresh or auto_refresh)
+    errors = _refresh_cache(client) if refresh_attempted else []
+    freshness = _data_freshness()
     positions = _positions(client)
     portfolio = _portfolio_payload(client)
+    try:
+        risk_scan, risk_error = monitor.monitor_positions(client, technical=False)
+    except Exception as exc:  # noqa: BLE001
+        risk_scan, risk_error = None, str(exc)
+    _merge_position_risk(portfolio, risk_scan, risk_error)
     portfolio["gate"] = _portfolio_gate(portfolio)
     def safe(fn, strategy_id, name):
         try:
@@ -904,6 +1206,12 @@ def get_status(client, refresh: bool = False) -> dict:
         safe(_rotation_status, "hk_liquid_trend_rotation_v2", "港股200日风险调整动量"),
         safe(_breakout_status, "hk_long_term_high_breakout_v1", "港股长期新高突破"),
     ]
+    if freshness["status"] != "CURRENT":
+        for strategy in strategies:
+            strategy["raw_action"] = strategy.get("action")
+            strategy["action"] = "UNAVAILABLE"
+            strategy["reason"] = (f"日线缓存过期：最新{freshness.get('latest_date') or '未知'}，"
+                                  f"应更新至{freshness['expected_through']}；禁止据此交易")
     forward = forward_ledger.dashboard(limit=1000)
     forward_stats = {x["strategy_id"]: x for x in forward.get("strategy_stats", [])}
     for strategy in strategies:
@@ -914,6 +1222,20 @@ def get_status(client, refresh: bool = False) -> dict:
             strategy["action"] = "BLOCKED"
             strategy["reason"] = "前向验证表现失效，策略已自动降级，暂停新增仓位"
     _apply_portfolio_gate(strategies, portfolio["gate"])
+    _apply_execution_conflicts(strategies, portfolio)
+    _apply_execution_timing(strategies)
+    for strategy in strategies:
+        signal_governance.annotate_production_strategy(strategy)
+    try:
+        research_observations = [_xiaomi_momentum_observation(strategies[0])]
+    except Exception as exc:  # noqa: BLE001
+        research_observations = [{
+            "id": "xiaomi_momentum_20d_v1", "name": "小米20日方向观察",
+            "decision_role": "RESEARCH_ONLY", "observation": "UNAVAILABLE",
+            "action": "NO_TRADE", "trade_intent": "NO_TRADE", "actionable": False,
+            "decision_authority": "无交易决策权", "as_of": None,
+            "observed_value_pct": None, "note": f"研究观察不可用：{exc}",
+        }]
     universe_payload = _universe_payload()
     forward_ledger.record_universe_snapshot(
         universe_payload, next((s.get("as_of") for s in strategies if s.get("as_of")), None))
@@ -947,12 +1269,19 @@ def get_status(client, refresh: bool = False) -> dict:
         "strategy_portfolio": strategy_portfolio.build_allocation(
             strategies, forward.get("evaluations", [])),
         "refresh_errors": errors[:8],
+        "data_freshness": {**freshness, "refresh_attempted_now": refresh_attempted},
+        "signal_governance": signal_governance.governance_summary(
+            notification_configured=bool((load_config().get("wecom", {}) or {}).get("webhook"))),
+        "research_observations": research_observations,
         "strategies": strategies,
         "capability_roadmap": _capability_roadmap(strategies),
         "workflow": _workflow(strategies, portfolio["gate"]),
         "intraday": {
             "name": "港股日内策略", "status": "禁用：样本外未通过", "action": "NO_TRADE",
             "reason": "ORB、恐慌反转和MACD分钟策略均未通过质量门槛",
+            "risk_monitor": {"status": "ACTIVE", "interval_minutes": 30,
+                             "scope": "真实持仓止损、止盈与手工价格报警",
+                             "execution": "只提醒，不自动下单"},
         },
     }
     def clean(value):

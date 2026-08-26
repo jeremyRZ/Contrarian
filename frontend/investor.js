@@ -1,4 +1,4 @@
-const state = { positions: [], market: 'ALL', errors: [], strategy: null };
+const state = { positions: [], market: 'ALL', errors: [], positionWarnings: [], strategy: null };
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const number = (value, digits = 2) => value == null || value === '' || !Number.isFinite(Number(value)) ? '—' : Number(value).toLocaleString('zh-CN', {minimumFractionDigits: digits, maximumFractionDigits: digits});
@@ -28,14 +28,26 @@ function positionMarket(row) {
   return code.startsWith('US.') ? 'US' : code.startsWith('SH.') || code.startsWith('SZ.') ? 'CN' : 'HK';
 }
 function pnlValue(row) { return Number(row.pl_val ?? row.unrealized_pnl ?? 0); }
+function positionDecision(row) {
+  if (Number(row.qty || 0) !== 0 && Number(row.nominal_price || 0) <= 0)
+    return {label:'零报价／停牌复核', cls:'risk'};
+  const analysisCode = row.analysis_code || row.code;
+  const group = state.strategy?.portfolio?.underlyings?.find(item => item.code === analysisCode);
+  if (group?.risk === '止损触发') return {label:'止损复核', cls:'risk'};
+  if (group?.risk === '止盈复核') return {label:'止盈复核', cls:'watch'};
+  if (group?.risk === '杠杆产品') return {label:'复核杠杆风险', cls:'watch'};
+  if (group?.risk === '集中度过高') return {label:'复核集中度', cls:'watch'};
+  const pnl = pnlValue(row);
+  return {label:pnl < 0 ? '检查失效条件' : '继续持有观察', cls:'normal'};
+}
 
 function renderAccounts(results) {
   $('account_band').innerHTML = ['HK','CN','US'].map(market => {
     const result = results[market];
     const count = result?.items?.length || 0;
-    const unavailable = result?.error;
-    return `<button data-market="${market}" class="account-cell ${unavailable ? 'unavailable' : ''}">
-      <span>${marketName(market)}</span><strong>${unavailable ? '暂不可用' : count + ' 项持仓'}</strong><small>${unavailable ? esc(friendlyError(market, result.error)) : market === 'US' ? '老虎证券 · 只读' : '富途 · 只读'}</small>
+    const unavailable = result?.error, disabled = result?.disabled;
+    return `<button data-market="${market}" class="account-cell ${unavailable || disabled ? 'unavailable' : ''}" ${disabled ? 'disabled' : ''}>
+      <span>${marketName(market)}</span><strong>${disabled ? '未接入' : unavailable ? '暂不可用' : count + ' 项持仓'}</strong><small>${disabled ? '未配置只读数据源' : unavailable ? esc(friendlyError(market, result.error)) : market === 'US' ? '老虎证券 · 只读' : '富途 · 全账户只读'}</small>
     </button>`;
   }).join('');
   document.querySelectorAll('.account-cell').forEach(button => button.onclick = () => setMarket(button.dataset.market));
@@ -47,13 +59,13 @@ function renderPositions() {
     .sort((a,b) => Math.abs(pnlValue(b)) - Math.abs(pnlValue(a)))
     .map(row => {
       const market = positionMarket(row), pnl = pnlValue(row), ratio = Number(row.pl_ratio ?? 0);
-      const action = pnl < 0 ? '检查失效条件' : '继续持有观察';
+      const action = positionDecision(row);
       return `<tr>
         <td><b>${esc(row.stock_name || row.name || row.code)}</b><small>${esc(row.code)}</small></td>
         <td><span class="market-tag ${market.toLowerCase()}">${marketName(market)}</span></td>
         <td class="num">${number(row.qty, 0)}</td><td class="num">${number(row.cost_price)}</td><td class="num">${number(row.nominal_price)}</td>
         <td class="num">${number(row.market_val)}</td><td class="num ${pnl > 0 ? 'profit' : pnl < 0 ? 'loss' : ''}">${number(pnl)}<small>${ratio ? number(ratio * (Math.abs(ratio) < 2 ? 100 : 1), 1) + '%' : ''}</small></td>
-        <td><a class="row-action" href="analyze.html?code=${encodeURIComponent(row.code)}">${action}</a></td>
+        <td><a class="row-action ${action.cls}" href="analyze.html?code=${encodeURIComponent(row.analysis_code || row.code)}">${action.label}</a></td>
       </tr>`;
     }).join('') : `<tr><td colspan="8" class="empty">${state.errors.length ? '当前筛选没有可用持仓；请查看上方账户状态。' : '当前账户没有持仓。'}</td></tr>`;
 }
@@ -80,6 +92,26 @@ function renderActions(data) {
   $('watch_count').textContent = Math.max(0, queue.length - must - opp);
   $('today_verdict').textContent = must ? `先处理 ${must} 项风险` : opp ? `评估 ${opp} 个机会` : '今天不必强行交易';
   $('today_reason').textContent = must ? '风险动作永远排在新机会之前。' : opp ? '只有证据和仓位边界同时通过才考虑执行。' : '没有正式信号时，现金也是仓位。';
+  const freshness=data?.data_freshness||{}, governance=data?.signal_governance||{}, notice=governance.notification||{};
+  const noticeLabel=notice.status==='READY_WECOM'?'企业微信':notice.status==='READY_LOCAL'?'Windows本机':'未配置';
+  $('decision_integrity').textContent=`正式信号源：${governance.source_of_truth==='strategy-center/status'?'策略中心':'不可确认'} · 日线：${freshness.status==='CURRENT'?(freshness.latest_date||'当前'):'过期，禁止交易'} · 研究模型不能覆盖 · 提醒：${noticeLabel}`;
+  renderPositions();
+}
+
+function renderExecutionAlert(data) {
+  const panel=$('execution_alert');
+  if(!data){panel.hidden=true;return;}
+  panel.hidden=false;
+  panel.className='execution-alert '+String(data.phase||'').toLowerCase().replaceAll('_','-');
+  const lines=String(data.message||'').split('\n').map(x=>x.replace(/^\*\*|\*\*$/g,'')).filter(Boolean);
+  $('execution_phase').textContent={PREOPEN:'开盘前正式计划',OPEN_WINDOW:'开盘执行窗口',LATE_DO_NOT_CHASE:'已错过开盘窗口'}[data.phase]||'正式策略提醒';
+  $('execution_verdict').textContent=lines[1]||`${data.action} ${data.qty||0}股`;
+  $('execution_detail').textContent=lines.slice(2,-1).join(' · ');
+}
+
+async function loadExecutionAlert(){
+  try{renderExecutionAlert(await api('/api/execution-alert',45000));}
+  catch(error){renderExecutionAlert(null);}
 }
 
 function renderResearchAssets(data) {
@@ -103,23 +135,37 @@ function renderResearchAssets(data) {
 async function load() {
   $('refresh').disabled = true;
   state.errors = [];
+  let capabilities = {markets:[{market:'HK',enabled:true},{market:'CN',enabled:true},{market:'US',enabled:false}]};
+  try { capabilities = await api('/api/markets'); }
+  catch (error) { state.errors.push('市场能力：' + error.message); }
+  const enabled = new Map((capabilities.markets || []).map(item => [
+    item.market, item.positions_enabled == null ? item.enabled : item.positions_enabled
+  ]));
   const marketRequests = Object.fromEntries(await Promise.all(['HK','CN','US'].map(async market => {
+    if (!enabled.get(market)) return [market, {items:[], disabled:true}];
     try { return [market, await api('/api/positions?market=' + market)]; }
     catch (error) { state.errors.push(`${marketName(market)}：${error.message}`); return [market, {items:[], error:error.message}]; }
   })));
   state.positions = Object.values(marketRequests).flatMap(x => x.items || []);
+  state.positionWarnings = state.positions.filter(row =>
+    Number(row.qty || 0) !== 0 && Number(row.nominal_price || 0) <= 0);
   renderAccounts(marketRequests); renderPositions();
   try { renderActions(await api('/strategy-center/status', 25000)); }
   catch (error) { state.errors.push('今日策略：' + error.message); renderActions(null); }
   try { renderResearchAssets(await api('/api/research-assets')); }
   catch (error) { state.errors.push('观察研究：' + error.message); renderResearchAssets(null); }
-  $('error_count').textContent = state.errors.length;
-  $('source_state').classList.toggle('warning', state.errors.length > 0);
-  $('source_state').querySelector('span').textContent = state.errors.length ? `${state.errors.length} 个数据源需检查` : '数据源已同步';
+  const issueCount = state.errors.length + state.positionWarnings.length;
+  $('error_count').textContent = issueCount;
+  $('source_state').classList.toggle('warning', issueCount > 0);
+  $('source_state').querySelector('span').textContent = state.errors.length
+    ? `${state.errors.length} 个数据源需检查`
+    : state.positionWarnings.length ? `${state.positionWarnings.length} 项持仓报价需复核` : '数据源已同步';
   $('as_of').textContent = `组合更新时间 ${new Date().toLocaleString('zh-CN', {hour12:false})} · 共 ${state.positions.length} 项持仓`;
   $('refresh').disabled = false;
+  await loadExecutionAlert();
 }
 
 document.querySelectorAll('.market-filter button').forEach(button => button.onclick = () => setMarket(button.dataset.market));
 $('refresh').onclick = load;
 load();
+setInterval(loadExecutionAlert, 60000);

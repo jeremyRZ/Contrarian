@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 
+from . import signal_governance
+
 
 @dataclass(frozen=True)
 class DirectionalParams:
@@ -84,9 +86,10 @@ def evaluate(x: pd.DataFrame, params: DirectionalParams, *, allocation: float = 
 def current_signal(x: pd.DataFrame, params: DirectionalParams) -> dict:
     row = x.iloc[-1]
     state = desired_state(row, params)
-    return {"as_of": str(row.time_key.date()), "state": state,
-            "action": "BUY" if state == 1 else "SELL" if state == -1 else "WAIT",
-            "price": float(row.close)}
+    result = signal_governance.research_observation(
+        "xiaomi_momentum_20d_v1", as_of=str(row.time_key.date()), state=state)
+    result["price"] = float(row.close)
+    return result
 
 
 def live_status(client, cfg: dict | None = None) -> tuple[dict | None, str | None]:
@@ -113,7 +116,6 @@ def live_status(client, cfg: dict | None = None) -> tuple[dict | None, str | Non
 
     current_state, previous_state = state(float(latest.mom20)), state(float(previous.mom20))
     transition = current_state != previous_state
-    action = "BUY" if current_state == 1 else "SELL" if current_state == -1 else "WAIT"
     shortability = {"confirmed": False, "available_volume": None, "rate": None}
     if current_state == -1:
         snap, snap_err = client.market_snapshot(["HK.01810"])
@@ -127,27 +129,22 @@ def live_status(client, cfg: dict | None = None) -> tuple[dict | None, str | Non
                 "available_volume": float(available) if pd.notna(available) else None,
                 "rate": float(rate) if pd.notna(rate) else None,
             }
-    return {"id": "xiaomi_momentum_20d_v1", "as_of": str(latest.time_key.date()),
-            "price": float(latest.close), "momentum_20d_pct": float(latest.mom20 * 100),
-            "threshold_pct": threshold * 100, "state": current_state,
-            "previous_state": previous_state, "transition": transition, "action": action,
-            "shortability": shortability, "execution": "下一交易日开盘前人工复核；不自动下单",
-            "validation": {"test_return_pct": 4.6805, "test_sharpe": 0.2858,
-                           "test_max_drawdown_pct": -13.8339,
-                           "test_profit_factor": 1.0591}}, None
+    result = signal_governance.research_observation(
+        "xiaomi_momentum_20d_v1", as_of=str(latest.time_key.date()), state=current_state,
+        value_pct=float(latest.mom20 * 100),
+    )
+    result.update({
+        "price": float(latest.close), "momentum_20d_pct": float(latest.mom20 * 100),
+        "threshold_pct": threshold * 100, "previous_state": previous_state,
+        "transition": transition, "shortability": shortability,
+        "execution": "研究观察；不生成买卖建议、不推送交易信号、不自动下单",
+        "validation": {"test_return_pct": 4.6805, "test_sharpe": 0.2858,
+                       "test_max_drawdown_pct": -13.8339,
+                       "test_profit_factor": 1.0591},
+    })
+    return result, None
 
 
 def notification(status: dict) -> tuple[str, str] | None:
-    """Return fingerprint/text only for a fresh BUY or SELL state transition."""
-    if not status.get("transition") or status.get("action") not in {"BUY", "SELL"}:
-        return None
-    direction = "做多" if status["action"] == "BUY" else "做空"
-    borrow = ""
-    if status["action"] == "SELL" and not status["shortability"]["confirmed"]:
-        borrow = "\n⚠️ Futu 未确认券源：只做空头候选提醒，确认可借数量及费率后才可执行。"
-    fp = f"xiaomi-directional:{status['as_of']}:{status['action']}"
-    text = (f"**小米 {direction}状态切换（{status['action']}）**\n"
-            f"收盘价：{status['price']:.2f} 港元\n"
-            f"20日涨跌幅：{status['momentum_20d_pct']:+.2f}%（阈值 ±{status['threshold_pct']:.0f}%）\n"
-            f"动作：下一交易日开盘前人工复核；系统不会下单。{borrow}")
-    return fp, text
+    """Research models are structurally unable to create trade notifications."""
+    return None

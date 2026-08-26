@@ -24,6 +24,8 @@ ipo:
   sources: ["sina", "hkexnews"]
 
 monitor:
+  # false：仍展示集中度/杠杆/止损提醒，但不阻断策略买入信号。
+  portfolio_gate_enabled: false
   # 风控铁律（可选覆盖）
   max_single_loss_pct: 3.0     # 单笔亏损 ≤ 总本金 3%
   max_total_risk_pct: 10.0     # 总风险敞口 ≤ 10%
@@ -47,15 +49,19 @@ schedule:
   enabled: true        # false 则关闭每日自动推送
   time: "16:30"        # 推送时间（本地时间，建议收盘后）
 
-# 小米20交易日方向状态：仅在 BUY/SELL 状态切换时推送，不自动下单。
+# 小米20交易日方向研究观察：只记录 BULLISH/BEARISH/NEUTRAL，不产生交易推送。
 xiaomi_directional:
   enabled: true
   threshold_pct: 5.0
-  execution_mode: "READ_ONLY_USER_CONFIRMATION_REQUIRED"
+  role: "RESEARCH_ONLY"
+  notifications_enabled: false
+  execution_mode: "NON_ACTIONABLE_OBSERVATION"
 
 # 小米期权选择层：55日突破后选择约10%虚值、30–60天到期的Call/Put。
 xiaomi_options:
   enabled: true
+  role: "RESEARCH_ONLY"
+  notifications_enabled: false
   historical_gate_passed: false
   min_days_to_expiry: 30
   max_days_to_expiry: 60
@@ -69,8 +75,8 @@ xiaomi_options:
 # 仅当恒生科技指数急跌（≤ threshold）时推送企业微信（指纹去重，最短 30 分钟）。
 intraday:
   enabled: true            # 盘中调度总开关
-  interval_min: 30         # 扫描间隔（分钟）
-  start: "09:30"           # 交易时段开始（本地时间）
+  interval_min: 5          # 扫描间隔（分钟）；正式信号开盘执行提醒同频检查
+  start: "09:20"           # 开盘前先提醒正式次日开盘计划
   end: "16:00"             # 交易时段结束
   threshold: -2.0          # 急跌阈值（恒科涨跌%，≤ 此值判定为急跌）
   hstech_code: "HK.800700" # 恒生科技指数（注意：HK.800000 是恒生指数，非科技指数）

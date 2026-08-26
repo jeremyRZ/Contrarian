@@ -78,6 +78,46 @@ def test_cn_positions_auto_discovers_matching_account(monkeypatch):
     assert captured["acc_id"] == 22
 
 
+def test_positions_auto_combines_multiple_matching_accounts(monkeypatch):
+    queried = []
+    class Context:
+        def __init__(self, **kwargs): pass
+        def get_acc_list(self):
+            return futu_client.ft.RET_OK, pd.DataFrame([
+                {"acc_id": 11, "trd_env": "REAL"},
+                {"acc_id": 22, "trd_env": "REAL"},
+            ])
+        def position_list_query(self, **kwargs):
+            queried.append(kwargs["acc_id"])
+            return futu_client.ft.RET_OK, pd.DataFrame([
+                {"code": f"HK.{kwargs['acc_id']:05d}", "qty": 100}
+            ])
+        def close(self): pass
+    monkeypatch.setattr(futu_client, "_reachable", lambda *args: True)
+    monkeypatch.setattr(futu_client.ft, "OpenSecTradeContext", Context)
+    frame, err = futu_client.FutuClient(trd_env="REAL").positions_market("HK")
+    assert err is None
+    assert queried == [11, 22]
+    assert frame["account_id"].tolist() == [11, 22]
+
+
+def test_positions_multiple_accounts_return_empty_without_error(monkeypatch):
+    class Context:
+        def __init__(self, **kwargs): pass
+        def get_acc_list(self):
+            return futu_client.ft.RET_OK, pd.DataFrame([
+                {"acc_id": 11, "trd_env": "REAL"},
+                {"acc_id": 22, "trd_env": "REAL"},
+            ])
+        def position_list_query(self, **kwargs):
+            return futu_client.ft.RET_OK, pd.DataFrame()
+        def close(self): pass
+    monkeypatch.setattr(futu_client, "_reachable", lambda *args: True)
+    monkeypatch.setattr(futu_client.ft, "OpenSecTradeContext", Context)
+    frame, err = futu_client.FutuClient(trd_env="REAL").positions_market("HK")
+    assert err is None and frame.empty
+
+
 def test_router_uses_tiger_for_us_positions():
     class Futu:
         def positions_market(self, market):

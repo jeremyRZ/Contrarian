@@ -64,7 +64,7 @@ function openAnalyze(code) {
   const section = {
     hunter: 'strategy',
     analyze: 'analyze',
-    'strategy-center': 'strategy',
+    'strategy-center': 'home',
     strategies: 'strategy',
     intraday: 'strategy',
     backtest: 'strategy',
