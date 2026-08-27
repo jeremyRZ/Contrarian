@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import socket
+from datetime import datetime
 from typing import Optional, Tuple
 
 # futu-api 在导入阶段创建日志目录。受限运行环境可能能看到用户 AppData
@@ -435,6 +436,97 @@ class FutuClient:
         if cash is None or total in (None, 0):
             return None, cash, total
         return round(cash / total * 100, 2), cash, total
+
+    def account_summary_market(self, market: str) -> Tuple[Optional[dict], Optional[str]]:
+        """Aggregate funds for every matching account without exposing account ids.
+
+        Positions and funds must use the same market/environment account scope;
+        otherwise a recommendation can be sized from a different account than the
+        one whose holdings are displayed.
+        """
+        key = str(market or "").upper()
+        if key not in {"HK", "CN", "US"}:
+            return None, f"不支持的资金市场: {market}"
+        if not _reachable(self.host, self.port):
+            return None, "FutuOpenD 未启动或端口不可达"
+        context = None
+        try:
+            context = ft.OpenSecTradeContext(
+                filter_trdmarket=getattr(ft.TrdMarket, key), host=self.host, port=self.port)
+            configured = self.accounts.get(key)
+            if configured:
+                account_ids = [int(configured)]
+            else:
+                ret, accounts = context.get_acc_list()
+                if ret != ft.RET_OK:
+                    return None, f"无法发现{key}账户: {accounts}"
+                if accounts is None or accounts.empty:
+                    return None, f"富途未返回可用的{key}账户"
+                candidates = accounts.copy()
+                env_col = next((c for c in candidates.columns
+                                if str(c).lower() in {"trd_env", "trade_env"}), None)
+                if env_col:
+                    wanted = str(self.trd_env).upper()
+                    matched = candidates[candidates[env_col].astype(str).str.upper().str.contains(wanted)]
+                    if not matched.empty:
+                        candidates = matched
+                id_col = next((c for c in candidates.columns
+                               if str(c).lower() in {"acc_id", "account_id"}), None)
+                if not id_col:
+                    return None, f"{key}账户列表缺少acc_id字段"
+                account_ids = [int(value) for value in candidates[id_col].dropna().unique()]
+            totals = {"cash": 0.0, "total_assets": 0.0, "market_value": 0.0}
+            successful = active = 0
+            errors = []
+            for account_id in account_ids:
+                ret, data = context.accinfo_query(trd_env=self._trd_env(), acc_id=account_id)
+                if ret != ft.RET_OK:
+                    errors.append(str(data))
+                    continue
+                successful += 1
+                if data is None or data.empty:
+                    continue
+                row = data.iloc[0]
+                cols = {str(c).lower(): c for c in data.columns}
+                def number(*names):
+                    for name in names:
+                        col = cols.get(name)
+                        if col is not None:
+                            try:
+                                value = float(row[col])
+                                return value if pd.notna(value) else 0.0
+                            except (TypeError, ValueError):
+                                pass
+                    return 0.0
+                cash = number("cash", "total_cash")
+                assets = number("total_assets", "total_market_val")
+                market_value = number("market_val", "market_value", "total_market_val")
+                totals["cash"] += cash
+                totals["total_assets"] += assets
+                totals["market_value"] += market_value
+                if abs(cash) > 1e-9 or abs(assets) > 1e-9 or abs(market_value) > 1e-9:
+                    active += 1
+            if not successful:
+                return None, "; ".join(errors) or f"{key}账户资金读取失败"
+            total_assets = totals["total_assets"]
+            return {
+                "market": key,
+                "currency": {"HK": "HKD", "CN": "CNY", "US": "USD"}[key],
+                **totals,
+                "cash_ratio": round(totals["cash"] / total_assets * 100, 2)
+                              if total_assets else None,
+                "matching_accounts": len(account_ids),
+                "active_accounts": active,
+                "source": f"ALL_MATCHING_{key}_{str(self.trd_env).upper()}_ACCOUNTS",
+                "as_of": datetime.now().isoformat(timespec="seconds"),
+            }, None
+        except Exception as exc:  # noqa: BLE001
+            return None, str(exc)
+        finally:
+            try:
+                if context: context.close()
+            except Exception:  # noqa: BLE001
+                pass
 
     def positions(self) -> Tuple[Optional[object], Optional[str]]:
         ok, msg = self._ensure_trade()

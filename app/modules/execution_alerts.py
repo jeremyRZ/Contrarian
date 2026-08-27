@@ -28,10 +28,35 @@ def build(status: dict, *, now: datetime | None = None,
     qty = int(xiaomi.get("raw_suggested_qty") or xiaomi.get("suggested_qty")
               or xiaomi.get("held_qty") or 0)
     signal_price = float(xiaomi.get("price") or 0)
+    portfolio = status.get("portfolio") or {}
+    sizing = xiaomi.get("sizing") or {}
+    cash = portfolio.get("cash")
+    total_assets = portfolio.get("total_assets")
+    price_for_funds = float(live_price or signal_price or 0)
+    reference_required = qty * price_for_funds if action == "BUY" else 0.0
+    affordable = cash is not None and float(cash) >= reference_required
+    executable = action != "BUY" or (phase != "LATE_DO_NOT_CHASE" and affordable)
+    current_action = action if executable else "WAIT"
+    current_qty = qty if executable else 0
+    required = current_qty * price_for_funds if current_action == "BUY" else 0.0
+    funding = {
+        "source": portfolio.get("funds_source"),
+        "as_of": portfolio.get("funds_as_of"),
+        "cash_hkd": cash,
+        "total_assets_hkd": total_assets,
+        "required_hkd": required,
+        "reference_required_hkd": reference_required,
+        "post_trade_cash_hkd": round(max(float(cash) - required, 0.0), 2) if cash is not None else None,
+        "affordable": affordable if action == "BUY" else True,
+        "matching_accounts": portfolio.get("matching_accounts"),
+        "active_accounts": portfolio.get("active_accounts"),
+    }
     drift_pct = ((float(live_price) / signal_price - 1) * 100
                  if live_price and signal_price else None)
     if action == "BUY":
-        if phase == "PREOPEN":
+        if not affordable:
+            verdict = "富途实时可用现金不足，禁止执行买入"
+        elif phase == "PREOPEN":
             verdict = f"开盘前计划：复核买入小米正股{qty}股"
         elif phase == "OPEN_WINDOW":
             verdict = f"开盘执行窗口：复核买入小米正股{qty}股"
@@ -46,6 +71,17 @@ def build(status: dict, *, now: datetime | None = None,
     ]
     if live_price:
         lines.append(f"现价 HK${float(live_price):.2f}；偏离信号价 {drift_pct:+.2f}%")
+    if cash is not None and total_assets is not None:
+        if current_action == "WAIT" and action == "BUY":
+            lines.append(
+                f"富途实时资金：现金HK${float(cash):,.2f}／总资产HK${float(total_assets):,.2f}；"
+                f"原信号参考{qty}股／约HK${reference_required:,.2f}，当前执行0股")
+        else:
+            lines.append(
+                f"富途实时资金：现金HK${float(cash):,.2f}／总资产HK${float(total_assets):,.2f}；"
+                f"本次预计HK${required:,.2f}／执行后现金HK${funding['post_trade_cash_hkd']:,.2f}")
+    else:
+        lines.append("富途实时资金不可用；禁止据此执行新买入")
     conflict = xiaomi.get("execution_conflict") or {}
     if conflict:
         current = conflict.get("current_delta_equivalent_shares")
@@ -67,6 +103,8 @@ def build(status: dict, *, now: datetime | None = None,
         "fingerprint": f"execution:xiaomi_trend_v1:{as_of}:{action}:{phase}",
         "title": "Contrarian 小米策略提醒",
         "message": "\n".join(lines),
-        "phase": phase, "action": action, "qty": qty,
+        "phase": phase, "action": current_action, "raw_signal_action": action,
+        "qty": current_qty, "raw_signal_qty": qty,
         "live_price": live_price, "signal_price": signal_price,
+        "funding": funding,
     }

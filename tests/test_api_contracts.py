@@ -63,7 +63,8 @@ def test_daily_job_publishes_only_canonical_strategy_notifications(monkeypatch):
     monkeypatch.setattr(api.strategy_center, "get_status", lambda *_args, **_kwargs: status)
     monkeypatch.setattr(api.forward_ledger, "record_status", lambda _status: None)
     monkeypatch.setattr(api.forward_ledger, "record_supertrend_exit_shadow", lambda: None)
-    monkeypatch.setattr(api.daily_report, "run_daily_report", lambda *_args: {"ok": True})
+    monkeypatch.setattr(api.daily_report, "run_daily_report", lambda *_args, **_kwargs: {"ok": True})
+    monkeypatch.setattr(api, "_funds_note", lambda *_args: "实时资金测试快照")
     monkeypatch.setattr(api.signal_governance, "production_notifications",
                         lambda _status: [("production:test", "formal")])
     monkeypatch.setattr(api.notify, "push_if_new",
@@ -76,7 +77,28 @@ def test_daily_job_publishes_only_canonical_strategy_notifications(monkeypatch):
     result = api._daily_jobs()
 
     assert result == {"ok": True}
-    assert pushed == [("production:test", "formal")]
+    assert pushed == [("production:test", "formal\n实时资金测试快照")]
+
+
+def test_position_risk_notification_includes_live_position_and_funds(monkeypatch):
+    result = {
+        "positions": [{"code": "HK.08305", "qty": 70000, "market_val": 4410}],
+        "alerts": [{"code": "HK.08305", "name": "圣唐控股",
+                    "level": "danger", "msg": "触及止损线"}],
+    }
+    captured = {}
+    monkeypatch.setattr(api.monitor, "monitor_positions", lambda *_args, **_kwargs: (result, None))
+    monkeypatch.setattr(api, "_funds_note", lambda *_args: "实时资金测试快照")
+    monkeypatch.setattr(api.notify, "notify_alerts",
+                        lambda alerts, *_args, **kwargs: captured.update(
+                            alerts=alerts, funds_note=kwargs.get("funds_note")) or 1)
+
+    response = api._position_risk_run()
+
+    assert response["pushed"] == 1
+    assert "实时持仓70000股" in captured["alerts"][0]["msg"]
+    assert "市值约HK$4,410.00" in captured["alerts"][0]["msg"]
+    assert captured["funds_note"] == "实时资金测试快照"
 
 
 def test_app_lifespan_starts_and_stops_both_schedulers(monkeypatch):

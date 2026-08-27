@@ -180,6 +180,19 @@ def test_xiaomi_fixed_allocation_uses_frozen_contract_and_board_lot():
     assert result["qty"] == 200
     assert result["estimated_amount_hkd"] == 5500
     assert result["allocation_budget_hkd"] == 10_000
+    assert result["post_trade_cash_hkd"] == 44_500
+    assert result["affordable"] is True
+
+
+def test_xiaomi_fixed_allocation_uses_live_cash_before_frozen_budget():
+    result = strategy_center._fixed_allocation_size(
+        entry=27.50, lot_size=200,
+        portfolio={"cash": 5000, "total_assets": 8000,
+                   "funds_source": "ALL_MATCHING_HK_REAL_ACCOUNTS"},
+        capital=20_000, allocation_pct=50.0)
+    assert result["qty"] == 0
+    assert result["available_cash_hkd"] == 5000
+    assert result["affordable"] is False
 
 
 def test_portfolio_gate_converts_buy_to_blocked():

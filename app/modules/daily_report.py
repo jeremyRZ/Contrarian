@@ -118,7 +118,7 @@ def build_daily_report(client) -> dict:
     }
 
 
-def run_daily_report(client, webhook: str = "") -> dict:
+def run_daily_report(client, webhook: str = "", *, funds_note: str = "") -> dict:
     """生成报告并推送企业微信（带指纹去重，同一份报告约 20h 内只推一次）。
 
     返回报告 dict + pushed 标志（无 webhook 时降级为服务端日志，pushed=False）。
@@ -129,7 +129,8 @@ def run_daily_report(client, webhook: str = "") -> dict:
     fp = "daily-div:" + "|".join(r["code"] for r in rep["stocks"][:8])
     pushed = False
     if webhook:
-        pushed = notify.push_if_new(fp, rep["markdown"], webhook, min_interval=3600 * 20)
+        message = rep["markdown"] + (f"\n{funds_note}" if funds_note else "")
+        pushed = notify.push_if_new(fp, message, webhook, min_interval=3600 * 20)
     else:
         logger.warning("[DailyReport-降级] %s", rep["markdown"].replace("\n", " | "))
     rep["pushed"] = pushed

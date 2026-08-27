@@ -50,13 +50,20 @@ def record(fingerprint: str, message: str, status: str, *, detail: str = "",
         return int(cur.lastrowid)
 
 
-def was_sent_recently(fingerprint: str, seconds: int) -> bool:
+def was_sent_recently(fingerprint: str, seconds: int, *, channel: str | None = None) -> bool:
     with _connect() as db:
-        row = db.execute(
-            "SELECT attempted_at FROM notification_events "
-            "WHERE fingerprint=? AND status='SENT' ORDER BY id DESC LIMIT 1",
-            (str(fingerprint),),
-        ).fetchone()
+        if channel:
+            row = db.execute(
+                "SELECT attempted_at FROM notification_events "
+                "WHERE fingerprint=? AND status='SENT' AND channel=? ORDER BY id DESC LIMIT 1",
+                (str(fingerprint), str(channel)),
+            ).fetchone()
+        else:
+            row = db.execute(
+                "SELECT attempted_at FROM notification_events "
+                "WHERE fingerprint=? AND status='SENT' ORDER BY id DESC LIMIT 1",
+                (str(fingerprint),),
+            ).fetchone()
     if not row:
         return False
     try:

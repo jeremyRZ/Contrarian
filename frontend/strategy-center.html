@@ -245,7 +245,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     $('sector_strength').innerHTML=Object.entries(sectors).map(([name,vals])=>({name,value:vals.reduce((a,b)=>a+b,0)/vals.length,count:vals.length})).sort((a,b)=>b.value-a.value).map(x=>`<button onclick="selectSector('${esc(x.name)}')"><span>${esc(x.name)} <small>${x.count}只</small></span><b class="${marketClass(x.value)}">${signed(x.value,2,'%')}</b></button>`).join('')||'<span class="muted">暂无分类行情</span>';
     const p=CENTER_DATA.portfolio||{};
     $('portfolio_count').textContent=p.available?`${p.count||0}项持仓`:'读取失败';
-    $('portfolio_summary').innerHTML=p.available?`<div><span>持仓市值</span><b>HK$ ${money(p.market_value)}</b></div><div><span>今日盈亏</span><b class="${marketClass(p.today_pl)}">HK$ ${signed(p.today_pl,0)}</b></div><div><span>累计盈亏</span><b class="${marketClass(p.total_pl)}">HK$ ${signed(p.total_pl,0)}</b></div><a href="risk.html">查看持仓风险</a>`:`<span class="down">${esc(p.error||'持仓数据不可用')}</span>`;
+    $('portfolio_summary').innerHTML=p.available?`<div><span>富途实时现金</span><b>HK$ ${fmt(p.cash,2)}</b></div><div><span>实时总资产</span><b>HK$ ${fmt(p.total_assets,2)}</b></div><div><span>持仓市值</span><b>HK$ ${fmt(p.market_value,2)}</b></div><div><span>今日盈亏</span><b class="${marketClass(p.today_pl)}">HK$ ${signed(p.today_pl,0)}</b></div><a href="risk.html">查看持仓风险</a>`:`<span class="down">${esc(p.error||'持仓数据不可用')}</span>`;
   }
   function renderHoldings(){
     const p=CENTER_DATA.portfolio||{}, rows=p.underlyings||[];
@@ -254,7 +254,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     const gate=p.gate||{}, cap=gate.disabled?'风险指标只提示，不阻断策略动作':gate.allow_new_risk?'账户风险门控通过，可继续评估策略机会':`禁止新增风险：${(gate.reasons||[]).join('；')}`;
     $('portfolio_limit').className='portfolio-limit '+(gate.disabled?'gate-advisory':gate.allow_new_risk?'gate-pass':'gate-block');
     const replacement=CENTER_DATA.replacement_decision||{};
-    $('portfolio_limit').innerHTML=`<b>${gate.disabled?'组合门控已关闭':gate.allow_new_risk?'组合门控通过':'组合门控阻止'}</b><span>${allocation} · ${esc(cap)} · 换仓判断：${esc(replacement.decision||'暂无')}</span><small>${esc(replacement.reason||p.risk_note||'')}</small>`;
+    const funds=`实时现金 HK$${fmt(p.cash,2)} / 总资产 HK$${fmt(p.total_assets,2)} · ${p.active_accounts??'—'}/${p.matching_accounts??'—'}个活跃/匹配港股账户`;
+    $('portfolio_limit').innerHTML=`<b>${gate.disabled?'组合门控已关闭':gate.allow_new_risk?'组合门控通过':'组合门控阻止'}</b><span>${funds} · ${allocation} · ${esc(cap)} · 换仓判断：${esc(replacement.decision||'暂无')}</span><small>资金快照 ${esc(p.funds_as_of||'不可用')} · ${esc(replacement.reason||p.risk_note||'')}</small>`;
   }
   function renderActionQueue(){
     const levels={MUST:'必须处理',SHOULD:'建议处理',OPPORTUNITY:'交易机会',NONE:'无需操作'};

@@ -12,7 +12,6 @@ import time
 
 import requests
 
-from . import local_notify
 from .modules import notification_ledger
 
 logger = logging.getLogger("hk-notify")
@@ -35,7 +34,9 @@ def _send_wecom(text: str, webhook: str = "", timeout: int = 5) -> tuple[bool, s
         logger.error("[WeCom-失败] HTTP %s: %s", r.status_code, r.text[:200])
         return False, f"HTTP_{r.status_code}"
     except Exception as exc:  # noqa: BLE001
-        logger.error("[WeCom-异常] %s", exc)
+        # requests exceptions may include the full webhook URL. Never write the
+        # robot key to terminal output or notification audit records.
+        logger.error("[WeCom-异常] %s", type(exc).__name__)
         return False, type(exc).__name__
 
 
@@ -57,17 +58,12 @@ def push_if_new(fingerprint: str, text: str, webhook: str = "",
         notification_ledger.record(fingerprint, text, "SKIPPED_DUPLICATE",
                                    detail=f"min_interval={min_interval}")
         return False
-    if notification_ledger.was_sent_recently(fingerprint, min_interval):
+    if notification_ledger.was_sent_recently(fingerprint, min_interval, channel="WECOM"):
         logger.info("[提醒限频] 持久化台账已发送 fingerprint=%s", fingerprint[:24])
         _LAST_PUSH[fingerprint] = now
         return False
-    if webhook:
-        ok, detail = _send_wecom(text, webhook)
-        channel = "WECOM"
-    else:
-        summary = "；".join(line.strip("* ") for line in text.splitlines()[1:4] if line.strip())
-        ok, detail = local_notify.send(title, summary or text)
-        channel = "WINDOWS_TOAST"
+    ok, detail = _send_wecom(text, webhook)
+    channel = "WECOM"
     notification_ledger.record(fingerprint, text, "SENT" if ok else "FAILED",
                                detail=detail, channel=channel)
     if ok:
@@ -75,7 +71,8 @@ def push_if_new(fingerprint: str, text: str, webhook: str = "",
     return ok
 
 
-def notify_alerts(alerts: list, webhook: str = "", prefix: str = "📊 港股持仓预警") -> int:
+def notify_alerts(alerts: list, webhook: str = "", prefix: str = "📊 港股持仓预警",
+                  *, funds_note: str = "") -> int:
     """逐条推送 alerts，带指纹去重（同一 code+level+信号 在窗口内只推一次），避免重复轰炸。
     返回实际推送条数（0 表示无预警 / 未配置 webhook / 全部已推过）。"""
     if not alerts:
@@ -85,6 +82,8 @@ def notify_alerts(alerts: list, webhook: str = "", prefix: str = "📊 港股持
         mark = "🔴" if a.get("level") == "danger" else "🟢"
         fp = f"alert:{a.get('code', '')}:{a.get('level', '')}:{str(a.get('msg', ''))[:24]}"
         text = f"**{prefix}**\n{mark} {a.get('name', '')}({a.get('code', '')})：{a.get('msg', '')}"
+        if funds_note:
+            text += f"\n{funds_note}"
         if push_if_new(fp, text, webhook):
             pushed += 1
     return pushed

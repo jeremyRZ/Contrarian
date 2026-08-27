@@ -93,7 +93,7 @@ function renderActions(data) {
   $('today_verdict').textContent = must ? `先处理 ${must} 项风险` : opp ? `评估 ${opp} 个机会` : '今天不必强行交易';
   $('today_reason').textContent = must ? '风险动作永远排在新机会之前。' : opp ? '只有证据和仓位边界同时通过才考虑执行。' : '没有正式信号时，现金也是仓位。';
   const freshness=data?.data_freshness||{}, governance=data?.signal_governance||{}, notice=governance.notification||{};
-  const noticeLabel=notice.status==='READY_WECOM'?'企业微信':notice.status==='READY_LOCAL'?'Windows本机':'未配置';
+  const noticeLabel=notice.status==='READY_WECOM'?'企业微信':'未配置';
   $('decision_integrity').textContent=`正式信号源：${governance.source_of_truth==='strategy-center/status'?'策略中心':'不可确认'} · 日线：${freshness.status==='CURRENT'?(freshness.latest_date||'当前'):'过期，禁止交易'} · 研究模型不能覆盖 · 提醒：${noticeLabel}`;
   renderPositions();
 }

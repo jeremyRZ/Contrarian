@@ -49,3 +49,10 @@ def test_stale_data_blocks_all_production_notifications():
               "strategies": [{"id": "xiaomi_trend_v1", "action": "BUY"}]}
 
     assert signal_governance.production_notifications(status) == []
+
+
+def test_notification_governance_has_no_desktop_fallback():
+    summary = signal_governance.governance_summary(notification_configured=False)
+    assert summary["notification"] == {
+        "channel": "WECOM", "configured": False, "wecom_configured": False,
+        "local_fallback_enabled": False, "status": "NOT_CONFIGURED"}

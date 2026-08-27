@@ -138,14 +138,23 @@ def _fixed_allocation_size(entry: float, lot_size: int, portfolio: dict | None,
     cash_raw = account.get("cash")
     cash = max(float(cash_raw), 0.0) if cash_raw is not None else float(capital)
     budget = min(cash, float(capital) * float(allocation_pct) / 100)
+    total_assets = account.get("total_assets")
+    source = account.get("funds_source") or "PORTFOLIO_SNAPSHOT"
     if entry <= 0 or lot_size <= 0 or budget <= 0:
         return {"qty": 0, "estimated_amount_hkd": 0.0, "allocation_budget_hkd": budget,
-                "reason": "价格、现金或整手数据不足"}
+                "available_cash_hkd": cash, "live_total_assets_hkd": total_assets,
+                "post_trade_cash_hkd": cash, "affordable": False,
+                "funds_source": source, "reason": "价格、现金或整手数据不足"}
     qty = int(budget // (float(entry) * lot_size)) * lot_size
-    return {"qty": max(qty, 0), "estimated_amount_hkd": max(qty, 0) * float(entry),
+    estimated = max(qty, 0) * float(entry)
+    return {"qty": max(qty, 0), "estimated_amount_hkd": estimated,
             "allocation_budget_hkd": budget, "capital_hkd": float(capital),
             "allocation_pct": float(allocation_pct),
-            "reason": "严格按冻结策略的2万港币本金、50%配置和200股整手计算"}
+            "available_cash_hkd": cash, "live_total_assets_hkd": total_assets,
+            "post_trade_cash_hkd": round(max(cash - estimated, 0.0), 2),
+            "affordable": qty > 0 and estimated <= cash,
+            "funds_source": source,
+            "reason": "按富途实时可用现金，并受冻结策略2万港币本金、50%配置和整手约束"}
 
 
 def _portfolio_gate(portfolio: dict) -> dict:
@@ -399,9 +408,11 @@ def _serial(v: Any) -> Any:
     return v
 
 
-def _read_daily(path: Path) -> pd.DataFrame:
+def _read_daily(path: Path, *, completed_only: bool = True) -> pd.DataFrame:
     x = pd.read_csv(path)
     x["time_key"] = pd.to_datetime(x["time_key"], format="mixed")
+    if completed_only:
+        x = x[x["time_key"].dt.date <= _expected_completed_session()]
     return x.sort_values("time_key").drop_duplicates("time_key", keep="last").set_index("time_key")
 
 
@@ -569,9 +580,33 @@ def _portfolio_payload(client) -> dict:
         return {"available": False, "error": str(exc), "positions": []}
     if err or frame is None:
         return {"available": False, "error": err or "持仓数据不可用", "positions": []}
+    funds = None
+    funds_error = None
+    if hasattr(client, "account_summary_market"):
+        try:
+            funds, funds_error = client.account_summary_market("HK")
+        except Exception as exc:  # noqa: BLE001
+            funds_error = str(exc)
+    cash_ratio = (funds or {}).get("cash_ratio")
+    cash = (funds or {}).get("cash")
+    total_assets = (funds or {}).get("total_assets")
+    funds_source = (funds or {}).get("source")
+    funds_as_of = (funds or {}).get("as_of")
+    matching_accounts = (funds or {}).get("matching_accounts")
+    active_accounts = (funds or {}).get("active_accounts")
+    if funds is None and hasattr(client, "cash_ratio"):
+        try:
+            cash_ratio, cash, total_assets = client.cash_ratio()
+            funds_source = "LEGACY_DEFAULT_ACCOUNT"
+        except Exception:  # noqa: BLE001
+            pass
     if frame.empty:
         return {"available": True, "count": 0, "market_value": 0.0,
-                "total_pl": 0.0, "today_pl": 0.0, "positions": []}
+                "total_pl": 0.0, "today_pl": 0.0, "positions": [],
+                "cash": cash, "cash_ratio": cash_ratio, "total_assets": total_assets,
+                "funds_source": funds_source, "funds_as_of": funds_as_of,
+                "matching_accounts": matching_accounts, "active_accounts": active_accounts,
+                "funds_error": funds_error, "underlyings": [], "max_weight_pct": 0}
     cols = {str(c).lower(): c for c in frame.columns}
     def value(row, *names, default=None):
         for key in names:
@@ -663,12 +698,6 @@ def _portfolio_payload(client) -> dict:
                 item["option"] = details
     rows.sort(key=lambda item: abs(float(item.get("market_value") or 0)), reverse=True)
     total_market_value = sum(float(x["market_value"] or 0) for x in rows)
-    cash_ratio = cash = total_assets = None
-    if hasattr(client, "cash_ratio"):
-        try:
-            cash_ratio, cash, total_assets = client.cash_ratio()
-        except Exception:  # noqa: BLE001
-            pass
     denominator = float(total_assets or total_market_value or 0)
     groups: dict[str, dict] = {}
     for item in rows:
@@ -714,6 +743,11 @@ def _portfolio_payload(client) -> dict:
         "cash": cash,
         "cash_ratio": cash_ratio,
         "total_assets": total_assets,
+        "funds_source": funds_source,
+        "funds_as_of": funds_as_of,
+        "matching_accounts": matching_accounts,
+        "active_accounts": active_accounts,
+        "funds_error": funds_error,
         "max_weight_pct": max((x.get("weight_pct") or 0 for x in grouped), default=0),
         "risk_note": "期权缺少实时Delta时仅汇总市值与盈亏，不计算等效正股敞口",
     }
@@ -949,6 +983,7 @@ def _refresh_cache(client) -> list[str]:
         if path.exists():
             new = pd.concat([pd.read_csv(path), new], ignore_index=True)
         new["time_key"] = pd.to_datetime(new["time_key"], format="mixed")
+        new = new[new["time_key"].dt.date <= expected]
         new.sort_values("time_key").drop_duplicates("time_key", keep="last").to_csv(path, index=False)
         if pace_seconds:
             time.sleep(pace_seconds)

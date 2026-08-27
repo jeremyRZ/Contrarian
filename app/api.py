@@ -96,14 +96,32 @@ def _webhook() -> str:
     return CONFIG.get("wecom", {}).get("webhook", "")
 
 
+def _funds_note(portfolio: dict | None = None) -> str:
+    """Sanitized live HK capital context for every trade-related message."""
+    funds = portfolio or {}
+    if not funds:
+        try:
+            funds, _ = client().account_summary_market("HK")
+        except Exception:  # noqa: BLE001
+            funds = None
+    if not funds or funds.get("cash") is None or funds.get("total_assets") is None:
+        return "富途实时资金不可用；不得据此执行新交易。"
+    return (
+        f"富途实时资金：现金HK${float(funds['cash']):,.2f}／"
+        f"总资产HK${float(funds['total_assets']):,.2f}；"
+        f"快照{funds.get('funds_as_of') or funds.get('as_of') or '刚刚'}。")
+
+
 def _daily_jobs():
     """Record research, but publish trade language from one canonical source only."""
     status = strategy_center.get_status(client(), refresh=True)
     forward_ledger.record_status(status)
     forward_ledger.record_supertrend_exit_shadow()
-    report = daily_report.run_daily_report(client(), _webhook())
+    report = daily_report.run_daily_report(client(), _webhook(),
+                                           funds_note=_funds_note(status.get("portfolio")))
     for fingerprint, message in signal_governance.production_notifications(status):
-        notify.push_if_new(fingerprint, message, _webhook(), min_interval=86_400)
+        notify.push_if_new(fingerprint, message + "\n" + _funds_note(status.get("portfolio")),
+                           _webhook(), min_interval=86_400)
     # Xiaomi momentum and option selectors remain readable research endpoints.
     # They intentionally do not run through the trade-notification path.
     return report
@@ -989,6 +1007,7 @@ def _price_alert_run():
              for a in res["alerts_to_push"]],
             _webhook(),
             prefix=f"{CONFIG.get('system', {}).get('notify_prefix', '')} 价格报警",
+            funds_note=_funds_note(),
         )
         return {"pushed": pushed, "scan_type": "price_alert"}
     return {"pushed": 0, "scan_type": "price_alert"}
@@ -999,10 +1018,24 @@ def _position_risk_run():
     result, error = monitor.monitor_positions(client(), technical=False)
     if error or not result:
         return {"pushed": 0, "scan_type": "position_risk", "error": error}
-    alerts = result.get("alerts") or []
+    positions_by_code = {str(item.get("code")): item
+                         for item in (result.get("positions") or [])}
+    alerts = []
+    for original in result.get("alerts") or []:
+        alert = dict(original)
+        position = positions_by_code.get(str(alert.get("code"))) or {}
+        qty = float(position.get("qty") or 0)
+        market_value = float(position.get("market_val") or 0)
+        if qty:
+            reference_price = market_value / qty if market_value else 0.0
+            alert["msg"] = (
+                f"{alert.get('msg', '')}；实时持仓{qty:g}股，"
+                f"参考价HK${reference_price:.3f}，市值约HK${market_value:,.2f}")
+        alerts.append(alert)
     pushed = notify.notify_alerts(
         alerts, _webhook(),
         prefix=f"{CONFIG.get('system', {}).get('notify_prefix', '')} 持仓风险",
+        funds_note=_funds_note(),
     ) if alerts else 0
     return {"pushed": pushed, "scan_type": "position_risk",
             "positions_checked": len(result.get("positions") or []),

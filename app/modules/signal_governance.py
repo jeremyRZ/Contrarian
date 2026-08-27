@@ -6,9 +6,6 @@ they cannot publish BUY/SELL language or override the production decision.
 """
 from __future__ import annotations
 
-import os
-
-
 PRODUCTION_STRATEGIES = {
     "xiaomi_trend_v1": "小米专属趋势",
     "hk_liquid_trend_rotation_v2": "港股200日风险调整动量",
@@ -102,7 +99,6 @@ def production_notifications(status: dict) -> list[tuple[str, str]]:
 
 
 def governance_summary(*, notification_configured: bool) -> dict:
-    local_enabled = os.name == "nt"
     return {
         "source_of_truth": "strategy-center/status",
         "production_strategy_ids": list(PRODUCTION_STRATEGIES),
@@ -113,11 +109,10 @@ def governance_summary(*, notification_configured: bool) -> dict:
         "research_can_notify_trade": False,
         "real_order_submission": False,
         "notification": {
-            "channel": "WECOM" if notification_configured else "WINDOWS_TOAST",
-            "configured": bool(notification_configured or local_enabled),
+            "channel": "WECOM",
+            "configured": bool(notification_configured),
             "wecom_configured": bool(notification_configured),
-            "local_fallback_enabled": local_enabled,
-            "status": "READY_WECOM" if notification_configured else
-                      "READY_LOCAL" if local_enabled else "NOT_CONFIGURED",
+            "local_fallback_enabled": False,
+            "status": "READY_WECOM" if notification_configured else "NOT_CONFIGURED",
         },
     }
