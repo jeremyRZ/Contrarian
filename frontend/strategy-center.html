@@ -37,7 +37,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <div><span>全港股</span><strong id="market_total">暂无</strong><small>普通股入口</small></div>
       <div><span>初筛通过</span><strong id="market_passed">暂无</strong><small>流动性合格</small></div>
       <div><span>动态池</span><strong id="market_selected">暂无</strong><small>进入策略二筛</small></div>
-      <div><span>交易候选</span><strong id="market_candidates">暂无</strong><small>轮动或突破</small></div>
+      <div><span>观察候选</span><strong id="market_candidates">暂无</strong><small>与正式交易动作分开</small></div>
     </section>
 
     <div id="refresh_errors" role="status" aria-live="polite"></div>
@@ -210,7 +210,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     renderSectorFilters(); renderStocks(); renderStrategy('xm',xm,`现价 ${fmt(xm.price,2)} · MA20 ${fmt(xm.ma20,2)} · MA60 ${fmt(xm.ma60,2)}`);
     renderInvestorOverview();
     renderActionQueue(); renderHoldings(); renderTradePlans(); renderForwardScores(); renderCapabilities(); renderExecution();
-    renderStrategy('rot',rot,`恒指 ${fmt(rotMarket.hsi_close,0)} / MA200 ${fmt(rotMarket.hsi_ma200,0)} · 候选 ${(rot.candidates||[]).length} · ${esc(rot.next_review_date||'')}`);
+    renderStrategy('rot',rot,`恒指 ${fmt(rotMarket.hsi_close,0)} / MA200 ${fmt(rotMarket.hsi_ma200,0)} · 观察候选 ${(rot.candidates||[]).length} · 正式下单 ${(rot.orders||[]).length} · ${esc(rot.next_review_date||'')}`);
     renderStrategy('br',br,`市场门控 ${br.market_eligible?'通过':'不通过'} · 候选 ${(br.candidates||[]).length}`);
     $('workflow_steps').innerHTML=(d.workflow.steps||[]).map((x,i)=>`<div><b>${i+1}. ${esc(x.name)}</b><span>${esc(x.rule)}</span></div>`).join('');
   }

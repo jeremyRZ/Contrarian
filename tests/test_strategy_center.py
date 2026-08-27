@@ -145,6 +145,38 @@ def test_universe_payload_exposes_exact_scanned_stocks(tmp_path, monkeypatch):
     assert all("sector" in x and "stage" in x for x in result["stocks"])
 
 
+def test_rotation_keeps_stock_watch_candidates_when_market_gate_is_closed(tmp_path, monkeypatch):
+    dates = pd.bdate_range(end="2026-08-26", periods=221)
+    daily = tmp_path / "daily"; daily.mkdir()
+    index = pd.DataFrame({
+        "time_key": dates, "code": "HK.800000", "open": 100, "high": 101,
+        "low": 98, "close": [100.0] * 220 + [99.0], "volume": 1_000_000,
+        "turnover": 200_000_000,
+    })
+    stock = pd.DataFrame({
+        "time_key": dates, "code": "HK.01398", "open": range(221),
+        "high": [x + 1 for x in range(221)], "low": range(221),
+        "close": pd.Series(range(221), dtype=float) + 10,
+        "volume": 10_000_000, "turnover": 200_000_000,
+    })
+    index.to_csv(daily / "HK_800000.csv", index=False)
+    stock.to_csv(daily / "HK_01398.csv", index=False)
+    universe = tmp_path / "universe.csv"
+    pd.DataFrame([{"code": "HK.01398", "name": "工商银行", "lot_size": 100}]).to_csv(
+        universe, index=False)
+    monkeypatch.setattr(strategy_center, "DAILY_DIR", daily)
+    monkeypatch.setattr(strategy_center, "UNIVERSE_FILE", universe)
+    monkeypatch.setattr(strategy_center.forward_ledger, "managed_codes", lambda *_: set())
+
+    result = strategy_center._rotation_status({}, {"cash": 20_000, "total_assets": 20_000})
+
+    assert result["market"]["eligible"] is False
+    assert result["candidate_mode"] == "OBSERVE_ONLY"
+    assert result["candidates"][0]["code"] == "HK.01398"
+    assert result["candidates"][0]["suggested_qty"] == 0
+    assert result["proposed"] == [] and result["orders"] == []
+
+
 def test_portfolio_gate_blocks_negative_cash_and_concentration(monkeypatch):
     monkeypatch.setattr(strategy_center, "_risk_settings", lambda: {
         "portfolio_gate_enabled": True,

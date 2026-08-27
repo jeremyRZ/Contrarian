@@ -1078,12 +1078,17 @@ def _rotation_status(positions: dict[str, float], portfolio: dict | None = None)
     idx_ma200 = idx.close.rolling(200).mean().iloc[-1]
     market_ok = idx.close.iloc[-1] > idx_ma200
     candidates = []
+    filter_counts = {"history_or_date": 0, "outside_dynamic_pool": 0,
+                     "turnover": 0, "price": 0, "below_ma200": 0,
+                     "nonpositive_momentum": 0, "volatility": 0, "passed": 0}
     for path in DAILY_DIR.glob("HK_*.csv"):
         x = _read_daily(path)
         if len(x) < 221 or latest_date not in x.index:
+            filter_counts["history_or_date"] += 1
             continue
         code = str(x.iloc[-1].get("code", ""))
         if code not in lots:
+            filter_counts["outside_dynamic_pool"] += 1
             continue
         close = x.close
         r = x.loc[latest_date]
@@ -1091,23 +1096,42 @@ def _rotation_status(positions: dict[str, float], portfolio: dict | None = None)
         turn20 = x.turnover.rolling(20).mean().loc[latest_date]
         vol60 = close.pct_change().rolling(60).std().loc[latest_date] * np.sqrt(252)
         mom = close.iloc[-21] / close.iloc[-221] - 1
-        eligible = (market_ok and turn20 >= 100_000_000 and r.close >= 2
-                    and r.close > ma200 and mom > 0 and np.isfinite(vol60) and vol60 > 0)
-        if not eligible:
+        if turn20 < 100_000_000:
+            filter_counts["turnover"] += 1
             continue
+        if r.close < 2:
+            filter_counts["price"] += 1
+            continue
+        if r.close <= ma200:
+            filter_counts["below_ma200"] += 1
+            continue
+        if mom <= 0:
+            filter_counts["nonpositive_momentum"] += 1
+            continue
+        if not np.isfinite(vol60) or vol60 <= 0:
+            filter_counts["volatility"] += 1
+            continue
+        filter_counts["passed"] += 1
         lot = lots[code]
         equity = float((portfolio or {}).get("total_assets") or CAPITAL)
         cash = max(float((portfolio or {}).get("cash") or equity), 0)
         allocation = min(equity * .25, cash)
         qty = int(allocation // (float(r.close) * lot)) * lot
-        sizing = {"qty": qty, "target_weight_pct": 25.0,
-                  "estimated_amount_hkd": float(qty * r.close),
-                  "reason": "四只股票等权目标，按实际净资产、现金和港股手数取整"}
+        executable_qty = qty if market_ok else 0
+        sizing = {"qty": executable_qty, "reference_qty": qty,
+                  "target_weight_pct": 25.0,
+                  "estimated_amount_hkd": float(executable_qty * r.close),
+                  "reference_amount_hkd": float(qty * r.close),
+                  "reason": ("四只股票等权目标，按实际净资产、现金和港股手数取整"
+                             if market_ok else "个股筛选通过，但恒指MA200门控关闭，仅作观察")}
         candidates.append({
             "code": code, "name": names.get(code, code), "price": float(r.close),
             "momentum_pct": float(mom * 100), "volatility_pct": float(vol60 * 100),
-            "score": float(mom / vol60), "lot_size": lot, "suggested_qty": qty,
-            "estimated_amount": float(qty * r.close), "affordable": qty > 0,
+            "score": float(mom / vol60), "lot_size": lot,
+            "suggested_qty": executable_qty, "reference_qty": qty,
+            "estimated_amount": float(executable_qty * r.close),
+            "reference_amount": float(qty * r.close), "affordable": qty > 0,
+            "candidate_status": "ELIGIBLE" if market_ok else "OBSERVE_MARKET_GATE_BLOCKED",
             "sizing": sizing,
             "trade_plan": {"trigger": float(r.close), "stop": None, "target": None,
                            "risk_reward": None, "validity": "仅正式调仓日执行排名退出"},
@@ -1120,7 +1144,7 @@ def _rotation_status(positions: dict[str, float], portfolio: dict | None = None)
     elapsed = len(dates) - 1 - 220
     trading_days_until_review = 0 if is_review else 20 - (elapsed % 20)
     held_codes = {c for c, q in positions.items() if q > 0}
-    proposed = [c for c in candidates if c["affordable"]][:4]
+    proposed = ([c for c in candidates if c["affordable"]][:4] if market_ok else [])
     target_codes = {item["code"] for item in proposed}
     managed = forward_ledger.managed_codes("hk_liquid_trend_rotation_v2")
     strategy_holdings = held_codes & managed
@@ -1147,7 +1171,10 @@ def _rotation_status(positions: dict[str, float], portfolio: dict | None = None)
     action = "REVIEW" if is_review and orders else ("CASH" if is_review and not market_ok else "WAIT")
     reason = ("正式调仓日：已生成持仓差异订单" if action == "REVIEW"
               else ("正式调仓日且恒指门控关闭，保持现金" if action == "CASH"
-                    else "今天不是正式20交易日调仓点；不产生买卖动作"))
+                    else (f"恒指低于MA200，{len(candidates)}只个股候选仅观察；"
+                          "今天也不是正式20交易日调仓点，不产生买卖动作"
+                          if not market_ok else
+                          f"当前有{len(candidates)}只个股通过筛选，但今天不是正式20交易日调仓点；不产生买卖动作")))
     return {
         "id": "hk_liquid_trend_rotation_v2", "name": "港股200日风险调整动量", "status": "历史候选·前向验证中",
         "as_of": str(latest_date.date()), "action": action, "reason": reason,
@@ -1156,6 +1183,8 @@ def _rotation_status(positions: dict[str, float], portfolio: dict | None = None)
         "last_review_date": str(prior_reviews[-1].date()) if prior_reviews else None,
         "next_review_date": "今天" if is_review else f"约{trading_days_until_review}个交易日后",
         "days_until_review": trading_days_until_review,
+        "candidate_mode": "EXECUTABLE_SCREEN" if market_ok else "OBSERVE_ONLY",
+        "filter_counts": filter_counts,
         "candidates": candidates[:10], "proposed": proposed, "orders": orders,
         "parameters": {"lookback_days": 200, "skip_recent_days": 20,
                        "rebalance_trading_days": 20, "positions": 4, "market_ma": 200},

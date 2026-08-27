@@ -98,6 +98,32 @@ def production_notifications(status: dict) -> list[tuple[str, str]]:
     return rows
 
 
+def watchlist_notifications(status: dict) -> list[tuple[str, str]]:
+    """Daily discovery digest; explicitly non-actionable when execution gates fail."""
+    if (status.get("data_freshness") or {}).get("status") != "CURRENT":
+        return []
+    rotation = next((item for item in status.get("strategies") or []
+                     if item.get("id") == "hk_liquid_trend_rotation_v2"), None)
+    candidates = (rotation or {}).get("candidates") or []
+    if not rotation or not candidates:
+        return []
+    top = candidates[:4]
+    market = rotation.get("market") or {}
+    lines = [
+        f"**港股每日观察候选｜{rotation.get('as_of')}**",
+        ("恒指MA200门控通过；仍需等待正式调仓日。" if market.get("eligible")
+         else "恒指低于MA200；以下仅作观察，不执行买入。"),
+    ]
+    for index, item in enumerate(top, 1):
+        lines.append(
+            f"{index}. {item.get('name')}({item.get('code')})｜"
+            f"200日动量{float(item.get('momentum_pct') or 0):+.1f}%｜"
+            f"风险调整分{float(item.get('score') or 0):.2f}")
+    lines.append("观察名单不是交易指令；只有正式调仓信号才进入执行队列。")
+    codes = "|".join(str(item.get("code")) for item in top)
+    return [(f"watchlist:hk_rotation:{rotation.get('as_of')}:{codes}", "\n".join(lines))]
+
+
 def governance_summary(*, notification_configured: bool) -> dict:
     return {
         "source_of_truth": "strategy-center/status",

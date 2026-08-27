@@ -56,3 +56,17 @@ def test_notification_governance_has_no_desktop_fallback():
     assert summary["notification"] == {
         "channel": "WECOM", "configured": False, "wecom_configured": False,
         "local_fallback_enabled": False, "status": "NOT_CONFIGURED"}
+
+
+def test_daily_watchlist_is_non_actionable_and_names_ranked_stocks():
+    status = {"data_freshness": {"status": "CURRENT"}, "strategies": [{
+        "id": "hk_liquid_trend_rotation_v2", "as_of": "2026-08-26",
+        "market": {"eligible": False},
+        "candidates": [{"code": "HK.01398", "name": "工商银行",
+                        "momentum_pct": 38.78, "score": 1.557}],
+    }]}
+    messages = signal_governance.watchlist_notifications(status)
+    assert len(messages) == 1
+    assert "工商银行(HK.01398)" in messages[0][1]
+    assert "仅作观察，不执行买入" in messages[0][1]
+    assert "不是交易指令" in messages[0][1]
