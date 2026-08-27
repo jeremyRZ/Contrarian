@@ -28,11 +28,4 @@
 
 2026-08-21 收盘价为 29.02 港元，RSI(2) 为 98.77，Z20 为 0.77。单一 RSI 已超买，但价格偏离不足，而且实时可沽空字段为空，因此不产生做空动作。
 
-## 复现
-
-```powershell
-.\.venv\Scripts\python.exe scripts\research_xiaomi_mean_reversion.py
-.\.venv\Scripts\python.exe -m pytest tests\test_xiaomi_mean_reversion.py -q
-```
-
-研究输出位于 `data/xiaomi_mean_reversion/research_result.json`。本模块不包含任何下单接口。
+研究输出保留在 `data/xiaomi_mean_reversion/research_result.json`；失败策略实现已删除，避免重新接入交易链路。

@@ -15,11 +15,16 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from .orb_universe import HK_LIQUID_SEED
 from . import monitor, forward_ledger, signal_governance, strategy_portfolio
 from ..futu_client import load_config
 
 ROOT = Path(__file__).resolve().parents[2]
+HK_LIQUID_SEED = [
+    "HK.00700", "HK.09988", "HK.03690", "HK.01024", "HK.01810",
+    "HK.00941", "HK.01211", "HK.00981", "HK.09618", "HK.09888",
+    "HK.00005", "HK.01299", "HK.02318", "HK.00388", "HK.00883",
+    "HK.02020", "HK.06618", "HK.09626", "HK.01398", "HK.03988",
+]
 DAILY_DIR = ROOT / ".universal_daily_60"
 UNIVERSE_FILE = ROOT / ".universal_daily" / "research_universe_60.csv"
 UNIVERSE_META_FILE = ROOT / ".universal_daily" / "research_universe_60.meta.json"

@@ -22,6 +22,10 @@ Thumbs.db
 .runtime/
 .universal_daily/
 .universal_daily_60/
+.research_daily_150/
+backups/
+data/xiaomi_option_backtest/dtop_miu/
+data/xiaomi_option_backtest/sample/
 orb_research_results.json
 orb_portfolio_results.json
 xiaomi_orb_results.json
