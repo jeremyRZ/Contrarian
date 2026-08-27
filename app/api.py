@@ -24,11 +24,10 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .futu_client import build_client_from_config, load_config
-from .modules import valuation, screener, monitor, ipo, missed_scan, price_alert, analyze, buybacks, news, southbound, reverse_signals, capital_flow, southbound_risk, fundamentals, filters, dividend, earnings, divergence, daily_report, intraday, backtest, strategy_config, decision, strategy_center, forward_ledger, notification_ledger, signal_governance, execution_alerts, westock_research, cn_research, research_assets, xiaomi_directional, xiaomi_options, option_mapper
+from .modules import valuation, monitor, ipo, price_alert, analyze, buybacks, news, southbound, reverse_signals, capital_flow, southbound_risk, fundamentals, filters, dividend, earnings, divergence, daily_report, strategy_center, forward_ledger, notification_ledger, signal_governance, execution_alerts, westock_research, cn_research, research_assets, xiaomi_directional, xiaomi_options, option_mapper
 from .markets import cn_lot_size, cn_price_limit, get_market_rules, resolve_security
 from .providers import MarketDataRouter, TigerPositionsProvider
-from .modules.screener import LEADERS
-from . import scheduler, intraday_scheduler, notify
+from . import hk_calendar, scheduler, intraday_scheduler, notify
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
@@ -38,6 +37,10 @@ CONFIG = load_config()
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     """统一管理后台调度线程与 Futu 连接。"""
+    try:
+        hk_calendar.refresh(client())
+    except Exception as exc:  # noqa: BLE001
+        print(f"港股交易日历更新失败，调度将保持关闭: {exc}")
     _startup_scheduler()
     _start_intraday_scheduler()
     try:
@@ -56,13 +59,6 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
-
-
-@app.get("/strategies.html", include_in_schema=False)
-@app.get("/intraday.html", include_in_schema=False)
-@app.get("/backtest.html", include_in_schema=False)
-def legacy_strategy_page():
-    return RedirectResponse("/strategy-center.html", status_code=308)
 
 
 @app.get("/ipo.html", include_in_schema=False)
@@ -93,7 +89,8 @@ def _wrap(result, error):
 
 
 def _webhook() -> str:
-    return CONFIG.get("wecom", {}).get("webhook", "")
+    return (os.environ.get("CONTRARIAN_WECOM_WEBHOOK", "")
+            or CONFIG.get("wecom", {}).get("webhook", ""))
 
 
 def _funds_note(portfolio: dict | None = None) -> str:
@@ -104,16 +101,18 @@ def _funds_note(portfolio: dict | None = None) -> str:
             funds, _ = client().account_summary_market("HK")
         except Exception:  # noqa: BLE001
             funds = None
-    if not funds or funds.get("cash") is None or funds.get("total_assets") is None:
+    if (not funds or funds.get("funds_complete") is not True
+            or funds.get("available_cash") is None or funds.get("total_assets") is None):
         return "富途实时资金不可用；不得据此执行新交易。"
     return (
-        f"富途实时资金：现金HK${float(funds['cash']):,.2f}／"
+        f"富途实时资金：可用港币购买力HK${float(funds['available_cash']):,.2f}／"
         f"总资产HK${float(funds['total_assets']):,.2f}；"
         f"快照{funds.get('funds_as_of') or funds.get('as_of') or '刚刚'}。")
 
 
 def _daily_jobs():
     """Record research, but publish trade language from one canonical source only."""
+    notify.retry_outbox(_webhook())
     status = strategy_center.get_status(client(), refresh=True)
     forward_ledger.record_status(status)
     forward_ledger.record_supertrend_exit_shadow()
@@ -125,6 +124,15 @@ def _daily_jobs():
     # Xiaomi momentum and option selectors remain readable research endpoints.
     # They intentionally do not run through the trade-notification path.
     return report
+
+
+@app.post("/internal/daily-jobs")
+def post_internal_daily_jobs(request: Request):
+    """Local watchdog catch-up; the launcher binds this service to loopback only."""
+    host = request.client.host if request.client else ""
+    if host not in {"127.0.0.1", "::1", "testclient"}:
+        return JSONResponse(status_code=403, content={"ok": False, "error": "LOCAL_ONLY"})
+    return _wrap(_daily_jobs(), None)
 
 
 def _startup_scheduler():
@@ -315,123 +323,6 @@ def get_valuation(code: str, financials: str = ""):
     return _wrap(result, err)
 
 
-@app.get("/screener")
-def get_screener(top_n: int = 20, codes: str = ""):
-    code_list = [c.strip() for c in codes.split(",") if c.strip()] if codes else None
-    sc = CONFIG.get("screener", {})
-    result, err = screener.screen(
-        client(), codes=code_list, top_n=top_n,
-        hstech_code=sc.get("hstech_code", "HK.800700"),
-        cash_full_stop=sc.get("cash_full_stop", True),
-    )
-    return _wrap(result, err)
-
-
-@app.post("/strategies/push")
-def post_strategies_push(force: bool = True):
-    """手动触发 6 大策略扫描并立即推送达标信号到企业微信（force 忽略冷却，适合手动按钮）。"""
-    cl, meta = _intraday_candidate_codes(client())
-    res = screener.run_scheduled_scan(
-        client(), codes=cl, webhook=_webhook(),
-        hstech_code=CONFIG.get("intraday", {}).get("hstech_code", "HK.800700"),
-        cash_full_stop=True, cooldown_sec=14400, max_push=5, force=force,
-    )
-    return _wrap(res, None)
-
-
-@app.get("/strategies/scan")
-def get_strategies_scan(top_n: int = 50):
-    """6 大策略扫描（持仓 + 观察池 + 龙头池组合），供 strategies.html 手动刷新，与推送同池。"""
-    cl, meta = _intraday_candidate_codes(client())
-    sc = CONFIG.get("screener", {})
-    result, err = screener.screen(
-        client(), codes=cl, top_n=top_n,
-        hstech_code=sc.get("hstech_code", "HK.800700"),
-        cash_full_stop=sc.get("cash_full_stop", True),
-    )
-    return _wrap(result, err)
-
-
-# ---------- 回测验证（阶段1） ----------
-@app.get("/backtest/report")
-def get_backtest_report(codes: str = "", forward_days: int = 10,
-                        window_days: int = 250, hstech_code: str = "HK.800700",
-                        refresh: int = 0, no_fee: int = 0):
-    """6 大策略信号历史回测。codes 逗号分隔；为空用龙头池(LEADERS)。refresh=1 强制重算。
-    no_fee=1 时不计交易成本（对比视角）。"""
-    code_list = [c.strip() for c in codes.split(",") if c.strip()] or None
-    cfg = strategy_config.load_config()
-    if refresh:
-        backtest.clear_caches()
-    rep = backtest.cached_report(
-        code_list, cfg, build_client_from_config(CONFIG),
-        window_days, forward_days, hstech_code, no_fee=bool(no_fee),
-    )
-    return _wrap(rep, None)
-
-
-@app.post("/backtest/run")
-async def post_backtest_run(request: Request):
-    """异步触发回测重算（清空缓存后重跑）。body 可选 {codes, forward_days, window_days}。"""
-    try:
-        data = await request.json()
-    except Exception:  # noqa: BLE001
-        data = {}
-    codes = data.get("codes") or None
-    if isinstance(codes, str):
-        codes = [c.strip() for c in codes.split(",") if c.strip()] or None
-    forward_days = int(data.get("forward_days", 10))
-    window_days = int(data.get("window_days", 250))
-    hstech_code = data.get("hstech_code", "HK.800700")
-    no_fee = bool(int(data.get("no_fee", 0)))
-    backtest.clear_caches()
-    cfg = strategy_config.load_config()
-    rep = backtest.run_backtest(
-        codes, cfg, build_client_from_config(CONFIG),
-        window_days, forward_days, hstech_code, no_fee=no_fee,
-    )
-    return _wrap(rep, None)
-
-
-@app.get("/backtest/debug")
-def get_backtest_debug(code: str = "HK.00700", window_days: int = 250,
-                       hstech_code: str = "HK.800700"):
-    """信号诊断：逐根 bar 统计各信号触发频次与评分分布，定位无成交原因。"""
-    cfg = strategy_config.load_config()
-    rep = backtest.debug_signals(code, cfg, build_client_from_config(CONFIG),
-                                 window_days, hstech_code)
-    return _wrap(rep, None)
-
-
-@app.get("/backtest/sweep")
-def get_backtest_sweep(codes: str = "", window_days: int = 250,
-                       hstech_code: str = "HK.800700",
-                       forward: str = "5,10,20", stop: str = "0.04,0.08",
-                       rsi2: str = "5,10", focus: str = "RSI2 逆向低吸"):
-    """参数寻优：持有天数 × 止损 × RSI2 阈值 网格回测，按期望值排序。"""
-    code_list = [c.strip() for c in codes.split(",") if c.strip()] or None
-    cfg = strategy_config.load_config()
-    fl = [int(x) for x in forward.split(",") if x.strip()]
-    sl = [float(x) for x in stop.split(",") if x.strip()]
-    rl = [float(x) for x in rsi2.split(",") if x.strip()]
-    rep = backtest.sweep(code_list, cfg, build_client_from_config(CONFIG),
-                         window_days, hstech_code, fl, sl, rl, focus)
-    return _wrap(rep, None)
-
-
-@app.get("/decision")
-def get_decision(code: str):
-    """LLM 决策层（M3）：回测门控 → 差异化判断。"""
-    res = decision.decide(code, client(), CONFIG)
-    return _wrap(res, None)
-
-
-@app.get("/strategies/config")
-def get_strategies_config():
-    """返回当前策略参数（strategies.yaml 与默认值合并）。"""
-    return _wrap(strategy_config.load_config(), None)
-
-
 @app.get("/strategy-center/status")
 def get_strategy_center_status(refresh: int = 0):
     """Qualified-strategy dashboard. Read-only; never places an order."""
@@ -447,48 +338,6 @@ def get_strategy_center_status(refresh: int = 0):
 @app.get("/forward-ledger")
 def get_forward_ledger(limit: int = 200):
     return _wrap(forward_ledger.dashboard(max(1, min(limit, 1000))), None)
-
-
-@app.post("/strategies/config")
-async def post_strategies_config(request: Request):
-    """保存策略参数（M4）：校验后落盘 strategies.yaml，并清空回测缓存以生效。
-
-    body 为部分配置（会与默认值深合并），例如：
-    {"strategies": {"deep_drop": {"drop_pct": 30}}, "push": {"light": 6.5}}
-    """
-    try:
-        body = json.loads((await request.body()) or b"{}")
-    except Exception as e:  # noqa: BLE001
-        return _wrap(None, "配置解析失败：" + str(e))
-    if not isinstance(body, dict):
-        return _wrap(None, "配置必须是 JSON 对象")
-    try:
-        saved = strategy_config.save_config(body)
-    except ValueError as e:
-        return _wrap(None, "配置校验失败：" + str(e))
-    # 参数变更后清空回测缓存，下次回测/决策用新参数
-    backtest.clear_caches()
-    return _wrap(saved, None)
-
-
-@app.post("/strategies/config/reset")
-def post_strategies_config_reset():
-    """恢复策略参数默认并落盘，清空回测缓存。"""
-    saved = strategy_config.reset_config()
-    backtest.clear_caches()
-    return _wrap(saved, None)
-
-
-@app.get("/missed-scan")
-def get_missed_scan(top_n: int = 5, pool: str = ""):
-    ms = CONFIG.get("missed_scan", {})
-    pool = pool or ms.get("pool", "leaders")
-    result, err = missed_scan.missed_scan(
-        client(), pool=pool, top_n=top_n or ms.get("top_n", 5),
-        min_drop_pct=ms.get("min_drop_pct", 20.0),
-        hstech_code=CONFIG.get("screener", {}).get("hstech_code", "HK.800700"),
-    )
-    return _wrap(result, err)
 
 
 @app.get("/monitor")
@@ -516,7 +365,9 @@ def post_daily_divergence_push():
 def get_holdings():
     """实际正股持仓及衍生品对应正股，供单票页快捷分析。"""
     try:
-        pos, err = client().positions()
+        futu = client()
+        pos, err = (futu.positions_market("HK") if hasattr(futu, "positions_market")
+                    else futu.positions())
     except Exception as e:  # noqa: BLE001
         return _wrap(None, str(e))
     if err:
@@ -661,11 +512,6 @@ def get_analyze_full(code: str):
     fund_data = sources.get("fundamentals") or {}
     research_data = westock_research.get_research(code, cl)
 
-    decision_result = decision.decide(
-        code, cl, CONFIG,
-        analysis_result=analysis_result,
-        reverse_result=reverse_result,
-    )
     evidence = _analysis_evidence(
         analysis=analysis_result,
         southbound_data=sb_data,
@@ -675,15 +521,6 @@ def get_analyze_full(code: str):
         fundamentals_data=fund_data,
         research_data=research_data,
     )
-    if evidence.get("readiness") != "READY":
-        decision_result = dict(decision_result or {})
-        decision_result.update({
-            "gated": True,
-            "evidence_gated": True,
-            "verdict": None,
-            "reason": evidence.get("message") or "关键研究证据不足，禁止形成完整买入结论",
-            "position_suggestion": "不新增仓位；补齐财务趋势和分析师评级后重新评估",
-        })
     return _wrap({
         "analysis": analysis_result,
         "evidence": evidence,
@@ -694,7 +531,6 @@ def get_analyze_full(code: str):
             "capital_flow": _embedded(cf_data, cf_err),
             "fundamentals": _embedded(fund_data),
             "research": _embedded(research_data),
-            "decision": _embedded(decision_result),
         },
     }, None)
 
@@ -888,37 +724,6 @@ def ipo_auto(code: str):
     return _wrap(result, err)
 
 
-# ---------- 盘中急跌联动 ----------
-def _run_intraday_scan(push: bool, threshold: float = None, codes: str = ""):
-    """运行盘中扫描；由只读查询和显式推送端点共同复用。"""
-    cfg = dict(CONFIG.get("intraday", {}) or {})
-    if threshold is not None:
-        try:
-            cfg["threshold"] = float(threshold)
-        except (ValueError, TypeError):
-            pass
-    if codes:
-        cl = [c.strip() for c in codes.split(",") if c.strip()]
-        meta = {c: {"name": c, "source": "自定义"} for c in cl}
-    else:
-        cl, meta = _intraday_candidate_codes(client())
-    webhook = _webhook() if push else ""
-    rep = intraday.run_intraday(client(), webhook, cfg, codes=cl, code_meta=meta)
-    return _wrap(rep, rep.get("error"))
-
-
-@app.get("/intraday/scan")
-def get_intraday_scan(threshold: float = None, codes: str = ""):
-    """只读触发恒科急跌联动低吸扫描。"""
-    return _run_intraday_scan(False, threshold, codes)
-
-
-@app.post("/intraday/scan/push")
-def post_intraday_scan_push(threshold: float = None, codes: str = ""):
-    """显式扫描并在触发时推送企业微信。"""
-    return _run_intraday_scan(True, threshold, codes)
-
-
 @app.get("/intraday/status")
 def get_intraday_status():
     """盘中调度器运行状态与配置（不触发扫描）。"""
@@ -945,57 +750,6 @@ async def post_intraday_config(request: Request):
     except (ValueError, TypeError):
         st = intraday_scheduler.status()
     return {"ok": True, "data": st}
-
-
-def _intraday_candidate_codes(cli):
-    """汇总候选池：持仓正股 + 本地观察池 + 龙头池，去重。返回 (codes, code_meta)。"""
-    codes: list = []
-    meta: dict = {}
-    try:
-        pos, _ = cli.positions()
-        if pos is not None and not pos.empty:
-            cols = {c.lower(): c for c in pos.columns}
-            c_code = cols.get("code")
-            c_name = cols.get("stock_name") or cols.get("name")
-            for _, row in pos.iterrows():
-                code = str(row[c_code])
-                name = str(row[c_name]) if c_name else code
-                if code in meta:
-                    continue
-                meta[code] = {"name": name, "source": "持仓"}
-                codes.append(code)
-    except Exception:  # noqa: BLE001
-        pass
-    for it in _read_watchlist():
-        code = str(it.get("code", "")).strip()
-        if not code or code in meta:
-            continue
-        meta[code] = {"name": str(it.get("name", "")).strip() or code, "source": "观察"}
-        codes.append(code)
-    for code in LEADERS:
-        if code in meta:
-            continue
-        meta[code] = {"name": code, "source": "龙头"}
-        codes.append(code)
-    return codes, meta
-
-
-def _intraday_run():
-    """注入调度器的扫描函数：汇总候选池并跑一次盘中扫描（推送由 run_intraday 内部判定）。"""
-    cfg = CONFIG.get("intraday", {}) or {}
-    cl, meta = _intraday_candidate_codes(client())
-    return intraday.run_intraday(client(), _webhook(), cfg, codes=cl, code_meta=meta)
-
-
-def _strategy_run():
-    """注入调度器的 6 策略扫描函数：汇总候选池并跑一次全策略扫描（推送由 run_scheduled_scan 内部判定）。"""
-    cfg = CONFIG.get("intraday", {}) or {}
-    cl, meta = _intraday_candidate_codes(client())
-    return screener.run_scheduled_scan(
-        client(), codes=cl, webhook=_webhook(),
-        hstech_code=cfg.get("hstech_code", "HK.800700"),
-        cash_full_stop=True, cooldown_sec=14400, max_push=5, force=False,
-    )
 
 
 def _price_alert_run():
@@ -1059,7 +813,7 @@ def _formal_execution_payload() -> dict | None:
     if (xiaomi.get("raw_action") or xiaomi.get("action")) == "BUY":
         account = dict(status.get("portfolio") or {})
         account["total_assets"] = min(float(account.get("total_assets") or 20_000), 20_000)
-        account["cash"] = min(float(account.get("cash") or 20_000), 20_000)
+        account["cash"] = min(float(account.get("available_cash") or 0), 20_000)
         option_review, _ = option_mapper.analyze(
             client(), "HK.01810", "BUY", account,
             historical_gate_passed=bool(
@@ -1069,6 +823,7 @@ def _formal_execution_payload() -> dict | None:
 
 def _formal_execution_run():
     """Push formal stock timing and explicit option rejection/review every phase."""
+    notify.retry_outbox(_webhook())
     alert = _formal_execution_payload()
     if not alert:
         return {"pushed": 0, "scan_type": "formal_execution", "alert": None}

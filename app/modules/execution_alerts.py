@@ -23,8 +23,13 @@ def build(status: dict, *, now: datetime | None = None,
     action = str(xiaomi.get("raw_action") or xiaomi.get("action") or "").upper()
     if action not in {"BUY", "SELL"}:
         return None
-    phase = execution_phase(now)
     as_of = str(xiaomi.get("as_of") or "unknown")
+    try:
+        signal_date = datetime.fromisoformat(as_of).date()
+    except ValueError:
+        signal_date = None
+    phase = ("PENDING_NEXT_SESSION" if signal_date and now.date() <= signal_date
+             else execution_phase(now))
     qty = int(xiaomi.get("raw_suggested_qty") or xiaomi.get("suggested_qty")
               or xiaomi.get("held_qty") or 0)
     signal_price = float(xiaomi.get("price") or 0)
@@ -35,7 +40,8 @@ def build(status: dict, *, now: datetime | None = None,
     price_for_funds = float(live_price or signal_price or 0)
     reference_required = qty * price_for_funds if action == "BUY" else 0.0
     affordable = cash is not None and float(cash) >= reference_required
-    executable = action != "BUY" or (phase != "LATE_DO_NOT_CHASE" and affordable)
+    executable = (phase != "PENDING_NEXT_SESSION"
+                  and (action != "BUY" or (phase != "LATE_DO_NOT_CHASE" and affordable)))
     current_action = action if executable else "WAIT"
     current_qty = qty if executable else 0
     required = current_qty * price_for_funds if current_action == "BUY" else 0.0
@@ -56,6 +62,8 @@ def build(status: dict, *, now: datetime | None = None,
     if action == "BUY":
         if not affordable:
             verdict = "富途实时可用现金不足，禁止执行买入"
+        elif phase == "PENDING_NEXT_SESSION":
+            verdict = f"收盘信号已生成：下一交易日开盘前复核买入小米正股{qty}股"
         elif phase == "PREOPEN":
             verdict = f"开盘前计划：复核买入小米正股{qty}股"
         elif phase == "OPEN_WINDOW":
@@ -63,7 +71,8 @@ def build(status: dict, *, now: datetime | None = None,
         else:
             verdict = "原开盘买入窗口已过，不按盘中涨幅追价"
     else:
-        verdict = f"退出信号：复核卖出小米现有{qty}股"
+        verdict = (f"收盘退出信号已生成：下一交易日开盘复核卖出小米现有{qty}股"
+                   if phase == "PENDING_NEXT_SESSION" else f"退出信号：复核卖出小米现有{qty}股")
     lines = [
         f"**小米正式策略执行提醒｜{phase}**",
         verdict,

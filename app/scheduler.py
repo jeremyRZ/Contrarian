@@ -9,6 +9,7 @@ import logging
 import threading
 import time
 from datetime import datetime, timedelta
+from . import hk_calendar
 
 logger = logging.getLogger("hk-scheduler")
 _started = False
@@ -17,12 +18,19 @@ _stop = threading.Event()
 
 
 def _next_run_time(hour: int, minute: int) -> float:
-    """计算下一次目标执行时刻的时间戳（今天该时刻若已过则顺延到明天）。"""
+    """Calculate the next post-close run from the cached HKEX calendar."""
     now = datetime.now()
-    target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    if target <= now:
-        target += timedelta(days=1)
-    return target.timestamp()
+    for offset in range(401):
+        day = now.date() + timedelta(days=offset)
+        periods = hk_calendar.periods(day)
+        if not periods:
+            continue
+        configured = datetime.combine(day, datetime.min.time()).replace(hour=hour, minute=minute)
+        close = datetime.combine(day, periods[-1][1])
+        target = min(configured, close + timedelta(minutes=30))
+        if target > now:
+            return target.timestamp()
+    raise RuntimeError("港股交易日历缺失或已过期，每日调度已停止")
 
 
 def start_scheduler(run_fn, hour: int = 16, minute: int = 30, enabled: bool = True) -> None:

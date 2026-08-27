@@ -16,7 +16,8 @@ logger = logging.getLogger("hk-daily-report")
 
 def _holdings_stocks(client) -> Tuple[List[Tuple[str, str]], Optional[str]]:
     """取持仓正股列表 [(code, name)]，过滤窝轮/杠杆 ETF 与停牌/无报价标的。返回 (list, error)。"""
-    pos, err = client.positions()
+    pos, err = (client.positions_market("HK") if hasattr(client, "positions_market")
+                else client.positions())
     if err:
         return [], err
     if pos is None or (hasattr(pos, "empty") and pos.empty):

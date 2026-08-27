@@ -36,14 +36,6 @@
       <div id="an_result" class="muted" style="margin-top:12px">输入代码后点击「分析」，或从错杀猎手列表点击股票</div>
     </section>
 
-    <section class="card decision-card">
-      <div class="card-head">
-        <div class="card-title">猎手观点<span class="sub">回测门控后的决策摘要</span></div>
-        <div id="dec_badge" class="pill warn">—</div>
-      </div>
-      <div id="an_dec" class="muted">分析后显示结论、主要风险与仓位建议</div>
-    </section>
-
     <section class="card">
       <div class="card-head">
         <div class="card-title">证据完整度 <span class="sub">先判断数据是否足够，再看结论</span></div>
@@ -143,7 +135,6 @@ function renderExtras(extras) {
   renderCapitalFlow(extras.capital_flow || {ok:false,error:'无资金流数据'});
   renderFundamentals(extras.fundamentals || {ok:false,error:'无基本面数据'});
   renderResearch(extras.research || {ok:false,error:'无投研数据'});
-  renderDecision(extras.decision || {ok:false,error:'无决策数据'});
 }
 
 function renderSouthbound(j) {
@@ -313,53 +304,6 @@ function renderFundamentals(j) {
 
   if (d.note) h += '<div class="muted" style="margin-top:10px;font-size:12px">'+esc(d.note)+'</div>';
   el.innerHTML = h || '<span class="muted">暂无数据</span>';
-}
-
-function renderDecision(j) {
-  const el = $('an_dec');
-  const badge = $('dec_badge');
-  if (!j.ok) {
-    if (badge) badge.outerHTML = '<div id="dec_badge" class="pill risk">异常</div>';
-    el.innerHTML = '<span class="muted">决策层异常：'+esc(j.error||'')+'</span>';
-    return;
-  }
-  const d = j.data || {};
-  const bt = d.backtest || {};
-  const btTxt = (bt.win_rate==null) ? '' :
-    `回测 ${bt.n} 笔 · 胜率 ${bt.win_rate}% · 均收益 ${bt.avg_ret}% · ${bt.confidence||''}`;
-
-  if (d.gated) {
-    if (badge) badge.outerHTML = '<div id="dec_badge" class="pill warn">未触发</div>';
-    let h = '<div class="kv"><span>门控原因</span><span class="muted">'+esc(d.reason||'未触发 LLM')+'</span></div>';
-    if (btTxt) h += '<div class="kv"><span>回测参考</span><span class="muted">'+esc(btTxt)+'</span></div>';
-    h += '<div class="hint-bar" style="margin-top:10px">LLM 仅在「回测验证通过（胜率≥门槛）」时调用，避免对未验证信号浪费算力或编造结论。配置 config.llm.api_key 后启用。</div>';
-    el.innerHTML = h;
-    return;
-  }
-
-  // 已调用 LLM，展示差异化判断
-  const v = d.verdict || '—';
-  const vcls = v.indexOf('低吸')>=0 ? 'good' : (v.indexOf('回避')>=0 ? 'risk' : 'warn');
-  if (badge) badge.outerHTML = '<div id="dec_badge" class="pill '+vcls+'">'+esc(v)+'</div>';
-  let h = '';
-  h += '<div class="kv"><span>模型</span><span class="muted">'+esc(d.model||'—')+(d.confidence?(' · 置信 '+esc(d.confidence)):'')+'</span></div>';
-  if (btTxt) h += '<div class="kv"><span>回测依据</span><span class="muted">'+esc(btTxt)+'</span></div>';
-
-  const ps = d.per_signal || [];
-  if (ps.length) {
-    h += '<div style="margin:10px 0 4px;font-weight:600;color:#555">信号级差异化判断</div>';
-    h += ps.map(x=>(
-      '<div class="kv"><span>'+esc(x.signal||'')+'</span><span>'+esc(x.view||'')+
-      (x.action?(' <b>→ '+esc(x.action)+'</b>'):'')+'</span></div>'
-    )).join('');
-  }
-  if (d.rationale) h += '<div class="kv"><span>综合逻辑</span><span>'+esc(d.rationale)+'</span></div>';
-  if (d.risk) h += '<div class="kv"><span>主要风险</span><span class="risk-text">'+esc(d.risk)+'</span></div>';
-  if (d.position_suggestion) h += '<div class="kv"><span>仓位建议</span><span>'+esc(d.position_suggestion)+'</span></div>';
-  if (!d.parse_ok && d.decision) {
-    h += '<div class="muted" style="margin-top:8px;white-space:pre-wrap">'+esc(d.decision)+'</div>';
-  }
-  el.innerHTML = h || '<span class="muted">无可展示决策</span>';
 }
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }

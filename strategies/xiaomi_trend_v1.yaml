@@ -6,18 +6,18 @@ data_frequency: daily
 direction: long_only
 signal:
   entry:
-    - close_above_ma60
-    - ma20_above_ma60
+    close_above_ma_days: 60
+    fast_ma_days: 20
+    slow_ma_days: 60
   exit:
-    - close_below_ma20
-    - drawdown_from_position_high_pct: 15
+    close_below_ma_days: 20
+    drawdown_from_position_high_pct: 15
 execution:
   signal_at: close
   fill_at: next_open
   allocation_pct: 50
   board_lot: 200
-  fee_bps_per_side: 12
-  slippage_bps_per_side: 8
+  cost_model: hk_cash_equity_v1
 validation:
   parameter_selection_end: 2023-12-31
   untouched_test_start: 2024-01-01

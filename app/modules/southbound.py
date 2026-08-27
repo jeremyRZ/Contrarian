@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from ..cache import cached
+from ..numbers import as_float as _num
 
 ROOT = Path(__file__).resolve().parents[2]
 CACHE_DIR = ROOT / ".runtime" / "southbound"
@@ -47,16 +48,6 @@ def _load_holding_cache(hk: str) -> Optional[dict]:
         data["source_note"] = f"东方财富当前不可达，展示 {data.get('date') or '最近一次'} 的缓存数据"
         return data
     except (OSError, ValueError, TypeError):
-        return None
-
-
-def _num(v):
-    try:
-        if v is None or v == "":
-            return None
-        f = float(v)
-        return None if f != f else f
-    except (ValueError, TypeError):
         return None
 
 

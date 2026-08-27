@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 
@@ -42,9 +43,11 @@ def _send_wecom(text: str, webhook: str = "", timeout: int = 5) -> tuple[bool, s
 
 def push_wecom(text: str, webhook: str = "", timeout: int = 5) -> bool:
     """推送 markdown 消息到企业微信群机器人。无 webhook 时降级为日志，返回是否真正推送。"""
-    fingerprint = f"direct:{hash(text)}"
+    fingerprint = "direct:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
     ok, detail = _send_wecom(text, webhook, timeout)
     notification_ledger.record(fingerprint, text, "SENT" if ok else "FAILED", detail=detail)
+    if not ok:
+        notification_ledger.enqueue(fingerprint, text, detail)
     return ok
 
 
@@ -68,7 +71,26 @@ def push_if_new(fingerprint: str, text: str, webhook: str = "",
                                detail=detail, channel=channel)
     if ok:
         _LAST_PUSH[fingerprint] = now
+    else:
+        notification_ledger.enqueue(fingerprint, text, detail)
     return ok
+
+
+def retry_outbox(webhook: str, limit: int = 20) -> dict:
+    """Retry persisted messages with exponential backoff."""
+    sent = failed = 0
+    for item in notification_ledger.due(limit):
+        ok, detail = _send_wecom(item["message"], webhook)
+        notification_ledger.record(item["fingerprint"], item["message"],
+                                   "SENT" if ok else "RETRY_FAILED", detail=detail)
+        if ok:
+            notification_ledger.mark_delivered(item["id"])
+            _LAST_PUSH[item["fingerprint"]] = time.time()
+            sent += 1
+        else:
+            notification_ledger.mark_failed(item["id"], item["attempts"], detail)
+            failed += 1
+    return {"sent": sent, "failed": failed}
 
 
 def notify_alerts(alerts: list, webhook: str = "", prefix: str = "📊 港股持仓预警",

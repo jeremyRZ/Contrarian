@@ -7,7 +7,7 @@
 设计要点：
   - 非交易时段睡眠至下一交易时段开盘，避免在休市时反复空跑
   - 交易时段内按 interval_min 睡眠（分块 sleep，可被 stop / 开关切换唤醒）
-  - run_fn 由调用方注入（即 intraday.run_intraday），本模块不感知业务
+  - run_fn 由调用方注入，本模块只负责执行提醒与风险检查
 """
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ import threading
 from datetime import datetime, timedelta
 
 import yaml
+from . import hk_calendar
 
 logger = logging.getLogger("hk-intraday-sched")
 
@@ -36,9 +37,6 @@ _state = {
     "pushes": 0,
     "last_index_change": None,
     "last_crash": None,
-    "strategy_scans": 0,
-    "strategy_pushes": 0,
-    "last_strategy_time": None,
     "interval_min": 30,
     "window": "09:30-16:00",
     "threshold": -2.0,
@@ -64,8 +62,6 @@ def _load_cfg(base: dict) -> dict:
 
 
 def _within_window(now: datetime, start: str, end: str) -> bool:
-    if now.weekday() >= 5:
-        return False
     try:
         sh, sm = (int(x) for x in str(start).split(":"))
         eh, em = (int(x) for x in str(end).split(":"))
@@ -75,29 +71,12 @@ def _within_window(now: datetime, start: str, end: str) -> bool:
     lo = timedelta(hours=sh, minutes=sm)
     hi = timedelta(hours=eh, minutes=em)
     cur = timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
-    # 港股持续交易时段为上午 09:30-12:00、下午 13:00-16:00。
-    lunch_start = timedelta(hours=12)
-    lunch_end = timedelta(hours=13)
-    return lo <= cur <= hi and not (lunch_start <= cur < lunch_end)
+    return lo <= cur <= hi and any(a <= t <= b for a, b in hk_calendar.periods(now.date()))
 
 
 def _next_session_start(now: datetime, start: str) -> datetime:
-    """返回下一次港股连续交易时段开始时间（工作日；不含交易所假期）。"""
-    try:
-        sh, sm = (int(x) for x in str(start).split(":"))
-    except (ValueError, AttributeError):
-        sh, sm = 9, 30
-    morning = now.replace(hour=sh, minute=sm, second=0, microsecond=0)
-    afternoon = now.replace(hour=13, minute=0, second=0, microsecond=0)
-    if now.weekday() < 5:
-        if now < morning:
-            return morning
-        if now < afternoon and now.time() >= now.replace(hour=12, minute=0).time():
-            return afternoon
-    target = morning + timedelta(days=1)
-    while target.weekday() >= 5:
-        target += timedelta(days=1)
-    return target
+    """Return the next segment from the cached HKEX calendar."""
+    return hk_calendar.next_period_start(now)
 
 
 def _next_open(now: datetime, start: str) -> datetime:
@@ -235,15 +214,10 @@ def _loop() -> None:
                         if isinstance(res, dict):
                             pushed = res.get("pushed", 0) or 0
                             _state["pushes"] += pushed
-                            if res.get("scan_type") == "six_strategy":
-                                _state["strategy_scans"] += 1
-                                _state["strategy_pushes"] += pushed
-                                _state["last_strategy_time"] = now.timestamp()
-                            else:
-                                idx = res.get("index") or {}
-                                if idx.get("change_rate") is not None:
-                                    _state["last_index_change"] = idx["change_rate"]
-                                _state["last_crash"] = bool(res.get("crash"))
+                            idx = res.get("index") or {}
+                            if idx.get("change_rate") is not None:
+                                _state["last_index_change"] = idx["change_rate"]
+                            _state["last_crash"] = bool(res.get("crash"))
                     except Exception as e:  # noqa: BLE001
                         logger.error("[IntradaySched] 执行扫描失败: %s", e)
                 _chunk_sleep(interval * 60)

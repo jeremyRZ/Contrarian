@@ -1,0 +1,52 @@
+strategy_id: hk_liquid_trend_rotation_v2
+status: forward_validation
+market: HK
+capital_hkd: 20000
+data_frequency: daily
+direction: long_only
+review_days: 20
+rebalance_anchor: 2026-08-18
+maximum_positions: 4
+per_position_target_allocation_pct: 25
+universe:
+  price_min_hkd: 2
+  historical_20d_turnover_min_hkd: 100000000
+market_regime:
+  index_code: HK.800000
+  moving_average_days: 200
+signal:
+  lookback_days: 200
+  skip_recent_days: 20
+  stock_moving_average_days: 200
+  volatility_days: 60
+  ranking: momentum_over_annualized_volatility
+execution:
+  fill_at: next_open
+  round_to_board_lot: true
+  cost_model: hk_cash_equity_v1
+validation:
+  test_return_pct: 61.3953
+  test_max_drawdown_pct: -14.7148
+  test_profit_factor: 2.6111
+  test_trades: 46
+  distinct_stocks: 28
+  conflicting_walk_forward:
+    return_pct: -22.27
+    profit_factor: 0.64
+    max_drawdown_pct: -29.43
+promotion_gate:
+  minimum_review_points: 3
+  minimum_complete_round_trips: 20
+  require_positive_net_return: true
+  minimum_profit_factor: 1.2
+  maximum_drawdown_pct: -20
+  maximum_fill_deviation_bps: 25
+  require_point_in_time_universe: true
+limitations:
+  - The historical candidate universe has selection bias; new entries remain under forward validation.
+  - Read-only advice; never submits a real order.
+runtime_guard:
+  validated_code_commit: 7fc6b6a290aa4ce1e39d338f356ca6d63b996c7a
+  validated_data_cutoff: 2026-08-21
+  parameter_sha256: d670568639e0fddfe91063de89373548ad4fb0fca30c26c3b81171d0d8884d3c
+  code_sha256: 809279c4c6c17cdd6a6c4db85a7847c12e86e2adeefa2a68f155b031f965bb43

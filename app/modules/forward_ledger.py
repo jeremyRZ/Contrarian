@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import json
-import math
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
+from app.hk_costs import SLIPPAGE_BPS, order_cost
 from .supertrend_research import SuperTrendParams, supertrend
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -86,7 +86,7 @@ def record_rotation_shadow(strategy: dict) -> int:
     prices = {str(x.get("code")): x.get("price") for x in strategy.get("candidates", [])}
     count = 0
     with _connect() as db:
-        for order in strategy.get("orders", []):
+        for order in strategy.get("shadow_orders", []):
             if order.get("action") not in {"BUY", "SELL"} or not order.get("difference_qty"):
                 continue
             code = str(order.get("code") or "")
@@ -102,12 +102,6 @@ def record_rotation_shadow(strategy: dict) -> int:
     return count
 
 
-def _order_cost(notional: float) -> float:
-    return (max(3.0, notional * .0003) + 15.0 +
-            notional * (.000027 + .0000015 + .0000565 + .000042) +
-            math.ceil(notional * .001))
-
-
 def _paper_dashboard() -> dict:
     with _connect() as db:
         snapshots = db.execute(
@@ -117,7 +111,7 @@ def _paper_dashboard() -> dict:
     for row in rows:
         row["details"] = json.loads(row.pop("payload"))
         row.update({"next_open": None, "fill_price": None, "estimated_fee_hkd": None,
-                    "slippage_bps": 8.0, "return_20d_pct": None,
+                    "slippage_bps": SLIPPAGE_BPS, "return_20d_pct": None,
                     "opportunity_cost_20d_pct": None, "status": "WAITING_FILL"})
         path = DAILY_DIR / f"{row['code'].replace('.', '_')}.csv"
         if not path.exists():
@@ -129,10 +123,10 @@ def _paper_dashboard() -> dict:
             continue
         next_open = float(future.iloc[0].open)
         side = 1 if row["action"] == "BUY" else -1
-        fill = next_open * (1 + side * .0008)
+        fill = next_open * (1 + side * SLIPPAGE_BPS / 10_000)
         qty = abs(int(row["difference_qty"]))
         row["next_open"] = next_open; row["fill_price"] = fill
-        row["estimated_fee_hkd"] = round(_order_cost(fill * qty), 2)
+        row["estimated_fee_hkd"] = round(order_cost(fill * qty, include_slippage=False), 2)
         row["status"] = "FILLED_SHADOW"
         if len(future) >= 20:
             close20 = float(future.iloc[19].close)
@@ -140,8 +134,33 @@ def _paper_dashboard() -> dict:
             row["return_20d_pct"] = round(raw if row["action"] == "BUY" else -raw, 2)
             row["opportunity_cost_20d_pct"] = round(-raw if row["action"] == "SELL" else 0.0, 2)
             row["status"] = "MATURE"
+    review_points = len({row["signal_date"] for row in rows})
+    completed_round_trips = 0
+    held: dict[str, int] = {}
+    for row in sorted(rows, key=lambda item: item["signal_date"]):
+        code, qty = row["code"], abs(int(row["difference_qty"]))
+        before = held.get(code, 0)
+        if row["action"] == "BUY":
+            held[code] = before + qty
+        elif row["action"] == "SELL" and before:
+            held[code] = max(0, before - qty)
+            completed_round_trips += int(before > 0 and held[code] == 0)
+    thresholds = {"minimum_review_points": 3, "minimum_complete_round_trips": 20,
+                  "require_positive_net_return": True, "minimum_profit_factor": 1.2,
+                  "maximum_drawdown_pct": -20, "maximum_fill_deviation_bps": 25,
+                  "require_point_in_time_universe": True}
+    blockers = []
+    if review_points < thresholds["minimum_review_points"]:
+        blockers.append(f"正式检查点{review_points}/3")
+    if completed_round_trips < thresholds["minimum_complete_round_trips"]:
+        blockers.append(f"完整模拟交易{completed_round_trips}/20")
+    blockers.append("历史时点股票池尚未重建")
+    promotion = {"eligible": False, "status": "COLLECTING", "thresholds": thresholds,
+                 "review_points": review_points,
+                 "complete_round_trips": completed_round_trips, "blockers": blockers,
+                 "note": "只做资格报告，不自动升级策略，也不允许按近期结果临时调参。"}
     return {"snapshot_days": int(snapshots[0] or 0), "snapshot_rows": int(snapshots[1] or 0),
-            "orders": rows, "order_count": len(rows),
+            "orders": rows, "order_count": len(rows), "promotion": promotion,
             "note": "影子成交采用下一交易日开盘加减8bps滑点，并计入港股小额订单费用。"}
 
 

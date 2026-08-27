@@ -8,16 +8,7 @@ from __future__ import annotations
 from typing import Optional, Tuple
 
 from ..cache import cached
-
-
-def _num(v):
-    try:
-        if v is None:
-            return None
-        f = float(v)
-        return None if f != f else f  # NaN -> None
-    except (ValueError, TypeError):
-        return None
+from ..numbers import as_float as _num
 
 
 @cached(skip_first=True)

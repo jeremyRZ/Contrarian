@@ -8,13 +8,13 @@ from __future__ import annotations
 
 PRODUCTION_STRATEGIES = {
     "xiaomi_trend_v1": "小米专属趋势",
-    "hk_liquid_trend_rotation_v2": "港股200日风险调整动量",
-    "hk_long_term_high_breakout_v1": "港股长期新高突破",
 }
 
 RESEARCH_MODELS = {
     "xiaomi_momentum_20d_v1": "小米20日方向观察",
     "xiaomi_option_selector_v1": "小米期权研究选择器",
+    "hk_liquid_trend_rotation_v2": "港股200日风险调整动量观察",
+    "hk_long_term_high_breakout_v1": "港股长期新高突破观察",
 }
 
 ACTION_TO_INTENT = {

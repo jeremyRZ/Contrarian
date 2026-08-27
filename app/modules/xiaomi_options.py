@@ -193,15 +193,23 @@ def analyze(client, cfg: dict | None = None) -> tuple[dict | None, str | None]:
         return base, None
     risk_pct = float(settings.get("max_premium_risk_pct", 1.0))
     cash_ratio = cash = total_assets = None
-    if hasattr(client, "cash_ratio"):
+    funds_complete = False
+    if hasattr(client, "account_summary_market"):
         try:
-            cash_ratio, cash, total_assets = client.cash_ratio()
+            funds, _ = client.account_summary_market("HK")
+            funds = funds or {}
+            cash_ratio = funds.get("cash_ratio")
+            cash = funds.get("available_cash")
+            total_assets = funds.get("total_assets")
+            stamp = datetime.fromisoformat(str(funds.get("as_of")))
+            funds_complete = (funds.get("funds_complete") is True
+                              and -5 <= (datetime.now() - stamp).total_seconds() <= 120)
         except Exception:  # noqa: BLE001
             pass
-    if total_assets is None:
+    if total_assets is None or not funds_complete:
         base.update({"instrument": "NONE", "action": "NO_TRADE",
                      "option_candidate": candidates[0],
-                     "recommendation": f"{side}通过市场门槛，但账户总资产不可用，风险预算无法验证；优先正股"})
+                     "recommendation": f"{side}通过市场门槛，但港股账户资金快照不完整或过期；禁止计算合约数"})
         return base, None
     risk_budget = float(total_assets) * risk_pct / 100
     affordable = [item for item in candidates

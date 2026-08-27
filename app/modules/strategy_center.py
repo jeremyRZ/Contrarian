@@ -5,17 +5,24 @@ positions to make a signal position-aware, but all output is a proposed order.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from functools import cache
+import hashlib
 import inspect
 import json
 from pathlib import Path
 import re
+import subprocess
 import time
 from typing import Any
 
 import numpy as np
 import pandas as pd
-from . import monitor, forward_ledger, signal_governance, strategy_portfolio
+import yaml
+
+from app.hk_costs import affordable_board_lot, order_cost
+from app import hk_calendar
+from . import monitor, forward_ledger, signal_governance
 from ..futu_client import load_config
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -30,77 +37,71 @@ UNIVERSE_FILE = ROOT / ".universal_daily" / "research_universe_60.csv"
 UNIVERSE_META_FILE = ROOT / ".universal_daily" / "research_universe_60.meta.json"
 CAPITAL = 20_000.0
 DYNAMIC_POOL_SIZE = 60
-CANDIDATE_RESULT_FILE = ROOT / "data" / "risk_adjusted_momentum_candidate.json"
+STRATEGY_DIR = ROOT / "strategies"
 REFRESH_META_FILE = ROOT / ".runtime" / "strategy_cache_refresh.json"
 XIAOMI_POSITION_STATE_FILE = ROOT / ".runtime" / "xiaomi_trend_position_state.json"
+BREAKOUT_POSITION_STATE_FILE = ROOT / ".runtime" / "hk_breakout_positions.json"
 
 
-def _capability_roadmap(strategies: list[dict]) -> dict:
-    """Expose auditable capability states for the investor dashboard."""
-    active = []
-    for strategy in strategies:
-        validation = strategy.get("validation") or {}
-        active.append({
-            "id": strategy.get("id"), "name": strategy.get("name"),
-            "state": "RUNNING" if strategy.get("action") != "UNAVAILABLE" else "UNAVAILABLE",
-            "evidence": (f"历史收益 {validation.get('return_pct'):.2f}%"
-                         if validation.get("return_pct") is not None else "验证数据不可用"),
-            "output": "生成 BUY / SELL / HOLD / WAIT，并经过账户风险门控",
-        })
-    active.extend([
-        {"id": "portfolio_risk", "name": "富途持仓与组合风控", "state": "RUNNING",
-         "evidence": "读取实际持仓、现金、集中度、杠杆与期权到期风险",
-         "output": "阻止不满足风险预算的新仓位"},
-        {"id": "forward_ledger", "name": "前向信号成绩单", "state": "RUNNING",
-         "evidence": "按信号日期记录并在第5、20个交易日评价",
-         "output": "策略失效时自动暂停新增仓位"},
-        {"id": "point_in_time_universe", "name": "点时股票池与影子成交", "state": "RUNNING",
-         "evidence": "每日股票池、下一开盘、8bps滑点、费用和机会成本入库",
-         "output": "阻止幸存者偏差并验证可执行收益"},
-        {"id": "strategy_portfolio", "name": "多策略风险预算", "state": "RUNNING",
-         "evidence": "样本不足使用回撤代理，达到5个对齐样本后切换等风险贡献",
-         "output": "公开权重方法和样本状态，不伪装成熟风险平价"},
-        {"id": "option_mapper", "name": "正股到期权硬门控", "state": "RUNNING",
-         "evidence": "方向、Delta、IV、期限、价差、流动性、历史稳健性和1%风险预算",
-         "output": "任一门控失败即BLOCKED；退出信号不自动映射Put"},
-    ])
-    candidate = {}
+@cache
+def _strategy_contract(strategy_id: str) -> dict:
+    filenames = {
+        "hk_liquid_trend_rotation_v2": "hk_rotation_v2.yaml",
+        "hk_long_term_high_breakout_v1": "hk_breakout_v1.yaml",
+        "xiaomi_trend_v1": "xiaomi_trend_v1.yaml",
+    }
+    path = STRATEGY_DIR / filenames[strategy_id]
+    with path.open("r", encoding="utf-8") as stream:
+        contract = yaml.safe_load(stream) or {}
+    if contract.get("strategy_id") != strategy_id:
+        raise ValueError(f"策略契约ID不匹配：{path}")
+    return contract
+
+
+def _contract_guard(strategy_id: str, strategy_fn, data_as_of: str) -> dict:
+    """Fail closed when validated parameters or relevant code have drifted."""
+    contract = _strategy_contract(strategy_id)
+    expected = contract.get("runtime_guard") or {}
+    parameters = {key: value for key, value in contract.items() if key != "runtime_guard"}
+    parameter_hash = hashlib.sha256(
+        json.dumps(parameters, sort_keys=True, ensure_ascii=False, default=str,
+                   separators=(",", ":")).encode("utf-8")).hexdigest()
+    code_hash = hashlib.sha256(inspect.getsource(strategy_fn).encode("utf-8")).hexdigest()
     try:
-        candidate = json.loads(CANDIDATE_RESULT_FILE.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        pass
-    history = candidate.get("historical_2022_2026", {})
-    learning = [
-        {"id": "risk_adjusted_momentum_200", "name": "200日风险调整动量",
-         "state": "VALIDATING", "progress": "已接入信号引擎、点时股票池和前向影子成交",
-         "evidence": (f"历史收益 {history.get('net_return_pct', 0):.2f}% · PF {history.get('profit_factor', 0):.2f}"
-                      if history else "候选报告不可用"),
-         "blocker": "当前150只历史研究池仍有选择偏差，正式提醒保持REVIEW而非自动交易"},
-        {"id": "xiaomi_momentum_20d_v1", "name": "小米20日方向观察",
-         "state": "VALIDATING", "progress": "仅记录短期看多、看空或中性，不生成交易动作",
-         "evidence": "独立测试收益4.68% · Sharpe 0.29 · PF 1.06",
-         "blocker": "证据不足以取得交易决策权，也不得覆盖小米正式趋势策略"},
-        {"id": "xiaomi_supertrend_options", "name": "SuperTrend小米期权",
-         "state": "REJECTED", "progress": "继续寻找稳定的方向、期限与行权价组合",
-         "evidence": "固定参数邻域稳定性未达到75%门槛",
-         "blocker": "历史门槛关闭，不产生期权买入提醒"},
-        {"id": "intraday_research", "name": "港股日内策略",
-         "state": "REJECTED", "progress": "研究ORB、恐慌反转与分钟级执行",
-         "evidence": "现有样本外结果未通过质量门槛",
-         "blocker": "交易成本和稳定性不足"},
-    ]
-    next_actions = [
-        {"order": 1, "name": "200日调仓引擎", "deliverable": "已完成：BUY / SELL / HOLD / CASH及账户差异",
-         "acceptance": "正式调仓日才生成订单；不误卖非策略持仓"},
-        {"order": 2, "name": "点时股票池与影子成交", "deliverable": "已完成：逐日快照、开盘成交、滑点、费用和机会成本",
-         "acceptance": "数据库唯一约束确保同日重复刷新不重复记账"},
-        {"order": 3, "name": "策略组合", "deliverable": "已完成：前向样本成熟后自动切换等风险贡献",
-         "acceptance": "不足5个对齐样本明确显示COLLECTING"},
-        {"order": 4, "name": "期权映射层", "deliverable": "已完成：正股方向与期权赔率双重硬门控",
-         "acceptance": "未通过历史稳健性与风险预算只显示BLOCKED"},
-    ]
-    return {"active": active, "learning": learning, "next": next_actions,
-            "rule": "只有真实运行代码进入正在做；研究代码不得冒充可执行策略"}
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True,
+            text=True, check=True, timeout=3).stdout.strip()
+        dirty = bool(subprocess.run(
+            ["git", "status", "--porcelain", "--", str(Path(__file__).relative_to(ROOT)),
+             str((STRATEGY_DIR / {
+                 "hk_liquid_trend_rotation_v2": "hk_rotation_v2.yaml",
+                 "hk_long_term_high_breakout_v1": "hk_breakout_v1.yaml",
+             }[strategy_id]).relative_to(ROOT))],
+            cwd=ROOT, capture_output=True, text=True, check=True, timeout=3).stdout.strip())
+        validated_commit = str(expected.get("validated_code_commit") or "")
+        commit_ok = bool(validated_commit) and subprocess.run(
+            ["git", "merge-base", "--is-ancestor", validated_commit, commit],
+            cwd=ROOT, capture_output=True, timeout=3).returncode == 0
+    except (OSError, subprocess.SubprocessError, KeyError):
+        commit, dirty, commit_ok = None, True, False
+    checks = {
+        "parameter_hash": parameter_hash == expected.get("parameter_sha256"),
+        "code_hash": code_hash == expected.get("code_sha256"),
+        "validated_commit": commit_ok,
+        "clean_relevant_files": not dirty,
+        "validated_data_cutoff": bool(expected.get("validated_data_cutoff")),
+    }
+    return {
+        "status": "MATCH" if all(checks.values()) else "BLOCKED",
+        "trading_authorized": False,
+        "checks": checks,
+        "parameter_sha256": parameter_hash,
+        "code_sha256": code_hash,
+        "code_commit": commit,
+        "validated_data_cutoff": expected.get("validated_data_cutoff"),
+        "runtime_data_as_of": data_as_of,
+        "reason": "前向验证未达升级门槛，仅允许观察候选",
+    }
 
 
 def _risk_settings() -> dict:
@@ -120,15 +121,17 @@ def _risk_position_size(entry: float, stop: float, lot_size: int, portfolio: dic
     settings = _risk_settings()
     account = portfolio or {}
     equity = float(account.get("total_assets") or CAPITAL)
-    cash_raw = account.get("cash")
-    cash = max(float(cash_raw), 0.0) if cash_raw is not None else equity
+    cash, funds_error = _spendable_cash(account)
+    if funds_error:
+        return {"qty": 0, "risk_hkd": 0.0, "risk_pct": 0.0,
+                "reason": funds_error}
     per_share_risk = max(float(entry) - float(stop), 0.0)
     if entry <= 0 or stop <= 0 or per_share_risk <= 0 or lot_size <= 0 or equity <= 0:
         return {"qty": 0, "risk_hkd": 0.0, "risk_pct": 0.0, "reason": "价格或账户数据不足"}
     risk_budget = equity * settings["max_trade_risk_pct"] / 100
     allocation_budget = min(cash, equity * max_position_pct / 100)
     qty_by_risk = int(risk_budget // (per_share_risk * lot_size)) * lot_size
-    qty_by_cash = int(allocation_budget // (entry * lot_size)) * lot_size
+    qty_by_cash = affordable_board_lot(entry, allocation_budget, lot_size)
     qty = max(0, min(qty_by_risk, qty_by_cash))
     risk_hkd = qty * per_share_risk
     return {"qty": qty, "risk_hkd": risk_hkd,
@@ -140,8 +143,13 @@ def _fixed_allocation_size(entry: float, lot_size: int, portfolio: dict | None,
                            capital: float, allocation_pct: float) -> dict:
     """Apply the frozen strategy's allocation contract without inventing a stop."""
     account = portfolio or {}
-    cash_raw = account.get("cash")
-    cash = max(float(cash_raw), 0.0) if cash_raw is not None else float(capital)
+    cash, funds_error = _spendable_cash(account)
+    if funds_error:
+        return {"qty": 0, "estimated_amount_hkd": 0.0,
+                "allocation_budget_hkd": 0.0, "available_cash_hkd": None,
+                "live_total_assets_hkd": account.get("total_assets"),
+                "post_trade_cash_hkd": None, "affordable": False,
+                "funds_source": account.get("funds_source"), "reason": funds_error}
     budget = min(cash, float(capital) * float(allocation_pct) / 100)
     total_assets = account.get("total_assets")
     source = account.get("funds_source") or "PORTFOLIO_SNAPSHOT"
@@ -150,16 +158,82 @@ def _fixed_allocation_size(entry: float, lot_size: int, portfolio: dict | None,
                 "available_cash_hkd": cash, "live_total_assets_hkd": total_assets,
                 "post_trade_cash_hkd": cash, "affordable": False,
                 "funds_source": source, "reason": "价格、现金或整手数据不足"}
-    qty = int(budget // (float(entry) * lot_size)) * lot_size
+    qty = affordable_board_lot(float(entry), budget, lot_size)
     estimated = max(qty, 0) * float(entry)
+    estimated_cost = order_cost(estimated) if qty else 0.0
     return {"qty": max(qty, 0), "estimated_amount_hkd": estimated,
             "allocation_budget_hkd": budget, "capital_hkd": float(capital),
             "allocation_pct": float(allocation_pct),
             "available_cash_hkd": cash, "live_total_assets_hkd": total_assets,
-            "post_trade_cash_hkd": round(max(cash - estimated, 0.0), 2),
-            "affordable": qty > 0 and estimated <= cash,
+            "estimated_cost_hkd": round(estimated_cost, 2),
+            "post_trade_cash_hkd": round(max(cash - estimated - estimated_cost, 0.0), 2),
+            "affordable": qty > 0 and estimated + estimated_cost <= cash,
             "funds_source": source,
             "reason": "按富途实时可用现金，并受冻结策略2万港币本金、50%配置和整手约束"}
+
+
+def _spendable_cash(account: dict, max_age_seconds: int = 120) -> tuple[float, str | None]:
+    """Return settled HKD cash only when the aggregate snapshot is complete and fresh."""
+    if account.get("funds_complete") is not True:
+        return 0.0, "账户资金快照不完整，禁止计算交易股数"
+    raw = account.get("available_cash")
+    stamp = account.get("funds_as_of")
+    if raw is None or not stamp:
+        return 0.0, "缺少港币可用购买力或资金时间戳，禁止计算交易股数"
+    try:
+        age = (datetime.now() - datetime.fromisoformat(str(stamp))).total_seconds()
+        cash = max(float(raw), 0.0)
+    except (TypeError, ValueError):
+        return 0.0, "资金快照格式无效，禁止计算交易股数"
+    if age < -5 or age > max_age_seconds:
+        return 0.0, "资金快照已过期，禁止计算交易股数"
+    return cash, None
+
+
+def _advance_breakout_position(position: dict, bar: dict, ma20: float,
+                               exit_cfg: dict) -> tuple[dict, str | None]:
+    """Advance one owned position exactly once per trading date and evaluate exits."""
+    state = dict(position)
+    bar_date = str(bar["date"])
+    if state.get("last_bar_date") != bar_date:
+        state["bars_held"] = int(state.get("bars_held", 0)) + 1
+        state["last_bar_date"] = bar_date
+    state["peak_price"] = max(float(state.get("peak_price") or state["entry_price"]),
+                              float(bar["high"]))
+    entry = float(state["entry_price"])
+    initial_stop = float(state["initial_stop"])
+    activated = state["peak_price"] >= entry * (
+        1 + float(exit_cfg["trailing_activation_profit_pct"]) / 100)
+    trailing_stop = (state["peak_price"] *
+                     (1 - float(exit_cfg["trailing_drawdown_pct"]) / 100)
+                     if activated else None)
+    state["trailing_active"] = activated
+    state["trailing_stop"] = trailing_stop
+    if float(bar["low"]) <= initial_stop:
+        return state, "INITIAL_STOP"
+    if trailing_stop is not None and float(bar["low"]) <= trailing_stop:
+        return state, "TRAILING_STOP"
+    if float(bar["close"]) < float(ma20):
+        return state, "CLOSE_BELOW_MA20"
+    if state["bars_held"] >= int(exit_cfg["maximum_hold_bars"]):
+        return state, "MAX_HOLD_40D"
+    return state, None
+
+
+def register_breakout_fill(code: str, qty: int, entry_price: float, atr: float,
+                           entry_date: str, book: str = "SIMULATED") -> dict:
+    """Persist strategy ownership after a confirmed simulated/live fill callback."""
+    contract = _strategy_contract("hk_long_term_high_breakout_v1")
+    multiple = float(contract["exit"]["initial_stop_atr14_multiple"])
+    state = _read_state(BREAKOUT_POSITION_STATE_FILE)
+    state[str(code)] = {"code": str(code), "qty": int(qty),
+                        "entry_price": float(entry_price),
+                        "initial_stop": float(entry_price) - float(atr) * multiple,
+                        "entry_date": str(entry_date), "last_bar_date": str(entry_date),
+                        "bars_held": 0, "peak_price": float(entry_price),
+                        "book": str(book).upper()}
+    _write_state(BREAKOUT_POSITION_STATE_FILE, state)
+    return state[str(code)]
 
 
 def _portfolio_gate(portfolio: dict) -> dict:
@@ -377,31 +451,9 @@ def _market_context(universe: dict, rotation: dict) -> dict:
             "classification_note": "当前分类为名称规则初分，仅用于导航，不参与正式行业归因"}
 
 
-def _replacement_decision(portfolio: dict, strategies: list[dict]) -> dict:
-    gate = portfolio.get("gate") or {}
-    if not gate.get("allow_new_risk"):
-        return {"status": "BLOCKED", "decision": "不新增也不替换",
-                "reason": "账户风险门控未通过，应先降低融资、集中度或杠杆暴露"}
-    opportunities = []
-    for strategy in strategies:
-        if strategy.get("action") not in {"BUY", "REVIEW"}:
-            continue
-        for item in strategy.get("proposed") or strategy.get("candidates") or []:
-            opportunities.append({"code": item.get("code"), "name": item.get("name"),
-                                  "strategy": strategy.get("name"), "score": item.get("score")})
-    if not opportunities:
-        return {"status": "NO_CANDIDATE", "decision": "维持现有组合",
-                "reason": "没有通过策略和市场门控的新候选，不为换仓而换仓"}
-    weakest = min(portfolio.get("underlyings") or [],
-                  key=lambda x: float(x.get("total_pl") or 0), default=None)
-    return {"status": "REVIEW", "decision": "进入替换复核",
-            "candidate": opportunities[0],
-            "compare_with": ({"code": weakest.get("code"), "name": weakest.get("name"),
-                              "total_pl": weakest.get("total_pl")} if weakest else None),
-            "reason": "只进入个股证据、风险收益比和交易成本复核；未证明优于现有持仓前不执行替换"}
-
-
 def _serial(v: Any) -> Any:
+    if isinstance(v, (date, datetime)):
+        return v.isoformat()
     if isinstance(v, (np.bool_, bool)):
         return bool(v)
     if isinstance(v, (np.integer,)):
@@ -421,8 +473,23 @@ def _read_daily(path: Path, *, completed_only: bool = True) -> pd.DataFrame:
     return x.sort_values("time_key").drop_duplicates("time_key", keep="last").set_index("time_key")
 
 
+def _read_state(path: Path) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_state(path: Path, value: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_suffix(path.suffix + ".tmp")
+    temp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp.replace(path)
+
+
 def _xiaomi_trailing_state(*, held: bool, bar_date, high: float, close: float) -> dict:
-    """Persist the observed post-entry high needed by the frozen 15% trail."""
+    """Persist the observed post-entry high required by the strategy contract."""
     state = {}
     try:
         state = json.loads(XIAOMI_POSITION_STATE_FILE.read_text(encoding="utf-8"))
@@ -453,7 +520,9 @@ def _xiaomi_trailing_state(*, held: bool, bar_date, high: float, close: float) -
     temp = XIAOMI_POSITION_STATE_FILE.with_suffix(".tmp")
     temp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
     temp.replace(XIAOMI_POSITION_STATE_FILE)
-    return {**state, "triggered": bool(drawdown is not None and drawdown <= -15.0)}
+    threshold = float(_strategy_contract("xiaomi_trend_v1")["signal"]["exit"]
+                      ["drawdown_from_position_high_pct"])
+    return {**state, "triggered": bool(drawdown is not None and drawdown <= -threshold)}
 
 
 def _snapshot_all(client, codes: list[str]) -> tuple[pd.DataFrame | None, list[str]]:
@@ -548,6 +617,8 @@ def _ensure_universe(client, force: bool = False) -> list[str]:
     out.to_csv(UNIVERSE_FILE, index=False)
     meta = {"selected_at": datetime.now().isoformat(timespec="seconds"),
             "method": "DYNAMIC_FULL_HK_LIQUIDITY_V1", "market_total": total,
+            "historical_validation_universe": "CURRENT_SURVIVOR_BIASED",
+            "promotion_eligible": False,
             "ordinary_tradable": int(len(basic)), "server_prefilter_total": prefilter_total,
             "server_prefilter_loaded": len(candidate_codes), "snapshots_received": before_liquidity,
             "passed_initial_filters": int(len(x)), "selected": int(len(out)),
@@ -594,6 +665,9 @@ def _portfolio_payload(client) -> dict:
             funds_error = str(exc)
     cash_ratio = (funds or {}).get("cash_ratio")
     cash = (funds or {}).get("cash")
+    available_cash = (funds or {}).get("available_cash")
+    funds_complete = (funds or {}).get("funds_complete", False)
+    funds_fields = (funds or {}).get("funds_fields", [])
     total_assets = (funds or {}).get("total_assets")
     funds_source = (funds or {}).get("source")
     funds_as_of = (funds or {}).get("as_of")
@@ -608,7 +682,9 @@ def _portfolio_payload(client) -> dict:
     if frame.empty:
         return {"available": True, "count": 0, "market_value": 0.0,
                 "total_pl": 0.0, "today_pl": 0.0, "positions": [],
-                "cash": cash, "cash_ratio": cash_ratio, "total_assets": total_assets,
+                "cash": cash, "available_cash": available_cash,
+                "funds_complete": funds_complete, "funds_fields": funds_fields,
+                "cash_ratio": cash_ratio, "total_assets": total_assets,
                 "funds_source": funds_source, "funds_as_of": funds_as_of,
                 "matching_accounts": matching_accounts, "active_accounts": active_accounts,
                 "funds_error": funds_error, "underlyings": [], "max_weight_pct": 0}
@@ -746,6 +822,9 @@ def _portfolio_payload(client) -> dict:
         "positions": rows,
         "underlyings": grouped,
         "cash": cash,
+        "available_cash": available_cash,
+        "funds_complete": funds_complete,
+        "funds_fields": funds_fields,
         "cash_ratio": cash_ratio,
         "total_assets": total_assets,
         "funds_source": funds_source,
@@ -786,6 +865,10 @@ def _merge_position_risk(portfolio: dict, scan: dict | None, error: str | None =
 
 
 def _universe_payload() -> dict:
+    rotation = _strategy_contract("hk_liquid_trend_rotation_v2")
+    signal = rotation["signal"]
+    universe_cfg = rotation["universe"]
+    market_ma = rotation["market_regime"]["moving_average_days"]
     """返回今日决策实际使用的研究股票池，供页面透明展示。"""
     if not UNIVERSE_FILE.exists():
         return {"count": 0, "stocks": []}
@@ -855,6 +938,12 @@ def _universe_payload() -> dict:
         "count": len(stocks), "stocks": stocks,
         "type": "DYNAMIC_FULL_HK_LIQUIDITY" if dynamic else "LEGACY_FIXED_SEED_FALLBACK",
         "stats": meta,
+        "point_in_time": {
+            "available_from": meta.get("selected_at"),
+            "historical_reconstruction_complete": False,
+            "promotion_eligible": False,
+            "reason": "仅从每日快照开始形成时点股票池；既往当前成分回测存在幸存者偏差",
+        },
         "basis": [
             "富途全港股普通股清单作为起点，不再从固定20只开始",
             "剔除退市、停牌、无有效买卖盘、股价低于2港元的股票",
@@ -865,52 +954,19 @@ def _universe_payload() -> dict:
         "limitation": ("动态池依赖当日快照；开盘初期成交额未形成时沿用最近一次有效池。"
                        if dynamic else "动态池尚未成功生成，目前仅使用旧池降级，不能视为全市场扫描。"),
         "daily_filters": [
-            "恒指收盘高于 MA120",
-            "20日平均成交额不少于1亿港元",
-            "年化波动率12%至70%",
-            "价格与MA20、MA60、MA120满足趋势条件",
-            "120日动量不少于10%，并按动量/波动率排序",
+            f"恒指收盘高于 MA{market_ma}",
+            f"股价不少于{universe_cfg['price_min_hkd']:g}港元，20日平均成交额不少于"
+            f"{universe_cfg['historical_20d_turnover_min_hkd'] / 100_000_000:g}亿港元",
+            f"个股收盘高于 MA{signal['stock_moving_average_days']}",
+            f"计算{signal['lookback_days']}日动量并跳过最近{signal['skip_recent_days']}日",
+            f"按动量/{signal['volatility_days']}日年化波动率排序",
         ],
-    }
-
-
-def _workflow(strategies: list[dict], gate: dict | None = None) -> dict:
-    actionable = []
-    for strategy in strategies:
-        action = strategy.get("action")
-        if action in {"BUY", "SELL", "REVIEW"}:
-            actionable.append({"strategy": strategy.get("name"), "action": action,
-                               "reason": strategy.get("reason"),
-                               "orders": strategy.get("proposed") or strategy.get("candidates") or []})
-    blocked = gate is not None and not gate.get("allow_new_risk", True)
-    return {
-        "steps": [
-            {"name": "收盘后更新", "rule": "从富途更新260根日线并校验数据日期"},
-            {"name": "市场门控", "rule": "恒指低于MA120时停止轮动和突破买入"},
-            {"name": "池内过滤", "rule": "过滤流动性、波动率、趋势、动量和突破条件"},
-            {"name": "排序与仓位", "rule": "轮动最多4只、总仓60%；突破单股20%；小米专属策略50%"},
-            {"name": "产生动作", "rule": "只输出BUY/SELL/HOLD/WAIT/REVIEW，不自动下真实订单"},
-            {"name": "下一交易日", "rule": "开盘前复核停牌、跳空和可买手数；用户确认后才执行"},
-            {"name": "持仓退出", "rule": "小米跌破MA20退出；轮动每20个交易日复核；突破执行策略止损与退出"},
-            {"name": "结果留痕", "rule": "每日信号写入前向台账；无信号也记录WAIT，避免只记成功案例"},
-        ],
-        "actionable": actionable,
-        "next_action": ("账户风险门控不通过：" + "；".join(gate.get("reasons", [])) + "。仅允许减仓、卖出或降低风险"
-                        if blocked else ("存在待执行动作，请逐项打开个股深度页核对风险与证据"
-                        if actionable else "当前没有合格交易；保持现金，下一交易日继续扫描")),
-        "execution_mode": "READ_ONLY_USER_CONFIRMATION_REQUIRED",
     }
 
 
 def _expected_completed_session(now: datetime | None = None):
     """Latest session that should have a completed daily bar in Hong Kong."""
-    now = now or datetime.now()
-    day = now.date()
-    if now.weekday() >= 5 or (now.hour, now.minute) < (16, 15):
-        day -= timedelta(days=1)
-    while day.weekday() >= 5:
-        day -= timedelta(days=1)
-    return day
+    return hk_calendar.latest_completed_session(now or datetime.now())
 
 
 def _cached_last_date(path: Path):
@@ -1005,31 +1061,45 @@ def _refresh_cache(client) -> list[str]:
 
 
 def _xiaomi_status(positions: dict[str, float], portfolio: dict | None = None) -> dict:
+    contract = _strategy_contract("xiaomi_trend_v1")
+    entry = contract["signal"]["entry"]
+    exit_cfg = contract["signal"]["exit"]
+    execution = contract["execution"]
+    fast_days = int(entry["fast_ma_days"])
+    slow_days = int(entry["slow_ma_days"])
+    exit_days = int(exit_cfg["close_below_ma_days"])
+    trailing_pct = float(exit_cfg["drawdown_from_position_high_pct"])
+    allocation_pct = float(execution["allocation_pct"])
+    board_lot = int(execution["board_lot"])
+    capital = float(contract["capital_hkd"])
     x = _read_daily(DAILY_DIR / "HK_01810.csv")
     close = x["close"]
     latest = x.iloc[-1]
-    ma20, ma60 = close.rolling(20).mean().iloc[-1], close.rolling(60).mean().iloc[-1]
+    ma20 = close.rolling(fast_days).mean().iloc[-1]
+    ma60 = close.rolling(slow_days).mean().iloc[-1]
+    exit_ma = close.rolling(exit_days).mean().iloc[-1]
     held = positions.get("HK.01810", 0) > 0
     trailing = _xiaomi_trailing_state(
         held=held, bar_date=x.index[-1], high=float(latest.high), close=float(latest.close))
     entry_ok = latest.close > ma60 and ma20 > ma60
-    exit_ok = held and latest.close < ma20
+    exit_ok = held and latest.close < exit_ma
     if trailing.get("triggered"):
         action, reason = "SELL", (
             f"收盘价较持仓后记录高点回撤{abs(float(trailing['drawdown_pct'])):.1f}%，"
-            "达到15%退出规则；下一交易日开盘卖出全部小米")
+            f"达到{trailing_pct:g}%退出规则；下一交易日开盘卖出全部小米")
     elif exit_ok:
         action, reason = "SELL", "收盘价跌破MA20；下一交易日开盘卖出全部小米"
     elif held:
-        action, reason = "HOLD", "趋势仍有效；收盘跌破MA20时退出，15%高点回撤需有入场状态才能核验"
+        action, reason = ("HOLD", f"趋势仍有效；收盘跌破MA{exit_days}时退出，"
+                          f"{trailing_pct:g}%高点回撤需有入场状态才能核验")
     elif entry_ok:
-        sizing = _fixed_allocation_size(float(latest.close), 200, portfolio, CAPITAL, 50.0)
+        sizing = _fixed_allocation_size(float(latest.close), board_lot, portfolio, capital, allocation_pct)
         qty = sizing["qty"]
         action, reason = "BUY" if qty else "WAIT", "收盘价>MA60且MA20>MA60；下一交易日开盘执行"
     else:
         action, reason = "WAIT", "小米趋势条件尚未同时成立"
-    exit_reference = float(ma20)
-    sizing = (_fixed_allocation_size(float(latest.close), 200, portfolio, CAPITAL, 50.0)
+    exit_reference = float(exit_ma)
+    sizing = (_fixed_allocation_size(float(latest.close), board_lot, portfolio, capital, allocation_pct)
               if action != "SELL" else {"qty": int(positions.get("HK.01810", 0)),
                                          "estimated_amount_hkd": None,
                                          "reason": "卖出全部现有持仓"})
@@ -1043,12 +1113,12 @@ def _xiaomi_status(positions: dict[str, float], portfolio: dict | None = None) -
         "trade_plan": {"trigger": float(latest.close), "stop": exit_reference,
                        "stop_type": "DAILY_CLOSE_BELOW_MA20",
                        "target": None, "risk_reward": None,
-                       "trailing_drawdown_pct": 15.0,
+                       "trailing_drawdown_pct": trailing_pct,
                        "validity": "下一交易日开盘复核", "status": action},
-        "strategy_contract": {"capital_hkd": CAPITAL, "allocation_pct": 50.0,
-                              "board_lot": 200, "direction": "LONG_ONLY",
-                              "exit": ["DAILY_CLOSE_BELOW_MA20", "POSITION_HIGH_DRAWDOWN_15PCT"]},
-        "validation": {"return_pct": 28.9729, "max_drawdown_pct": -14.4996, "profit_factor": 1.9091},
+        "strategy_contract": contract,
+        "validation": {"return_pct": contract["validation"]["test_return_pct"],
+                       "max_drawdown_pct": contract["validation"]["test_max_drawdown_pct"],
+                       "profit_factor": contract["validation"]["test_profit_factor"]},
     }
 
 
@@ -1075,12 +1145,24 @@ def _xiaomi_momentum_observation(formal_strategy: dict) -> dict:
 
 
 def _rotation_status(positions: dict[str, float], portfolio: dict | None = None) -> dict:
+    contract = _strategy_contract("hk_liquid_trend_rotation_v2")
+    signal = contract["signal"]
+    universe_cfg = contract["universe"]
+    market_ma_days = int(contract["market_regime"]["moving_average_days"])
+    lookback_days = int(signal["lookback_days"])
+    skip_days = int(signal["skip_recent_days"])
+    stock_ma_days = int(signal["stock_moving_average_days"])
+    volatility_days = int(signal["volatility_days"])
+    review_days = int(contract["review_days"])
+    max_positions = int(contract["maximum_positions"])
+    target_pct = float(contract["per_position_target_allocation_pct"])
+    history_required = lookback_days + skip_days
     universe = pd.read_csv(UNIVERSE_FILE)
     lots = {str(r.code): int(r.lot_size) for _, r in universe.iterrows()}
     names = {str(r.code): str(r["name"]) for _, r in universe.iterrows()}
     idx = _read_daily(DAILY_DIR / "HK_800000.csv")
     latest_date = idx.index[-1]
-    idx_ma200 = idx.close.rolling(200).mean().iloc[-1]
+    idx_ma200 = idx.close.rolling(market_ma_days).mean().iloc[-1]
     market_ok = idx.close.iloc[-1] > idx_ma200
     candidates = []
     filter_counts = {"history_or_date": 0, "outside_dynamic_pool": 0,
@@ -1088,7 +1170,7 @@ def _rotation_status(positions: dict[str, float], portfolio: dict | None = None)
                      "nonpositive_momentum": 0, "volatility": 0, "passed": 0}
     for path in DAILY_DIR.glob("HK_*.csv"):
         x = _read_daily(path)
-        if len(x) < 221 or latest_date not in x.index:
+        if len(x) < history_required + 1 or latest_date not in x.index:
             filter_counts["history_or_date"] += 1
             continue
         code = str(x.iloc[-1].get("code", ""))
@@ -1097,14 +1179,14 @@ def _rotation_status(positions: dict[str, float], portfolio: dict | None = None)
             continue
         close = x.close
         r = x.loc[latest_date]
-        ma200 = close.rolling(200).mean().loc[latest_date]
+        ma200 = close.rolling(stock_ma_days).mean().loc[latest_date]
         turn20 = x.turnover.rolling(20).mean().loc[latest_date]
-        vol60 = close.pct_change().rolling(60).std().loc[latest_date] * np.sqrt(252)
-        mom = close.iloc[-21] / close.iloc[-221] - 1
-        if turn20 < 100_000_000:
+        vol60 = close.pct_change().rolling(volatility_days).std().loc[latest_date] * np.sqrt(252)
+        mom = close.iloc[-(skip_days + 1)] / close.iloc[-(history_required + 1)] - 1
+        if turn20 < float(universe_cfg["historical_20d_turnover_min_hkd"]):
             filter_counts["turnover"] += 1
             continue
-        if r.close < 2:
+        if r.close < float(universe_cfg["price_min_hkd"]):
             filter_counts["price"] += 1
             continue
         if r.close <= ma200:
@@ -1118,13 +1200,12 @@ def _rotation_status(positions: dict[str, float], portfolio: dict | None = None)
             continue
         filter_counts["passed"] += 1
         lot = lots[code]
-        equity = float((portfolio or {}).get("total_assets") or CAPITAL)
-        cash = max(float((portfolio or {}).get("cash") or equity), 0)
-        allocation = min(equity * .25, cash)
-        qty = int(allocation // (float(r.close) * lot)) * lot
+        sized = _fixed_allocation_size(float(r.close), lot, portfolio,
+                                       float(contract["capital_hkd"]), target_pct)
+        qty = int(sized["qty"])
         executable_qty = qty if market_ok else 0
-        sizing = {"qty": executable_qty, "reference_qty": qty,
-                  "target_weight_pct": 25.0,
+        sizing = {**sized, "qty": executable_qty, "reference_qty": qty,
+                  "target_weight_pct": target_pct,
                   "estimated_amount_hkd": float(executable_qty * r.close),
                   "reference_amount_hkd": float(qty * r.close),
                   "reason": ("四只股票等权目标，按实际净资产、现金和港股手数取整"
@@ -1143,13 +1224,15 @@ def _rotation_status(positions: dict[str, float], portfolio: dict | None = None)
         })
     candidates.sort(key=lambda z: z["score"], reverse=True)
     dates = list(idx.index)
-    review_dates = [d for i, d in enumerate(dates) if i >= 220 and (i - 220) % 20 == 0]
+    anchor = pd.Timestamp(contract["rebalance_anchor"])
+    anchored_dates = [d for d in dates if d >= anchor]
+    review_dates = [d for i, d in enumerate(anchored_dates) if i % review_days == 0]
     is_review = latest_date in review_dates
     prior_reviews = [d for d in review_dates if d <= latest_date]
-    elapsed = len(dates) - 1 - 220
-    trading_days_until_review = 0 if is_review else 20 - (elapsed % 20)
+    elapsed = max(len(anchored_dates) - 1, 0)
+    trading_days_until_review = 0 if is_review else review_days - (elapsed % review_days)
     held_codes = {c for c, q in positions.items() if q > 0}
-    proposed = ([c for c in candidates if c["affordable"]][:4] if market_ok else [])
+    proposed = ([c for c in candidates if c["affordable"]][:max_positions] if market_ok else [])
     target_codes = {item["code"] for item in proposed}
     managed = forward_ledger.managed_codes("hk_liquid_trend_rotation_v2")
     strategy_holdings = held_codes & managed
@@ -1173,13 +1256,19 @@ def _rotation_status(positions: dict[str, float], portfolio: dict | None = None)
                 orders.append({"code": code, "name": names.get(code, code), "action": "SELL",
                                "current_qty": current, "target_qty": 0, "difference_qty": -current,
                                "reason": "跌出前4或不再满足流动性/趋势条件"})
-    action = "REVIEW" if is_review and orders else ("CASH" if is_review and not market_ok else "WAIT")
-    reason = ("正式调仓日：已生成持仓差异订单" if action == "REVIEW"
-              else ("正式调仓日且恒指门控关闭，保持现金" if action == "CASH"
-                    else (f"恒指低于MA200，{len(candidates)}只个股候选仅观察；"
-                          "今天也不是正式20交易日调仓点，不产生买卖动作"
-                          if not market_ok else
-                          f"当前有{len(candidates)}只个股通过筛选，但今天不是正式20交易日调仓点；不产生买卖动作")))
+    shadow_orders = orders
+    shadow_targets = proposed
+    for item in candidates:
+        item["suggested_qty"] = 0
+        item["estimated_amount"] = 0.0
+        item["candidate_status"] = "OBSERVE_ONLY_FORWARD_VALIDATION"
+        item["sizing"]["qty"] = 0
+        item["sizing"]["estimated_amount_hkd"] = 0.0
+    action = "NO_TRADE"
+    reason = (f"仅观察：{len(candidates)}只股票通过筛选；轮动策略前向证据不足，"
+              "不生成正式交易指令")
+    guard = _contract_guard("hk_liquid_trend_rotation_v2", _rotation_status,
+                            str(latest_date.date()))
     return {
         "id": "hk_liquid_trend_rotation_v2", "name": "港股200日风险调整动量", "status": "历史候选·前向验证中",
         "as_of": str(latest_date.date()), "action": action, "reason": reason,
@@ -1188,24 +1277,41 @@ def _rotation_status(positions: dict[str, float], portfolio: dict | None = None)
         "last_review_date": str(prior_reviews[-1].date()) if prior_reviews else None,
         "next_review_date": "今天" if is_review else f"约{trading_days_until_review}个交易日后",
         "days_until_review": trading_days_until_review,
-        "candidate_mode": "EXECUTABLE_SCREEN" if market_ok else "OBSERVE_ONLY",
+        "candidate_mode": "OBSERVE_ONLY",
         "filter_counts": filter_counts,
-        "candidates": candidates[:10], "proposed": proposed, "orders": orders,
-        "parameters": {"lookback_days": 200, "skip_recent_days": 20,
-                       "rebalance_trading_days": 20, "positions": 4, "market_ma": 200},
-        "validation": {"return_pct": 61.3953, "max_drawdown_pct": -14.7148,
-                       "profit_factor": 2.6111, "trades": 46, "distinct_stocks": 28},
+        "candidates": candidates[:10], "proposed": [], "orders": [],
+        "shadow_targets": shadow_targets, "shadow_orders": shadow_orders,
+        "contract_guard": guard,
+        "parameters": {"lookback_days": lookback_days, "skip_recent_days": skip_days,
+                       "rebalance_trading_days": review_days, "positions": max_positions,
+                       "market_ma": market_ma_days},
+        "strategy_contract": contract,
+        "validation": {"return_pct": contract["validation"]["test_return_pct"],
+                       "max_drawdown_pct": contract["validation"]["test_max_drawdown_pct"],
+                       "profit_factor": contract["validation"]["test_profit_factor"],
+                       "trades": contract["validation"]["test_trades"],
+                       "distinct_stocks": contract["validation"]["distinct_stocks"],
+                       "conflicting_walk_forward": contract["validation"]["conflicting_walk_forward"]},
     }
 
 
 def _breakout_status(positions: dict[str, float], portfolio: dict | None = None) -> dict:
+    contract = _strategy_contract("hk_long_term_high_breakout_v1")
+    universe_cfg = contract["universe"]
+    entry_cfg = contract["entry"]
+    exit_cfg = contract["exit"]
+    portfolio_cfg = contract["portfolio"]
+    market_ma_days = int(contract["market_regime"]["moving_average_days"])
+    breakout_days = int(entry_cfg["breakout_lookback_days"])
+    atr_days = int(exit_cfg["atr_days"])
     universe = pd.read_csv(UNIVERSE_FILE)
     lots = {str(r.code): int(r.lot_size) for _, r in universe.iterrows()}
     names = {str(r.code): str(r["name"]) for _, r in universe.iterrows()}
     idx = _read_daily(DAILY_DIR / "HK_800000.csv")
-    date = idx.index[-1]; hsi_ma = idx.close.rolling(120).mean().iloc[-1]
+    date = idx.index[-1]; hsi_ma = idx.close.rolling(market_ma_days).mean().iloc[-1]
     market_ok = idx.close.iloc[-1] > hsi_ma
     rows = []
+    bars_by_code: dict[str, pd.DataFrame] = {}
     for path in DAILY_DIR.glob("HK_*.csv"):
         x = _read_daily(path)
         if date not in x.index or len(x) < 221:
@@ -1213,35 +1319,82 @@ def _breakout_status(positions: dict[str, float], portfolio: dict | None = None)
         code = str(x.iloc[-1].get("code", ""))
         if code not in lots:
             continue
+        bars_by_code[code] = x
         c=x.close; z=x.loc[date]; ma50=c.rolling(50).mean(); ma200=c.rolling(200).mean()
         turn20=x.turnover.rolling(20).mean().loc[date]
         vol_ratio=z.volume/x.volume.rolling(20).mean().loc[date]
-        prior_high=x.high.rolling(120).max().shift(1).loc[date]
-        ok=(market_ok and turn20>=100_000_000 and z.close>=2 and z.close>ma200.loc[date]
+        prior_high=x.high.rolling(breakout_days).max().shift(1).loc[date]
+        ok=(market_ok and turn20>=float(universe_cfg["historical_20d_turnover_min_hkd"])
+            and z.close>=float(universe_cfg["price_min_hkd"]) and z.close>ma200.loc[date]
             and ma50.loc[date]>ma200.loc[date]>ma200.iloc[-21]
-            and z.close>prior_high and vol_ratio>=1.2)
+            and z.close>prior_high
+            and vol_ratio>=float(entry_cfg["volume_over_20d_average_ratio_min"]))
         if ok:
             lot=lots[code]
-            stop = min(float(prior_high), float(z.close) * .93)
-            sizing = _risk_position_size(float(z.close), stop, lot, portfolio, 20.0)
-            qty = sizing["qty"]
+            previous_close = c.shift(1)
+            true_range = pd.concat([
+                x.high - x.low,
+                (x.high - previous_close).abs(),
+                (x.low - previous_close).abs(),
+            ], axis=1).max(axis=1)
+            atr = float(true_range.rolling(atr_days).mean().loc[date])
+            stop = float(z.close) - atr * float(exit_cfg["initial_stop_atr14_multiple"])
+            sizing = _risk_position_size(
+                float(z.close), stop, lot, portfolio,
+                float(portfolio_cfg["per_position_allocation_pct"]))
+            reference_qty = sizing["qty"]
+            qty = 0
             rows.append({"code":code,"name":names.get(code,code),"price":float(z.close),
                          "volume_ratio":float(vol_ratio),"prior_high120":float(prior_high),
-                         "lot_size":lot,"suggested_qty":qty,"estimated_amount":float(qty*z.close),
-                         "sizing":sizing,
+                         "lot_size":lot,"suggested_qty":0,"reference_qty":reference_qty,
+                         "estimated_amount":0.0,
+                         "sizing":{**sizing, "qty":0, "reference_qty":reference_qty,
+                                   "estimated_amount_hkd":0.0},
                          "trade_plan":{"trigger":float(z.close),"stop":stop,
                                        "target":float(z.close+2*(z.close-stop)),
                                        "risk_reward":2.0,"validity":"下一交易日开盘复核"}})
     rows.sort(key=lambda r:r["volume_ratio"],reverse=True)
-    return {"id":"hk_long_term_high_breakout_v1","name":"港股长期新高突破","status":"已通过历史研究",
-            "as_of":str(date.date()),"action":"BUY" if any(r["suggested_qty"] for r in rows[:4]) else "WAIT",
-            "reason": (
-                "恒指低于MA120，市场门控不通过；禁止新开突破仓位"
-                if not market_ok
-                else ("发现放量突破，建议下一交易日开盘核对" if rows else "恒指环境通过，但当前没有120日放量新高突破")
-            ),
-            "market_eligible":bool(market_ok),"candidates":rows[:4],
-            "validation":{"return_pct":28.6405,"max_drawdown_pct":-12.5422,"profit_factor":1.7967,"trades":54}}
+    owned = _read_state(BREAKOUT_POSITION_STATE_FILE)
+    shadow_exits, state_anomalies = [], []
+    for code, position in list(owned.items()):
+        if position.get("book") == "REAL" and float(positions.get(code, 0)) <= 0:
+            state_anomalies.append(f"{code} 标记为突破策略真实持仓，但聚合账户中不存在")
+            continue
+        bars = bars_by_code.get(code)
+        if bars is None or date not in bars.index:
+            state_anomalies.append(f"{code} 缺少最新完整日线，退出规则未更新")
+            continue
+        bar = bars.loc[date]
+        ma20 = float(bars.close.rolling(20).mean().loc[date])
+        advanced, exit_reason = _advance_breakout_position(
+            position, {"date": str(date.date()), "high": float(bar.high),
+                       "low": float(bar.low), "close": float(bar.close)}, ma20, exit_cfg)
+        if exit_reason:
+            advanced["pending_exit"] = {"signal_date": str(date.date()),
+                                         "reason": exit_reason, "execution": "NEXT_OPEN"}
+            shadow_exits.append({"code": code, "name": names.get(code, code),
+                                 "action": "SELL", "qty": int(advanced.get("qty", 0)),
+                                 "reason": exit_reason, "signal_date": str(date.date()),
+                                 "execution": "NEXT_OPEN"})
+        owned[code] = advanced
+    if owned:
+        _write_state(BREAKOUT_POSITION_STATE_FILE, owned)
+    guard = _contract_guard("hk_long_term_high_breakout_v1", _breakout_status,
+                            str(date.date()))
+    return {"id":"hk_long_term_high_breakout_v1","name":"港股长期新高突破","status":"观察验证中",
+            "as_of":str(date.date()),"action":"NO_TRADE",
+            "reason":"仅观察：退出状态闭环和前向验证完成前不生成正式交易指令",
+            "market_eligible":bool(market_ok),
+            "candidates":rows[:int(portfolio_cfg["maximum_positions"])],
+            "owned_positions": list(owned.values()),
+            "shadow_exit_orders": shadow_exits,
+            "state_anomalies": state_anomalies,
+            "contract_guard":guard,
+            "strategy_contract":contract,
+            "validation":{"return_pct":contract["validation"]["test_return_pct"],
+                          "max_drawdown_pct":contract["validation"]["test_max_drawdown_pct"],
+                          "profit_factor":contract["validation"]["test_profit_factor"],
+                          "trades":contract["validation"]["test_trades"]}}
 
 
 def get_status(client, refresh: bool = False) -> dict:
@@ -1321,7 +1474,6 @@ def get_status(client, refresh: bool = False) -> dict:
             stock["stage"] = "专属策略"
     market_context = _market_context(universe_payload, strategies[1])
     action_queue = _action_queue(portfolio, strategies)
-    replacement = _replacement_decision(portfolio, strategies)
     payload = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "mode": "READ_ONLY_PAPER_ADVICE",
@@ -1330,21 +1482,16 @@ def get_status(client, refresh: bool = False) -> dict:
         "portfolio": portfolio,
         "market_context": market_context,
         "action_queue": action_queue,
-        "replacement_decision": replacement,
         "forward_scoreboard": {"summary": forward.get("summary", {}),
                                "strategy_stats": forward.get("strategy_stats", []),
                                "note": forward.get("note")},
         "paper_execution": forward.get("paper_execution", {}),
-        "strategy_portfolio": strategy_portfolio.build_allocation(
-            strategies, forward.get("evaluations", [])),
         "refresh_errors": errors[:8],
         "data_freshness": {**freshness, "refresh_attempted_now": refresh_attempted},
         "signal_governance": signal_governance.governance_summary(
             notification_configured=bool((load_config().get("wecom", {}) or {}).get("webhook"))),
         "research_observations": research_observations,
         "strategies": strategies,
-        "capability_roadmap": _capability_roadmap(strategies),
-        "workflow": _workflow(strategies, portfolio["gate"]),
         "intraday": {
             "name": "港股日内策略", "status": "禁用：样本外未通过", "action": "NO_TRADE",
             "reason": "ORB、恐慌反转和MACD分钟策略均未通过质量门槛",

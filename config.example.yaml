@@ -39,7 +39,8 @@ screener:
   default_watchlist: "leaders"
 
 # 企业微信群机器人（持仓预警 / 错杀观察 / 每日背离报告推送）
-# 在富途客户端或企业微信里建一个群机器人，复制其 Webhook 地址填到这里。
+# 优先使用环境变量 CONTRARIAN_WECOM_WEBHOOK，避免密钥进入Git。
+# 也可在本机未跟踪的 config.yaml 中填写。
 # 留空则所有推送降级为服务端日志（不报错、不阻塞）。
 wecom:
   webhook: ""

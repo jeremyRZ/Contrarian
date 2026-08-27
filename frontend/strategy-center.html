@@ -125,15 +125,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     </section>
 
     <section class="strategy-desk">
-      <div class="desk-head"><strong>正式策略动作台</strong><span>这里是唯一具有交易决策权的信号区域</span></div>
+      <div class="desk-head"><strong>策略状态台</strong><span>仅小米趋势具有正式决策权；轮动和突破只观察</span></div>
       <div class="strategy-row">
         <div><span>小米专属趋势</span><small>正式 · HK.01810 · MA20 / MA60</small></div><b id="xm_action">暂无</b><span id="xm_metrics">暂无</span><span id="xm_reason">暂无</span>
       </div>
       <div class="strategy-row">
-        <div><span>200日风险调整动量</span><small>4只等权 · 每20交易日调仓</small></div><b id="rot_action">暂无</b><span id="rot_metrics">暂无</span><span id="rot_reason">暂无</span>
+        <div><span>200日风险调整动量</span><small>观察验证 · 不生成订单</small></div><b id="rot_action">暂无</b><span id="rot_metrics">暂无</span><span id="rot_reason">暂无</span>
       </div>
       <div class="strategy-row">
-        <div><span>长期新高突破</span><small>120日新高 · 放量确认</small></div><b id="br_action">暂无</b><span id="br_metrics">暂无</span><span id="br_reason">暂无</span>
+        <div><span>长期新高突破</span><small>观察验证 · 退出闭环未完成</small></div><b id="br_action">暂无</b><span id="br_metrics">暂无</span><span id="br_reason">暂无</span>
       </div>
     </section>
 
@@ -148,17 +148,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     </details>
 
     <section class="forward-scoreboard">
-      <div class="console-head"><div><strong>调仓执行与策略组合</strong><span>真实持仓差异、影子成交与风险预算方法</span></div></div>
+      <div class="console-head"><div><strong>调仓执行台账</strong><span>点时股票池与影子成交记录</span></div></div>
       <div id="execution_summary" class="forward-scores"><div class="no-plan">正在读取执行台账…</div></div>
-    </section>
-
-    <section class="capability-roadmap" aria-label="AI投资助手能力与进化路线">
-      <div class="console-head"><div><strong>AI助手：正在做什么，正在学习什么，接下来做什么</strong><span id="capability_rule">只展示有代码、数据和验收标准的事项</span></div></div>
-      <div class="capability-columns">
-        <article class="capability-column active"><header><b>正在运行</b><span>已经接入系统</span></header><div id="capability_active"></div></article>
-        <article class="capability-column learning"><header><b>学习与验证</b><span>未通过前不冒充策略</span></header><div id="capability_learning"></div></article>
-        <article class="capability-column next"><header><b>接下来执行</b><span>按验收顺序推进</span></header><div id="capability_next"></div></article>
-      </div>
     </section>
 
     <section class="trade-plans">
@@ -171,10 +162,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <div id="forward_scores" class="forward-scores"><div class="no-plan">正在读取到期样本…</div></div>
     </section>
 
-    <details class="workflow-panel">
-      <summary>完整执行逻辑与限制</summary>
-      <div id="workflow_steps" class="workflow-grid"></div>
-    </details>
   </main>
 
   <script src="app.js?v=20260814-3"></script>
@@ -197,8 +184,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     const d=CENTER_DATA, u=d.universe||{}, s=u.stats||{}, strategies=d.strategies||[];
     const xm=strategies.find(x=>x.id==='xiaomi_trend_v1')||{},rot=strategies.find(x=>x.id==='hk_liquid_trend_rotation_v2')||{market:{}},br=strategies.find(x=>x.id==='hk_long_term_high_breakout_v1')||{};
     $('generated').textContent='生成于 '+d.generated_at.replace('T',' ')+' · 数据日期 '+(rot.as_of||'暂无');
-    $('headline_action').textContent=d.portfolio?.gate&&!d.portfolio.gate.allow_new_risk?'降低风险':(d.workflow.next_action.indexOf('没有合格')>=0?'保持现金':'存在待执行动作');
-    $('headline_reason').textContent=d.workflow.next_action;
+    const firstAction=(d.action_queue||[])[0]||{level:'NONE',action:'保持现状',reason:'当前无需操作'};
+    $('headline_action').textContent=firstAction.level==='NONE'?'保持现状':firstAction.action;
+    $('headline_reason').textContent=firstAction.reason;
     const mc=d.market_context||{},rotMarket=rot.market||{};$('market_hsi').textContent=`${fmt(rotMarket.hsi_close,0)} ${signed(mc.hsi_change_pct,2,'%')}`;$('market_hsi').className=marketClass(mc.hsi_change_pct); $('market_gate').textContent=`${mc.regime||'未知'} · ${rotMarket.eligible?'高于MA200':'低于MA200，轮动调仓保持现金'}`;
     $('market_total').textContent=(s.market_total||0).toLocaleString(); $('market_passed').textContent=s.passed_initial_filters||0; $('market_selected').textContent=u.count||0;
     const candidateCount=new Set([...(rot.candidates||[]).map(x=>x.code),...(br.candidates||[]).map(x=>x.code)]).size;
@@ -209,10 +197,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     $('method_text').innerHTML='<b>全市场初筛</b><p>'+esc(basis)+'</p><b>策略二筛</b><p>'+esc(filters)+'</p><b>限制</b><p>'+esc(u.limitation||'暂无')+'</p>';
     renderSectorFilters(); renderStocks(); renderStrategy('xm',xm,`现价 ${fmt(xm.price,2)} · MA20 ${fmt(xm.ma20,2)} · MA60 ${fmt(xm.ma60,2)}`);
     renderInvestorOverview();
-    renderActionQueue(); renderHoldings(); renderTradePlans(); renderForwardScores(); renderCapabilities(); renderExecution();
+    renderActionQueue(); renderHoldings(); renderTradePlans(); renderForwardScores(); renderExecution();
     renderStrategy('rot',rot,`恒指 ${fmt(rotMarket.hsi_close,0)} / MA200 ${fmt(rotMarket.hsi_ma200,0)} · 观察候选 ${(rot.candidates||[]).length} · 正式下单 ${(rot.orders||[]).length} · ${esc(rot.next_review_date||'')}`);
     renderStrategy('br',br,`市场门控 ${br.market_eligible?'通过':'不通过'} · 候选 ${(br.candidates||[]).length}`);
-    $('workflow_steps').innerHTML=(d.workflow.steps||[]).map((x,i)=>`<div><b>${i+1}. ${esc(x.name)}</b><span>${esc(x.rule)}</span></div>`).join('');
   }
   function renderIntegrity(){
     const d=CENTER_DATA,g=d.signal_governance||{},f=d.data_freshness||{},n=g.notification||{};
@@ -253,9 +240,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     const allocation=p.cash_ratio==null?'现金比例不可用':`现金 ${fmt(p.cash_ratio,1)}%`;
     const gate=p.gate||{}, cap=gate.disabled?'风险指标只提示，不阻断策略动作':gate.allow_new_risk?'账户风险门控通过，可继续评估策略机会':`禁止新增风险：${(gate.reasons||[]).join('；')}`;
     $('portfolio_limit').className='portfolio-limit '+(gate.disabled?'gate-advisory':gate.allow_new_risk?'gate-pass':'gate-block');
-    const replacement=CENTER_DATA.replacement_decision||{};
     const funds=`实时现金 HK$${fmt(p.cash,2)} / 总资产 HK$${fmt(p.total_assets,2)} · ${p.active_accounts??'—'}/${p.matching_accounts??'—'}个活跃/匹配港股账户`;
-    $('portfolio_limit').innerHTML=`<b>${gate.disabled?'组合门控已关闭':gate.allow_new_risk?'组合门控通过':'组合门控阻止'}</b><span>${funds} · ${allocation} · ${esc(cap)} · 换仓判断：${esc(replacement.decision||'暂无')}</span><small>资金快照 ${esc(p.funds_as_of||'不可用')} · ${esc(replacement.reason||p.risk_note||'')}</small>`;
+    $('portfolio_limit').innerHTML=`<b>${gate.disabled?'组合门控已关闭':gate.allow_new_risk?'组合门控通过':'组合门控阻止'}</b><span>${funds} · ${allocation} · ${esc(cap)}</span><small>资金快照 ${esc(p.funds_as_of||'不可用')} · ${esc(p.risk_note||'')}</small>`;
   }
   function renderActionQueue(){
     const levels={MUST:'必须处理',SHOULD:'建议处理',OPPORTUNITY:'交易机会',NONE:'无需操作'};
@@ -269,21 +255,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     $('trade_plan_rows').innerHTML=plans.length?plans.map(x=>`<div class="trade-plan"><div><b>${esc(x.name)}</b><small>${esc(x.code)} · ${esc(x.strategy)}</small></div><span class="action ${String(x.action).toLowerCase()}">${actionLabel[x.action]||x.action}</span><dl><div><dt>触发价</dt><dd>${fmt(x.plan.trigger,3)}</dd></div><div><dt>${x.plan.stop_type==='DAILY_CLOSE_BELOW_MA20'?'MA20退出参考':'止损价'}</dt><dd>${fmt(x.plan.stop,3)}</dd></div><div><dt>目标价</dt><dd>${x.plan.target==null?'不设固定目标':fmt(x.plan.target,3)}</dd></div><div><dt>退出规则</dt><dd>${x.plan.stop_type==='DAILY_CLOSE_BELOW_MA20'?'收盘破MA20 / 高点回撤15%':x.plan.risk_reward==null?'策略规则':fmt(x.plan.risk_reward,1)+':1'}</dd></div></dl><p>${esc(x.reason||'')} · ${esc(x.plan.validity||'')}</p></div>`).join(''):'<div class="no-plan"><b>当前没有可执行交易</b><span>市场门控或策略条件未通过。保持现金不是遗漏，而是当前策略动作。</span></div>';
   }
   function renderExecution(){
-    const p=CENTER_DATA.paper_execution||{}, c=CENTER_DATA.strategy_portfolio||{}, weights=c.weights||{};
-    const names=Object.fromEntries((CENTER_DATA.strategies||[]).map(x=>[x.id,x.name]));
-    const weightText=Object.entries(weights).map(([k,v])=>`${names[k]||k} ${(v*100).toFixed(1)}%`).join(' · ')||'暂无权重';
-    $('execution_summary').innerHTML=`<div class="forward-score"><div><b>点时股票池</b><small>${p.snapshot_days||0}个交易日 · ${p.snapshot_rows||0}条</small></div><span>影子订单 <b>${p.order_count||0}</b></span><span>${esc(p.note||'')}</span></div><div class="forward-score"><div><b>策略组合</b><small>${esc(c.state||'COLLECTING')} · ${c.aligned_samples||0}个对齐样本</small></div><span>${esc(c.method||'')}</span><span>${esc(weightText)}</span><span>${esc(c.limitation||'')}</span></div>`;
+    const p=CENTER_DATA.paper_execution||{};
+    $('execution_summary').innerHTML=`<div class="forward-score"><div><b>点时股票池</b><small>${p.snapshot_days||0}个交易日 · ${p.snapshot_rows||0}条</small></div><span>影子订单 <b>${p.order_count||0}</b></span><span>${esc(p.note||'')}</span></div>`;
   }
   function renderForwardScores(){
     const f=CENTER_DATA.forward_scoreboard||{}, rows=f.strategy_stats||[];
     $('forward_scores').innerHTML=rows.length?rows.map(x=>`<div class="forward-score"><div><b>${esc(x.strategy_name)}</b><small>${x.mature_samples}个到期样本</small></div><span>胜率 <b>${x.win_rate_pct==null?'收集中':fmt(x.win_rate_pct,1)+'%'}</b></span><span>平均收益 <b class="${marketClass(x.average_return_pct)}">${signed(x.average_return_pct,2,'%')}</b></span><span class="validation-status ${String(x.status).toLowerCase()}">${x.status==='ACTIVE'?'有效':x.status==='REVIEW_REQUIRED'?'暂停复核':'收集中'}</span></div>`).join(''):`<div class="no-plan"><b>前向样本仍在积累</b><span>${esc(f.note||'信号将在第5和第20个交易日自动评价')}</span></div>`;
-  }
-  function renderCapabilities(){
-    const roadmap=CENTER_DATA.capability_roadmap||{};
-    $('capability_rule').textContent=roadmap.rule||'只展示有代码、数据和验收标准的事项';
-    $('capability_active').innerHTML=(roadmap.active||[]).map(x=>`<div class="capability-item"><div><b>${esc(x.name)}</b><span class="capability-state ${String(x.state).toLowerCase()}">${x.state==='RUNNING'?'运行中':'不可用'}</span></div><p>${esc(x.output||'')}</p><small>${esc(x.evidence||'')}</small></div>`).join('')||'<div class="no-plan">暂无运行能力</div>';
-    $('capability_learning').innerHTML=(roadmap.learning||[]).map(x=>`<div class="capability-item"><div><b>${esc(x.name)}</b><span class="capability-state ${String(x.state).toLowerCase()}">${x.state==='VALIDATING'?'验证中':'未通过'}</span></div><p>${esc(x.progress||'')}</p><small>${esc(x.evidence||'')} · ${esc(x.blocker||'')}</small></div>`).join('')||'<div class="no-plan">暂无研究项目</div>';
-    $('capability_next').innerHTML=(roadmap.next||[]).map(x=>`<div class="capability-item"><div><b>${x.order}. ${esc(x.name)}</b></div><p>${esc(x.deliverable||'')}</p><small>验收：${esc(x.acceptance||'')}</small></div>`).join('')||'<div class="no-plan">暂无待执行事项</div>';
   }
   function selectSector(name){
     const btn=[...document.querySelectorAll('.filter-item')].find(x=>x.dataset.filter==='sector'&&x.dataset.value===name); if(btn)btn.click();

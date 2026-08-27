@@ -9,9 +9,9 @@ universe:
   price_min_hkd: 2
   require_affordable_board_lot: true
 market_regime:
-  hang_seng_close_above_ma120: true
+  moving_average_days: 120
 entry:
-  close_above_prior_120d_high: true
+  breakout_lookback_days: 120
   volume_over_20d_average_ratio_min: 1.2
   close_above_ma200: true
   ma50_above_ma200: true
@@ -20,6 +20,8 @@ entry:
 exit:
   close_below_ma20: true
   initial_stop_atr14_multiple: 2.0
+  atr_days: 14
+  trailing_activation_profit_pct: 10
   trailing_drawdown_pct: 10
   maximum_hold_bars: 40
   execution: next_open
@@ -28,14 +30,7 @@ portfolio:
   maximum_positions: 4
   maximum_total_allocation_pct: 80
   round_to_board_lot: true
-cost_model:
-  commission_rate: 0.0003
-  minimum_commission_hkd_per_order: 3
-  platform_fee_hkd_per_order: 15
-  stamp_duty_rate: 0.001
-  stamp_duty_round_up_hkd: true
-  statutory_rate_per_side: 0.000127
-  base_slippage_bps_per_side: 8
+cost_model: hk_cash_equity_v1
 validation:
   parameter_selection_period: 2019-01-01_to_2021-12-31
   locked_test_period: 2022-01-01_to_2026-08-12
@@ -44,6 +39,13 @@ validation:
   test_profit_factor: 1.7967
   test_max_drawdown_pct: -12.5422
   stress_20bps_return_pct: 28.2905
+promotion_gate:
+  minimum_complete_round_trips: 20
+  require_positive_net_return: true
+  minimum_profit_factor: 1.2
+  maximum_drawdown_pct: -20
+  maximum_fill_deviation_bps: 25
+  require_exit_state_machine: true
   stress_20bps_profit_factor: 1.7998
   leave_one_stock_out_all_positive: true
   parameter_neighbourhood_positive: 12_of_12
@@ -51,3 +53,8 @@ notes:
   - Research-qualified, not guaranteed and not connected to real order execution.
   - Current-universe historical reconstruction still has survivorship bias.
   - 2026 is partial through 2026-08-12.
+runtime_guard:
+  validated_code_commit: 7fc6b6a290aa4ce1e39d338f356ca6d63b996c7a
+  validated_data_cutoff: 2026-08-12
+  parameter_sha256: dcb92ffe9b79d34709e59b4df3fc7fc1803ea122aeaf994c56335c3add30f223
+  code_sha256: 49ed22d050d3cc3fd1fa47791cf9ce0082592605609b0ac591c8b86b979626e1

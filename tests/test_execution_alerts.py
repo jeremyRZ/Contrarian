@@ -38,6 +38,15 @@ def test_late_alert_explicitly_prevents_chasing():
     assert "当前执行0股" in alert["message"]
 
 
+def test_same_day_close_signal_waits_for_next_session():
+    alert = execution_alerts.build(
+        _status(), now=datetime(2026, 8, 25, 22, 0), live_price=27.76)
+    assert alert["phase"] == "PENDING_NEXT_SESSION"
+    assert "下一交易日开盘前复核" in alert["message"]
+    assert "窗口已过" not in alert["message"]
+    assert alert["action"] == "WAIT" and alert["qty"] == 0
+
+
 def test_buy_alert_is_blocked_when_live_cash_is_insufficient():
     status = _status()
     status["portfolio"]["cash"] = 1000

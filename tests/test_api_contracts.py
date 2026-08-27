@@ -107,6 +107,7 @@ def test_app_lifespan_starts_and_stops_both_schedulers(monkeypatch):
     monkeypatch.setattr(api, "_start_intraday_scheduler", lambda: calls.append("intraday-start"))
     monkeypatch.setattr(api.scheduler, "stop_scheduler", lambda: calls.append("daily-stop"))
     monkeypatch.setattr(api.intraday_scheduler, "stop", lambda: calls.append("intraday-stop"))
+    monkeypatch.setattr(api.hk_calendar, "refresh", lambda client: None)
 
     async def exercise_lifespan():
         async with api.app.router.lifespan_context(api.app):

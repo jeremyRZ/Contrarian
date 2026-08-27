@@ -21,6 +21,14 @@ def test_research_model_cannot_become_actionable_by_using_buy_word():
     assert strategy["decision_authority"] == "无交易决策权"
 
 
+def test_rotation_and_breakout_have_no_production_authority():
+    for strategy_id in ("hk_liquid_trend_rotation_v2", "hk_long_term_high_breakout_v1"):
+        strategy = {"id": strategy_id, "action": "BUY"}
+        signal_governance.annotate_production_strategy(strategy)
+        assert strategy["decision_role"] == "RESEARCH_ONLY"
+        assert strategy["actionable"] is False
+
+
 def test_only_production_strategy_can_generate_notification():
     status = {
         "mode": "READ_ONLY_PAPER_ADVICE",

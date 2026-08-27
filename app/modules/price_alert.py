@@ -9,20 +9,12 @@
 from __future__ import annotations
 
 from typing import Optional
+from ..numbers import as_float as _num
 
 # 运行时报警列表（POST 追加，进程内有效）
 RUNTIME_LIST: list[dict] = []
 # code -> 已触发信号 key 集合（用于去重，避免重复轰炸）
 _FIRED: dict[str, set] = {}
-
-
-def _num(v):
-    try:
-        if v is None or (isinstance(v, str) and v.strip().upper() in ("N/A", "NA", "")):
-            return None
-        return float(v)
-    except (ValueError, TypeError):
-        return None
 
 
 def add_runtime(entry: dict) -> dict:

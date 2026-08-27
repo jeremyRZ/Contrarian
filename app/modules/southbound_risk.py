@@ -8,7 +8,18 @@ from __future__ import annotations
 
 from typing import Optional, Tuple
 
-from . import southbound, screener
+from . import southbound
+
+DEFAULT_UNIVERSE = [
+    "HK.00700", "HK.03690", "HK.01810", "HK.09988", "HK.09618", "HK.01024",
+    "HK.09626", "HK.09888", "HK.09999", "HK.00992", "HK.00981", "HK.00522",
+    "HK.02382", "HK.01211", "HK.00175", "HK.02333", "HK.09868", "HK.02015",
+    "HK.09866", "HK.00883", "HK.00857", "HK.00386", "HK.00005", "HK.00939",
+    "HK.01398", "HK.03988", "HK.01299", "HK.02318", "HK.02628", "HK.00001",
+    "HK.01113", "HK.00388", "HK.01928", "HK.00027", "HK.01093", "HK.02269",
+    "HK.02359", "HK.02007", "HK.02202", "HK.00941", "HK.00267", "HK.01698",
+    "HK.00241", "HK.01347", "HK.02020",
+]
 
 
 def aggregate(client, codes: Optional[list] = None) -> Tuple[Optional[dict], Optional[str]]:
@@ -25,7 +36,7 @@ def aggregate(client, codes: Optional[list] = None) -> Tuple[Optional[dict], Opt
     else:
         # 默认扫研究池（龙头观察池），作为南向减持风险的市场早期预警。
         # 如需只看自有持仓，可传入 codes=持仓代码列表。
-        universe = list(screener.LEADERS)
+        universe = list(DEFAULT_UNIVERSE)
         universe_label = "龙头观察池"
 
     items = []

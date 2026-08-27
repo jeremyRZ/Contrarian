@@ -129,18 +129,20 @@ def test_account_summary_combines_all_matching_accounts_without_ids(monkeypatch)
         def accinfo_query(self, **kwargs):
             values = {11: (20911.4, 33185.4, 12274.0), 22: (0, 0, 0)}[kwargs["acc_id"]]
             return futu_client.ft.RET_OK, pd.DataFrame([{
-                "cash": values[0], "total_assets": values[1], "market_val": values[2]}])
+                "cash": values[0], "available_funds": values[0],
+                "total_assets": values[1], "market_val": values[2]}])
         def close(self): pass
     monkeypatch.setattr(futu_client, "_reachable", lambda *args: True)
     monkeypatch.setattr(futu_client.ft, "OpenSecTradeContext", Context)
     summary, err = futu_client.FutuClient(trd_env="REAL").account_summary_market("HK")
     assert err is None
     assert summary["cash"] == 20911.4 and summary["total_assets"] == 33185.4
+    assert summary["available_cash"] == 20911.4 and summary["funds_complete"] is True
     assert summary["matching_accounts"] == 2 and summary["active_accounts"] == 1
     assert "acc_id" not in summary and "account_id" not in summary
 
 
-def test_account_summary_tolerates_one_failed_account(monkeypatch):
+def test_account_summary_marks_partial_account_read_incomplete(monkeypatch):
     class Context:
         def __init__(self, **kwargs): pass
         def get_acc_list(self):
@@ -149,12 +151,31 @@ def test_account_summary_tolerates_one_failed_account(monkeypatch):
         def accinfo_query(self, **kwargs):
             if kwargs["acc_id"] == 11:
                 return -1, "temporary failure"
-            return futu_client.ft.RET_OK, pd.DataFrame([{"cash": 8000, "total_assets": 10000}])
+            return futu_client.ft.RET_OK, pd.DataFrame([
+                {"cash": 8000, "available_funds": 7000, "total_assets": 10000}])
         def close(self): pass
     monkeypatch.setattr(futu_client, "_reachable", lambda *args: True)
     monkeypatch.setattr(futu_client.ft, "OpenSecTradeContext", Context)
     summary, err = futu_client.FutuClient(trd_env="REAL").account_summary_market("HK")
     assert err is None and summary["cash"] == 8000
+    assert summary["funds_complete"] is False and summary["available_cash"] is None
+
+
+def test_positions_fail_closed_when_one_account_read_fails(monkeypatch):
+    class Context:
+        def __init__(self, **kwargs): pass
+        def get_acc_list(self):
+            return futu_client.ft.RET_OK, pd.DataFrame([
+                {"acc_id": 11, "trd_env": "REAL"}, {"acc_id": 22, "trd_env": "REAL"}])
+        def position_list_query(self, **kwargs):
+            if kwargs["acc_id"] == 11:
+                return -1, "temporary failure"
+            return futu_client.ft.RET_OK, pd.DataFrame([{"code": "HK.01810", "qty": 200}])
+        def close(self): pass
+    monkeypatch.setattr(futu_client, "_reachable", lambda *args: True)
+    monkeypatch.setattr(futu_client.ft, "OpenSecTradeContext", Context)
+    frame, err = futu_client.FutuClient(trd_env="REAL").positions_market("HK")
+    assert frame is None and "快照不完整" in err
 
 
 def test_router_uses_tiger_for_us_positions():

@@ -104,7 +104,7 @@ function renderExecutionAlert(data) {
   panel.hidden=false;
   panel.className='execution-alert '+String(data.phase||'').toLowerCase().replaceAll('_','-');
   const lines=String(data.message||'').split('\n').map(x=>x.replace(/^\*\*|\*\*$/g,'')).filter(Boolean);
-  $('execution_phase').textContent={PREOPEN:'开盘前正式计划',OPEN_WINDOW:'开盘执行窗口',LATE_DO_NOT_CHASE:'已错过开盘窗口'}[data.phase]||'正式策略提醒';
+  $('execution_phase').textContent={PENDING_NEXT_SESSION:'等待下一交易日',PREOPEN:'开盘前正式计划',OPEN_WINDOW:'开盘执行窗口',LATE_DO_NOT_CHASE:'已错过开盘窗口'}[data.phase]||'正式策略提醒';
   $('execution_verdict').textContent=lines[1]||`${data.action} ${data.qty||0}股`;
   $('execution_detail').textContent=lines.slice(2,-1).join(' · ');
 }

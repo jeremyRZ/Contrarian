@@ -135,6 +135,18 @@ class FutuClient:
         self.connected = False
 
     # ---------- 行情 ----------
+    def trading_days(self, market: str, start: str, end: str):
+        ok, msg = self._ensure_quote()
+        if not ok:
+            return None, msg
+        key = str(market).upper()
+        try:
+            ret, data = self._quote.request_trading_days(
+                market=getattr(ft.TradeDateMarket, key), start=start, end=end)
+            return (data, None) if ret == ft.RET_OK else (None, str(data))
+        except Exception as exc:  # noqa: BLE001
+            return None, str(exc)
+
     def market_snapshot(self, codes) -> Tuple[Optional[object], Optional[str]]:
         ok, msg = self._ensure_quote()
         if not ok:
@@ -476,6 +488,9 @@ class FutuClient:
                     return None, f"{key}账户列表缺少acc_id字段"
                 account_ids = [int(value) for value in candidates[id_col].dropna().unique()]
             totals = {"cash": 0.0, "total_assets": 0.0, "market_value": 0.0}
+            available_cash = 0.0
+            available_fields: set[str] = set()
+            funds_complete = True
             successful = active = 0
             errors = []
             for account_id in account_ids:
@@ -498,25 +513,61 @@ class FutuClient:
                             except (TypeError, ValueError):
                                 pass
                     return 0.0
+                def optional_number(name):
+                    col = cols.get(name)
+                    if col is None:
+                        return None
+                    try:
+                        value = float(row[col])
+                        return value if pd.notna(value) else None
+                    except (TypeError, ValueError):
+                        return None
                 cash = number("cash", "total_cash")
                 assets = number("total_assets", "total_market_val")
                 market_value = number("market_val", "market_value", "total_market_val")
                 totals["cash"] += cash
                 totals["total_assets"] += assets
                 totals["market_value"] += market_value
+                # Never size from nominal cash alone.  Futu fields vary by
+                # account type, so use the most conservative non-margin HKD
+                # buying-power field returned for each account.
+                candidates = []
+                for field in ("available_funds", "hk_cash", "hkd_cash",
+                              "hkd_net_cash_power", "net_cash_power"):
+                    value = optional_number(field)
+                    if value is not None:
+                        candidates.append(max(value, 0.0))
+                        available_fields.add(field)
+                frozen = optional_number("frozen_cash")
+                if frozen is None:
+                    frozen = optional_number("cash_frozen")
+                if candidates:
+                    available_cash += min(candidates)
+                elif cash or assets or market_value:
+                    # Raw cash does not prove that funds are settled and free.
+                    funds_complete = False
+                if frozen is not None and frozen > 0 and candidates:
+                    available_cash = max(available_cash - frozen, 0.0)
                 if abs(cash) > 1e-9 or abs(assets) > 1e-9 or abs(market_value) > 1e-9:
                     active += 1
             if not successful:
                 return None, "; ".join(errors) or f"{key}账户资金读取失败"
+            if errors or successful != len(account_ids):
+                funds_complete = False
             total_assets = totals["total_assets"]
             return {
                 "market": key,
                 "currency": {"HK": "HKD", "CN": "CNY", "US": "USD"}[key],
                 **totals,
+                "available_cash": round(available_cash, 2) if funds_complete else None,
+                "funds_complete": funds_complete,
+                "funds_fields": sorted(available_fields),
+                "failed_accounts": len(errors),
                 "cash_ratio": round(totals["cash"] / total_assets * 100, 2)
                               if total_assets else None,
                 "matching_accounts": len(account_ids),
                 "active_accounts": active,
+                "successful_accounts": successful,
                 "source": f"ALL_MATCHING_{key}_{str(self.trd_env).upper()}_ACCOUNTS",
                 "as_of": datetime.now().isoformat(timespec="seconds"),
             }, None
@@ -607,6 +658,9 @@ class FutuClient:
                     frame = data.copy()
                     frame["account_id"] = account_id
                     frames.append(frame)
+            if errors or successful_queries != len(account_ids):
+                return None, (f"{key}账户持仓快照不完整："
+                              f"{len(errors)}/{len(account_ids)} 个账户读取失败")
             if frames:
                 return pd.concat(frames, ignore_index=True), None
             if successful_queries:

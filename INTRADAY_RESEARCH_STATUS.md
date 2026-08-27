@@ -28,6 +28,6 @@
 
 ## 已保存的独立日线策略
 
-- 配置：`strategies/hk_rotation_v1.yaml`
+- 配置：`strategies/hk_rotation_v2.yaml`
 - 说明：`HK_ROTATION_STRATEGY.md`
-- 回测入口：`scripts/run_hk_rotation_v1.py`
+- 研究入口：`scripts/research_cross_sectional_rotation.py`

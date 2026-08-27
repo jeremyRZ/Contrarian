@@ -26,24 +26,26 @@ from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, Tuple
 
-from . import southbound, buybacks, news, capital_flow, fundamentals, dividend, earnings, filters, strategy_config
+from . import southbound, buybacks, news, capital_flow, fundamentals, dividend, earnings, filters
 
 
 _REVERSE_KEYS = (
     "southbound", "buyback", "news", "capital_flow", "valuation",
     "institution", "dividend", "earnings",
 )
+_REVERSE_WEIGHTS = {
+    "southbound": 2.0, "buyback": 2.0, "news": 1.5, "capital_flow": 1.5,
+    "valuation": 2.0, "institution": 1.5, "dividend": 1.5, "earnings": 0.5,
+}
 
 
 def _weighted_reverse_score(details: dict, cfg: Optional[dict] = None) -> float:
     """Scale each component by configured weight relative to its documented default."""
-    active = cfg or strategy_config.load_config()
-    weights = active.get("reverse_weights", {})
-    defaults = strategy_config.DEFAULT_STRATEGY_CONFIG["reverse_weights"]
+    weights = (cfg or {}).get("reverse_weights", _REVERSE_WEIGHTS)
     total = 0.0
     for key in _REVERSE_KEYS:
         raw = float((details.get(key) or {}).get("score") or 0.0)
-        base_weight = float(defaults.get(key, 1.0))
+        base_weight = float(_REVERSE_WEIGHTS.get(key, 1.0))
         configured = float(weights.get(key, base_weight))
         total += raw * configured / base_weight if base_weight else 0.0
     return round(max(-1.0, min(10.0, total)), 1)

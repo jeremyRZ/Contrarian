@@ -66,8 +66,6 @@ function openAnalyze(code) {
     analyze: 'analyze',
     'strategy-center': 'home',
     strategies: 'strategy',
-    intraday: 'strategy',
-    backtest: 'strategy',
     risk: 'risk',
     markets: 'markets'
   }[page] || page;

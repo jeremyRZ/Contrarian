@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import pandas as pd
+from ..numbers import as_float as _num
 
 # 止损纪律（百分比）
 STOP_RULES = {
@@ -55,16 +56,6 @@ def _lots(qty, lot_size):
     if not lot_size or lot_size <= 0:
         return None
     return int(qty // lot_size)
-
-
-def _num(v):
-    try:
-        if v is None or (isinstance(v, str) and v.strip().upper() in ("N/A", "NA", "")):
-            return None
-        f = float(v)
-        return None if f != f else f
-    except (ValueError, TypeError):
-        return None
 
 
 def _tech_kline(client, code: str) -> dict:
@@ -117,7 +108,8 @@ def monitor_positions(client, technical: bool = True):
     """
     持仓风控扫描。返回 (result_dict, error)
     """
-    pos, err = client.positions()
+    pos, err = (client.positions_market("HK") if hasattr(client, "positions_market")
+                else client.positions())
     if err:
         return None, err
     if pos is None or pos.empty:

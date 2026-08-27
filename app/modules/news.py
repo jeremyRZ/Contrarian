@@ -18,6 +18,7 @@ from typing import Optional, Tuple
 
 from ..cache import cached
 from ..futu_client import load_config
+from ..numbers import as_float as _num
 
 
 _CFG = None
@@ -28,16 +29,6 @@ def _cfg() -> dict:
     if _CFG is None:
         _CFG = load_config()
     return _CFG
-
-
-def _num(v):
-    try:
-        if v is None:
-            return None
-        f = float(v)
-        return None if f != f else f
-    except (ValueError, TypeError):
-        return None
 
 
 # 细粒度情绪词典：权重绝对值代表强度（1~2 强，0.5~1 中）。
