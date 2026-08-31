@@ -67,6 +67,10 @@ class FutuClient:
         self.connected = False
         self.last_error: Optional[str] = None
 
+    def reachable(self) -> bool:
+        """Fast socket-only liveness probe for launchers and watchdogs."""
+        return _reachable(self.host, self.port, timeout=0.35)
+
     # ---------- 连接管理 ----------
     def connect(self) -> Tuple[bool, str]:
         if self.connected and self._quote is not None:
@@ -532,8 +536,7 @@ class FutuClient:
                 # account type, so use the most conservative non-margin HKD
                 # buying-power field returned for each account.
                 candidates = []
-                for field in ("available_funds", "hk_cash", "hkd_cash",
-                              "hkd_net_cash_power", "net_cash_power"):
+                for field in ("available_funds", "hkd_net_cash_power"):
                     value = optional_number(field)
                     if value is not None:
                         candidates.append(max(value, 0.0))
@@ -543,11 +546,16 @@ class FutuClient:
                     frozen = optional_number("cash_frozen")
                 if candidates:
                     available_cash += min(candidates)
-                elif cash or assets or market_value:
-                    # Raw cash does not prove that funds are settled and free.
-                    funds_complete = False
-                if frozen is not None and frozen > 0 and candidates:
-                    available_cash = max(available_cash - frozen, 0.0)
+                else:
+                    fallback = optional_number("hk_cash")
+                    if fallback is None:
+                        fallback = optional_number("hkd_cash")
+                    if fallback is not None:
+                        available_fields.add("hk_cash")
+                        available_cash += max(fallback - max(frozen or 0.0, 0.0), 0.0)
+                    elif cash or assets or market_value:
+                        # Raw cash does not prove funds are settled and free.
+                        funds_complete = False
                 if abs(cash) > 1e-9 or abs(assets) > 1e-9 or abs(market_value) > 1e-9:
                     active += 1
             if not successful:

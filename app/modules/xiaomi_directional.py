@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 
+from app.hk_costs import effective_rate
+
 from . import signal_governance
 
 
@@ -52,14 +54,17 @@ def desired_state(row: pd.Series, params: DirectionalParams) -> int:
 
 
 def evaluate(x: pd.DataFrame, params: DirectionalParams, *, allocation: float = 0.30,
-             fee_bps: float = 12, slippage_bps: float = 8,
+             fee_bps: float | None = None, slippage_bps: float = 8,
+             capital_hkd: float = 20_000,
              annual_borrow_pct: float = 8) -> dict:
     """Mark-to-market from next open to next open; signal never uses future bars."""
     desired = x.apply(lambda r: desired_state(r, params), axis=1).astype(int)
     position = desired.shift(1).fillna(0).astype(int)
     next_open_return = x.open.astype(float).shift(-1) / x.open.astype(float) - 1
     turnover = position.diff().abs().fillna(position.abs())
-    costs = turnover * (fee_bps + slippage_bps) / 10_000 * allocation
+    rate = (effective_rate(capital_hkd * allocation, slippage_bps)
+            if fee_bps is None else (fee_bps + slippage_bps) / 10_000)
+    costs = turnover * rate * allocation
     borrow = (position < 0).astype(float) * annual_borrow_pct / 100 / 252 * allocation
     returns = position * next_open_return * allocation - costs - borrow
     returns = returns.iloc[:-1]

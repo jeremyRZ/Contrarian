@@ -19,7 +19,8 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from scripts.run_walkforward_daily import metrics_from_folds, order_cost
+from app.hk_costs import order_cost
+from scripts.run_walkforward_daily import metrics_from_folds
 
 DATA = ROOT / ".research_daily_150"
 
@@ -123,7 +124,7 @@ def simulate(data, index, lots, p: Params, start, end, capital=20_000.,
                     continue
                 px = float(data[code].loc[date].open) * (1 - slip)
                 gross = positions[code]["qty"] * px
-                fee = order_cost(gross)
+                fee = order_cost(gross, include_slippage=False)
                 cash += gross - fee
                 trades.append({"code": code, "entry": positions[code]["entry_date"],
                                "exit": str(date.date()),
@@ -142,7 +143,7 @@ def simulate(data, index, lots, p: Params, start, end, capital=20_000.,
                 if qty <= 0:
                     continue
                 gross = qty * px
-                fee = order_cost(gross)
+                fee = order_cost(gross, include_slippage=False)
                 if gross + fee <= cash:
                     cash -= gross + fee
                     positions[code] = {"qty": qty, "basis": gross + fee,
@@ -171,7 +172,7 @@ def simulate(data, index, lots, p: Params, start, end, capital=20_000.,
             continue
         px = float(data[code].loc[last].close) * (1 - slip)
         gross = holding["qty"] * px
-        fee = order_cost(gross)
+        fee = order_cost(gross, include_slippage=False)
         cash += gross - fee
         trades.append({"code": code, "entry": holding["entry_date"],
                        "exit": str(last.date()), "pnl": gross - fee - holding["basis"]})

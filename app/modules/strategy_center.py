@@ -1013,6 +1013,18 @@ def _data_freshness(now: datetime | None = None) -> dict:
 
 def _refresh_cache(client) -> list[str]:
     """Merge the latest adjusted daily bars into the research cache."""
+    expected = _expected_completed_session()
+    if hasattr(client, "connect"):
+        ok, message = client.connect()
+        if not ok:
+            error = message or "FutuOpenD 不可用"
+            REFRESH_META_FILE.parent.mkdir(parents=True, exist_ok=True)
+            REFRESH_META_FILE.write_text(json.dumps({
+                "attempted_at": datetime.now().isoformat(timespec="seconds"),
+                "expected_through": str(expected), "errors": [error],
+                "index_latest": str(_cached_last_date(DAILY_DIR / "HK_800000.csv") or ""),
+            }, ensure_ascii=False, indent=2), encoding="utf-8")
+            return [error]
     errors: list[str] = []
     errors.extend(_ensure_universe(client, force=True))
     if not UNIVERSE_FILE.exists():
@@ -1021,11 +1033,11 @@ def _refresh_cache(client) -> list[str]:
     # Critical anchors first. Deduplication preserves order.
     codes = list(dict.fromkeys(["HK.800000", "HK.01810", *pool]))
     DAILY_DIR.mkdir(exist_ok=True)
-    expected = _expected_completed_session()
     stale_codes = [code for code in codes if
                    (_cached_last_date(DAILY_DIR / f"{code.replace('.', '_')}.csv") or
                     datetime.min.date()) < expected]
     pace_seconds = 0.55 if len(stale_codes) > 55 else 0.0
+    consecutive_errors = 0
     for code in stale_codes:
         frame, err = client.history_kline(code, max_count=260)
         if err or frame is None or frame.empty:
@@ -1038,7 +1050,12 @@ def _refresh_cache(client) -> list[str]:
             frame, err = client.history_kline(code, max_count=260)
         if err or frame is None or frame.empty:
             errors.append(f"{code}: {err or '无日线数据'}")
+            consecutive_errors += 1
+            if consecutive_errors >= 3:
+                errors.append("OpenD连续3个标的更新失败，本轮刷新已提前终止")
+                break
             continue
+        consecutive_errors = 0
         path = DAILY_DIR / f"{code.replace('.', '_')}.csv"
         new = frame.copy()
         if path.exists():

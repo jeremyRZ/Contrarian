@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict,dataclass
 from math import floor
 import numpy as np,pandas as pd
+from app.hk_costs import order_cost
 
 @dataclass(frozen=True)
 class SwingParams:
@@ -37,12 +38,13 @@ def signal(r,p):
  if p.family=='relative_momentum':return market and r.close>r.ma20 and r.ret5>=p.a and r.idx_close>r.idx_ma20
  raise ValueError(p.family)
 
-def evaluate(x,p,equity=20000,lot=200,fee_bps=12,slip_bps=8):
+def evaluate(x,p,equity=20000,lot=200,fee_bps=None,slip_bps=8):
  cash=float(equity);trades=[];i=0
  while i<len(x)-1:
   if not signal(x.iloc[i],p):i+=1;continue
   entry=x.iloc[i+1].open*(1+slip_bps/10000);stop=entry*(1-p.stop_pct/100)
-  risk_share=entry-stop+entry*(fee_bps*2+slip_bps*2)/10000
+  fee_per_share=(order_cost(entry*lot,include_slippage=False)/lot if fee_bps is None else entry*fee_bps/10000)
+  risk_share=entry-stop+fee_per_share*2+entry*slip_bps*2/10000
   qty=min(floor(cash*.02/risk_share/lot)*lot,floor(cash*.9/entry/lot)*lot)
   if qty<lot:i+=1;continue
   exit_i=min(i+1+p.hold,len(x)-1);exit_price=None;reason='max_hold'
@@ -53,7 +55,9 @@ def evaluate(x,p,equity=20000,lot=200,fee_bps=12,slip_bps=8):
     exit_price=x.iloc[j].close;exit_i=j;reason='ma10';break
   if exit_price is None:exit_price=x.iloc[exit_i].close
   exit_price*=1-slip_bps/10000
-  pnl=(exit_price-entry)*qty-(entry+exit_price)*qty*fee_bps/10000
+  fees=(order_cost(entry*qty,include_slippage=False)+order_cost(exit_price*qty,include_slippage=False)
+        if fee_bps is None else (entry+exit_price)*qty*fee_bps/10000)
+  pnl=(exit_price-entry)*qty-fees
   risk=risk_share*qty;trades.append({'date':str(x.iloc[i+1].time_key.date()),'pnl':pnl,'r':pnl/risk,'qty':qty,'reason':reason})
   cash+=pnl;i=exit_i+1
  wins=sum(t['pnl'] for t in trades if t['pnl']>0);loss=-sum(t['pnl'] for t in trades if t['pnl']<0)

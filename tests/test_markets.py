@@ -142,6 +142,23 @@ def test_account_summary_combines_all_matching_accounts_without_ids(monkeypatch)
     assert "acc_id" not in summary and "account_id" not in summary
 
 
+def test_account_summary_prefers_hkd_net_power_over_generic_zero(monkeypatch):
+    class Context:
+        def __init__(self, **kwargs): pass
+        def get_acc_list(self):
+            return futu_client.ft.RET_OK, pd.DataFrame([{"acc_id": 11, "trd_env": "REAL"}])
+        def accinfo_query(self, **kwargs):
+            return futu_client.ft.RET_OK, pd.DataFrame([{
+                "cash": 23613.90, "hk_cash": 23613.90,
+                "hkd_net_cash_power": 23609.71, "net_cash_power": 0.0,
+                "frozen_cash": 4.19, "total_assets": 32877.90}])
+        def close(self): pass
+    monkeypatch.setattr(futu_client, "_reachable", lambda *args: True)
+    monkeypatch.setattr(futu_client.ft, "OpenSecTradeContext", Context)
+    summary, err = futu_client.FutuClient(trd_env="REAL").account_summary_market("HK")
+    assert err is None and summary["available_cash"] == 23609.71
+
+
 def test_account_summary_marks_partial_account_read_incomplete(monkeypatch):
     class Context:
         def __init__(self, **kwargs): pass

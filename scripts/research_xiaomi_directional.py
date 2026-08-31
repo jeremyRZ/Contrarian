@@ -8,6 +8,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from app.hk_costs import MODEL_ID
 from app.modules.xiaomi_directional import DirectionalParams, current_signal, evaluate, prepare
 
 
@@ -51,7 +52,7 @@ def main() -> None:
               "untouched_test": clean(c), "passed": passed,
               "current": current_signal(x, selected),
               "assumptions": {"next_open_execution": True, "allocation_pct": 30,
-                              "fee_bps_each_position_change": 12,
+                              "cost_model": MODEL_ID,
                               "slippage_bps_each_position_change": 8,
                               "short_borrow_pct_annual": 8}}
     (d / "directional_result.json").write_text(

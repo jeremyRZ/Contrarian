@@ -150,7 +150,9 @@ def _startup_scheduler():
 
 @app.get("/health")
 def health():
-    ok, msg = client().connect()
+    futu = client()
+    ok = futu.reachable()
+    msg = "FutuOpenD 端口可达" if ok else "FutuOpenD 未启动或端口不可达"
     futu_cfg = CONFIG.get("futu", {}) or {}
     return {"ok": ok, "connected": ok, "message": msg,
             "system": CONFIG.get("system", {}),

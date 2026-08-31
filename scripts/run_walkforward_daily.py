@@ -8,7 +8,6 @@ It intentionally does not reuse the legacy six-strategy score.
 """
 import itertools
 import json
-import math
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -19,6 +18,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from app.hk_costs import MODEL_ID, order_cost
 from app.modules.supertrend_research import SuperTrendParams, supertrend
 
 DATA = ROOT / ".universal_daily_60"
@@ -70,16 +70,6 @@ def load_data() -> tuple[dict[str, pd.DataFrame], pd.DataFrame, dict, dict]:
     return out, idx, lots, names
 
 
-def order_cost(notional: float) -> float:
-    # Conservative Futu HK small-order model: brokerage min HKD3 plus HKD15
-    # platform fee, statutory levies/trading/settlement fee and stamp duty.
-    brokerage = max(3.0, notional * .0003)
-    platform = 15.0
-    statutory = notional * (.000027 + .0000015 + .0000565 + .000042)
-    stamp = math.ceil(notional * .001)
-    return brokerage + platform + statutory + stamp
-
-
 def entry_signal(x: pd.DataFrame, i: int, p: Params) -> tuple[bool, float]:
     z = x.iloc[i]
     liquid = z.turn20 >= 100_000_000 and z.close >= 2
@@ -108,7 +98,7 @@ def simulate(data, index, lots, p: Params, start, end, capital=20_000., slippage
         for code in list(pending_sell):
             if code not in pos or date not in data[code].index: continue
             px = float(data[code].loc[date].open) * (1-slip); q=pos[code]["qty"]
-            proceeds=q*px; fee=order_cost(proceeds); cash += proceeds-fee
+            proceeds=q*px; fee=order_cost(proceeds, include_slippage=False); cash += proceeds-fee
             basis=pos[code]["basis"]; trades.append({"code":code,"entry":pos[code]["entry_date"],"exit":str(date.date()),"pnl":proceeds-fee-basis})
             del pos[code]
         pending_sell=set()
@@ -118,7 +108,7 @@ def simulate(data, index, lots, p: Params, start, end, capital=20_000., slippage
             if len(pos)>=4 or code in pos or code in omit or date not in data[code].index: continue
             px=float(data[code].loc[date].open)*(1+slip); lot=lots[code]; q=int(budget//(px*lot))*lot
             if not q: continue
-            notional=q*px; fee=order_cost(notional)
+            notional=q*px; fee=order_cost(notional, include_slippage=False)
             if notional+fee<=cash:
                 cash-=notional+fee; pos[code]={"qty":q,"entry":px,"basis":notional+fee,"entry_date":str(date.date()),"bars":0,"peak":px,"atr":float(data[code].loc[date].atr14)}
         pending_buy=[]
@@ -151,7 +141,7 @@ def simulate(data, index, lots, p: Params, start, end, capital=20_000., slippage
     last=dates[-1]
     for code,h in list(pos.items()):
         if last not in data[code].index: continue
-        px=float(data[code].loc[last].close)*(1-slip); proceeds=h["qty"]*px; fee=order_cost(proceeds); cash+=proceeds-fee
+        px=float(data[code].loc[last].close)*(1-slip); proceeds=h["qty"]*px; fee=order_cost(proceeds, include_slippage=False); cash+=proceeds-fee
         trades.append({"code":code,"entry":h["entry_date"],"exit":str(last.date()),"pnl":proceeds-fee-h["basis"]})
     a=np.array([v for _,v in curve],float); pnl=[t["pnl"] for t in trades]
     gains=sum(v for v in pnl if v>0); losses=-sum(v for v in pnl if v<0)
@@ -218,7 +208,7 @@ def main():
     gate={"oos_trades_30":base["trade_count"]>=30,"pf_1_25":base["profit_factor"]>=1.25,"dd_under_15":base["max_drawdown_pct"]>=-15,
           "loo_all_positive":bool(loo) and min(x["return_pct"] for x in loo)>0,"stress_20bps_positive":stress_m["return_pct"]>0}
     gate["passed"]=all(gate.values())
-    report={"model":"annual walk-forward; prior 3y train, next year test","capital_hkd":20000,"cost_model":{"commission":"0.03%, min HKD3/order","platform_hkd_order":15,"stamp":"0.1% rounded up/order","statutory_rate_side":.000127,"slippage_bps_side":8},"folds":selections,
+    report={"model":"annual walk-forward; prior 3y train, next year test","capital_hkd":20000,"cost_model":MODEL_ID,"folds":selections,
             "oos":{k:v for k,v in base.items() if k!="trades"},"stress_20bps":{k:v for k,v in stress_m.items() if k!="trades"},"distinct_stocks":len(traded),"loo":loo,"gate":gate,"trades":base["trades"]}
     (ROOT/"walkforward_daily_results.json").write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
     print(json.dumps({k:report[k] for k in ("oos","stress_20bps","distinct_stocks","gate")},ensure_ascii=False,indent=2))

@@ -46,11 +46,24 @@ if (-not $openDReady -and -not $SkipOpenD) {
         (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\Futu_OpenD\Futu OpenD.lnk")
     )
     $openDShortcut = $openDShortcuts | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    $openDTarget = $null
     if ($openDShortcut) {
-        Start-Process -FilePath $openDShortcut
-        for ($attempt = 0; $attempt -lt 20; $attempt++) {
-            Start-Sleep -Milliseconds 500
-            if (Test-LocalPort -Port 11111) { $openDReady = $true; break }
+        $shell = New-Object -ComObject WScript.Shell
+        $openDTarget = $shell.CreateShortcut($openDShortcut).TargetPath
+    }
+    if (-not $openDTarget -or -not (Test-Path -LiteralPath $openDTarget)) {
+        $openDTarget = Join-Path $env:APPDATA "Futu_OpenD\Futu_OpenD.exe"
+    }
+    if (Test-Path -LiteralPath $openDTarget) {
+        try {
+            Start-Process -FilePath $openDTarget
+            for ($attempt = 0; $attempt -lt 20; $attempt++) {
+                Start-Sleep -Milliseconds 500
+                if (Test-LocalPort -Port 11111) { $openDReady = $true; break }
+            }
+        }
+        catch {
+            Write-Warning "Futu OpenD could not be started automatically: $($_.Exception.Message)"
         }
     }
 }

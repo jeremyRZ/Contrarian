@@ -33,3 +33,10 @@ def affordable_board_lot(price: float, budget: float, lot_size: int) -> int:
     while qty and price * qty + order_cost(price * qty) > budget:
         qty -= lot_size
     return max(qty, 0)
+
+
+def effective_rate(notional: float, slippage_bps: float = SLIPPAGE_BPS) -> float:
+    """One-side cost as a return fraction for vectorized research engines."""
+    value = abs(float(notional))
+    return ((order_cost(value, include_slippage=False) / value
+             + float(slippage_bps) / 10_000) if value else 0.0)

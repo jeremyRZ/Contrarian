@@ -10,6 +10,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from app.hk_costs import MODEL_ID
 from app.modules.supertrend_research import (SuperTrendParams, combine_states,
                                              evaluate_positions, supertrend)
 from app.modules.xiaomi_directional import DirectionalParams, desired_state, prepare
@@ -123,7 +124,7 @@ def main() -> None:
             "signal_time": "daily close",
             "execution_time": "next trading day open",
             "allocation_pct": 30,
-            "fee_bps_each_position_change": 12,
+            "cost_model": MODEL_ID,
             "slippage_bps_each_position_change": 8,
             "short_borrow_pct_annual": 8,
             "supertrend_grid": {"atr_period": [7, 10, 14, 20],

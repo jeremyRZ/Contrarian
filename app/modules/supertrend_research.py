@@ -10,6 +10,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from app.hk_costs import effective_rate
+
 
 @dataclass(frozen=True)
 class SuperTrendParams:
@@ -113,15 +115,18 @@ def combine_states(base: pd.Series, trend: pd.Series, mode: str) -> pd.Series:
 
 
 def evaluate_positions(bars: pd.DataFrame, desired: pd.Series, *,
-                       allocation: float = 0.30, fee_bps: float = 12,
+                       allocation: float = 0.30, fee_bps: float | None = None,
                        slippage_bps: float = 8,
+                       capital_hkd: float = 20_000,
                        annual_borrow_pct: float = 8) -> dict:
     """Evaluate close signals at the next open under the existing cost model."""
     position = desired.shift(1).fillna(0).astype(int)
     open_price = pd.to_numeric(bars["open"], errors="coerce")
     next_open_return = open_price.shift(-1) / open_price - 1
     turnover = position.diff().abs().fillna(position.abs())
-    costs = turnover * (fee_bps + slippage_bps) / 10_000 * allocation
+    rate = (effective_rate(capital_hkd * allocation, slippage_bps)
+            if fee_bps is None else (fee_bps + slippage_bps) / 10_000)
+    costs = turnover * rate * allocation
     borrow = (position < 0).astype(float) * annual_borrow_pct / 100 / 252 * allocation
     returns = (position * next_open_return * allocation - costs - borrow).iloc[:-1]
     returns = returns.dropna()

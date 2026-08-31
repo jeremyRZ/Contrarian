@@ -12,6 +12,8 @@
 
 默认 Python 环境为 `G:\Coding\envs\ContestTrade\python.exe`。配置放在 `config.yaml`；企业微信 Webhook 等凭证不要提交到 Git。
 
+独立守护使用 `install_watchdog_startup.ps1` 注册当前用户登录自启动，随后每5分钟检查网站与 OpenD、补跑遗漏的收盘任务并重试企业微信 outbox。运行状态写入 `.runtime/watchdog.json`。
+
 ## 正式港股策略
 
 - `xiaomi_trend_v1`：小米日线 MA20/MA60 趋势，50% 资金上限，整手执行。

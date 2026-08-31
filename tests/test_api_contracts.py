@@ -8,8 +8,7 @@ from app import api
 
 def test_health_payload_does_not_expose_account_id(monkeypatch):
     class FakeClient:
-        def connect(self):
-            return True, "connected"
+        def reachable(self): return True
 
     monkeypatch.setattr(api, "client", lambda: FakeClient())
     monkeypatch.setitem(api.CONFIG, "futu", {"host": "127.0.0.1", "port": 11111, "acc_id": "secret"})

@@ -7,6 +7,7 @@ next-open timing, exposure, transaction costs, and short borrow assumption.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +15,9 @@ import pandas as pd
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from app.hk_costs import MODEL_ID, effective_rate
 DATA = ROOT / ".universal_daily_60" / "HK_01810.csv"
 OUTPUT = ROOT / "data" / "xiaomi_signal_conflict_audit.json"
 
@@ -50,7 +54,7 @@ def evaluate(x: pd.DataFrame, desired: pd.Series, start: str) -> dict:
     turnover = position.diff().abs().fillna(position.abs())
     allocation = 0.30
     returns = position * next_open_return * allocation
-    returns -= turnover * 0.0020 * allocation
+    returns -= turnover * effective_rate(20_000 * allocation) * allocation
     returns -= (position < 0).astype(float) * 0.08 / 252 * allocation
     returns = returns.iloc[:-1]
     equity = (1 + returns).cumprod()
@@ -103,7 +107,7 @@ def main() -> None:
         "method": {
             "execution": "close signal, next open position",
             "allocation_pct": 30,
-            "fee_plus_slippage_bps_per_position_change": 20,
+            "cost_model": MODEL_ID,
             "short_borrow_pct_annual": 8,
         },
         "periods": {},

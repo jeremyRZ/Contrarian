@@ -132,6 +132,39 @@ def test_cache_refreshes_when_latest_completed_session_is_missing(tmp_path, monk
         strategy_center.datetime(2026, 8, 25, 7, 30)) is True
 
 
+def test_refresh_cache_fails_once_when_opend_is_down(tmp_path, monkeypatch):
+    meta = tmp_path / "refresh.json"
+    monkeypatch.setattr(strategy_center, "REFRESH_META_FILE", meta)
+    monkeypatch.setattr(strategy_center, "DAILY_DIR", tmp_path / "daily")
+    class Client:
+        def connect(self): return False, "OpenD down"
+        def stock_basicinfo(self): raise AssertionError("must not scan after failed preflight")
+    assert strategy_center._refresh_cache(Client()) == ["OpenD down"]
+    assert json.loads(meta.read_text(encoding="utf-8"))["errors"] == ["OpenD down"]
+
+
+def test_refresh_cache_stops_after_three_consecutive_symbol_failures(tmp_path, monkeypatch):
+    daily = tmp_path / "daily"
+    universe = tmp_path / "universe.csv"
+    meta = tmp_path / "refresh.json"
+    pd.DataFrame([{"code": "HK.00700"}]).to_csv(universe, index=False)
+    monkeypatch.setattr(strategy_center, "DAILY_DIR", daily)
+    monkeypatch.setattr(strategy_center, "UNIVERSE_FILE", universe)
+    monkeypatch.setattr(strategy_center, "REFRESH_META_FILE", meta)
+    monkeypatch.setattr(strategy_center, "_ensure_universe", lambda client, force=True: [])
+    class Client:
+        calls = 0
+        def connect(self): return True, "connected"
+        def close(self): pass
+        def history_kline(self, *args, **kwargs):
+            self.calls += 1
+            return None, "transport down"
+    client = Client()
+    errors = strategy_center._refresh_cache(client)
+    assert client.calls == 6
+    assert errors[-1] == "OpenD连续3个标的更新失败，本轮刷新已提前终止"
+
+
 def test_preopen_expected_session_skips_weekend(tmp_path, monkeypatch):
     path = tmp_path / "calendar.json"
     path.write_text(json.dumps({"sessions": {"2026-08-21": "WHOLE"}}), encoding="utf-8")

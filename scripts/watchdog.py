@@ -80,6 +80,8 @@ def run(recover: bool = True) -> dict:
                    f"OpenD={'正常' if open_d_ok else '故障'}；时间{now:%Y-%m-%d %H:%M:%S}")
         notify.push_if_new(f"watchdog:health:{now:%Y-%m-%d-%H}", message, webhook,
                            min_interval=3600)
+    else:
+        state.pop("last_error", None)
     periods = hk_calendar.periods(now.date())
     if periods and now >= datetime.combine(now.date(), periods[-1][1]) + timedelta(minutes=30):
         if web_ok and state.get("last_daily_catchup") != str(now.date()):
