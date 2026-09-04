@@ -50,6 +50,11 @@ schedule:
   enabled: true        # false 则关闭每日自动推送
   time: "16:30"        # 推送时间（本地时间，建议收盘后）
 
+# 独立守护：可配置 healthchecks.io 等外部 dead-man URL。
+# 外部服务在若干次心跳未到时报警，才能覆盖电脑关机或本机守护进程死亡。
+watchdog:
+  heartbeat_url: ""     # 也可使用环境变量 CONTRARIAN_HEARTBEAT_URL
+
 # 小米20交易日方向研究观察：只记录 BULLISH/BEARISH/NEUTRAL，不产生交易推送。
 xiaomi_directional:
   enabled: true

@@ -134,14 +134,22 @@ def _risk_position_size(entry: float, stop: float, lot_size: int, portfolio: dic
     qty_by_cash = affordable_board_lot(entry, allocation_budget, lot_size)
     qty = max(0, min(qty_by_risk, qty_by_cash))
     risk_hkd = qty * per_share_risk
+    one_lot_risk = per_share_risk * lot_size
+    if not qty:
+        reason = (f"一手止损风险HK${one_lot_risk:,.2f}超过1%风险预算HK${risk_budget:,.2f}"
+                  if qty_by_risk < lot_size else
+                  f"一手含费用金额超过可用配置资金HK${allocation_budget:,.2f}")
+    else:
+        reason = "按真实净资产、可用现金和止损距离计算"
     return {"qty": qty, "risk_hkd": risk_hkd,
             "risk_pct": risk_hkd / equity * 100 if equity else 0.0,
-            "reason": "按真实净资产、可用现金和止损距离计算"}
+            "risk_budget_hkd": risk_budget, "one_lot_risk_hkd": one_lot_risk,
+            "cash_budget_hkd": allocation_budget, "reason": reason}
 
 
-def _fixed_allocation_size(entry: float, lot_size: int, portfolio: dict | None,
-                           capital: float, allocation_pct: float) -> dict:
-    """Apply the frozen strategy's allocation contract without inventing a stop."""
+def _live_allocation_size(entry: float, lot_size: int, portfolio: dict | None,
+                          reference_capital: float, allocation_pct: float) -> dict:
+    """Size a recommendation from the current Futu equity and spendable HKD cash."""
     account = portfolio or {}
     cash, funds_error = _spendable_cash(account)
     if funds_error:
@@ -150,8 +158,9 @@ def _fixed_allocation_size(entry: float, lot_size: int, portfolio: dict | None,
                 "live_total_assets_hkd": account.get("total_assets"),
                 "post_trade_cash_hkd": None, "affordable": False,
                 "funds_source": account.get("funds_source"), "reason": funds_error}
-    budget = min(cash, float(capital) * float(allocation_pct) / 100)
     total_assets = account.get("total_assets")
+    equity = float(total_assets)
+    budget = min(cash, equity * float(allocation_pct) / 100)
     source = account.get("funds_source") or "PORTFOLIO_SNAPSHOT"
     if entry <= 0 or lot_size <= 0 or budget <= 0:
         return {"qty": 0, "estimated_amount_hkd": 0.0, "allocation_budget_hkd": budget,
@@ -162,19 +171,45 @@ def _fixed_allocation_size(entry: float, lot_size: int, portfolio: dict | None,
     estimated = max(qty, 0) * float(entry)
     estimated_cost = order_cost(estimated) if qty else 0.0
     return {"qty": max(qty, 0), "estimated_amount_hkd": estimated,
-            "allocation_budget_hkd": budget, "capital_hkd": float(capital),
+            "allocation_budget_hkd": budget, "capital_hkd": equity,
+            "contract_reference_capital_hkd": float(reference_capital),
             "allocation_pct": float(allocation_pct),
             "available_cash_hkd": cash, "live_total_assets_hkd": total_assets,
             "estimated_cost_hkd": round(estimated_cost, 2),
             "post_trade_cash_hkd": round(max(cash - estimated - estimated_cost, 0.0), 2),
             "affordable": qty > 0 and estimated + estimated_cost <= cash,
             "funds_source": source,
-            "reason": "按富途实时可用现金，并受冻结策略2万港币本金、50%配置和整手约束"}
+            "reason": "按富途实时总资产、港币可用购买力、策略配置比例和整手约束"}
+
+
+def _allocate_rotation_cash(candidates: list[dict], portfolio: dict,
+                            target_pct: float, max_positions: int) -> None:
+    """Make ranked reference quantities jointly affordable, in place."""
+    remaining, error = _spendable_cash(portfolio)
+    equity = float(portfolio.get("total_assets") or 0)
+    selected = 0
+    for item in candidates:
+        budget = min(remaining, equity * target_pct / 100) if not error else 0
+        qty = (affordable_board_lot(item["price"], budget, item["lot_size"])
+               if selected < max_positions else 0)
+        rejection = []
+        if selected >= max_positions:
+            rejection.append(f"排名未进入前{max_positions}")
+        elif qty <= 0:
+            rejection.append(f"剩余可配置现金HK${remaining:,.2f}不足一手")
+        else:
+            selected += 1
+            remaining -= item["price"] * qty + order_cost(item["price"] * qty)
+        item.update({"reference_qty": qty, "reference_amount": float(qty * item["price"]),
+                     "affordable": qty > 0, "rejection_reasons": rejection})
+        item["sizing"].update({"reference_qty": qty,
+                               "reference_amount_hkd": item["reference_amount"],
+                               "remaining_portfolio_cash_hkd": max(remaining, 0)})
 
 
 def _spendable_cash(account: dict, max_age_seconds: int = 120) -> tuple[float, str | None]:
     """Return settled HKD cash only when the aggregate snapshot is complete and fresh."""
-    if account.get("funds_complete") is not True:
+    if account.get("funds_complete") is not True or account.get("total_assets") is None:
         return 0.0, "账户资金快照不完整，禁止计算交易股数"
     raw = account.get("available_cash")
     stamp = account.get("funds_as_of")
@@ -282,7 +317,7 @@ def _apply_portfolio_gate(strategies: list[dict], gate: dict) -> None:
 
 
 def _apply_execution_conflicts(strategies: list[dict], portfolio: dict) -> None:
-    """Disclose derivative overlap without overriding a formal stock signal."""
+    """Require measurable Delta before combining stock and derivative exposure."""
     xiaomi = next((item for item in strategies
                    if item.get("id") == "xiaomi_trend_v1"), None)
     if not xiaomi or xiaomi.get("action") != "BUY":
@@ -299,20 +334,30 @@ def _apply_execution_conflicts(strategies: list[dict], portfolio: dict) -> None:
         current_delta_shares = float(holding.get("estimated_directional_exposure_hkd") or 0) / price
     projected_delta_shares = (current_delta_shares + proposed_qty
                               if current_delta_shares is not None else None)
+    delta_missing = current_delta_shares is None
     xiaomi["execution_conflict"] = {
         "type": "EXISTING_DERIVATIVE_EXPOSURE",
-        "blocking": False,
+        "blocking": delta_missing,
         "derivative_codes": [item.get("code") for item in derivatives],
         "current_delta_equivalent_shares": current_delta_shares,
         "proposed_stock_qty": proposed_qty,
         "projected_delta_equivalent_shares": projected_delta_shares,
-        "resolution": "正股正式计划保留；执行前同时查看期权造成的净Delta敞口",
+        "resolution": ("期权Delta缺失，不计算合并仓位，也不输出可执行股数"
+                       if delta_missing else "已计算现有期权与新增正股的合并Delta敞口"),
     }
     exposure = (f"当前Delta约{current_delta_shares:.0f}股，若买{proposed_qty}股后约"
                 f"{projected_delta_shares:.0f}股" if current_delta_shares is not None
                 else "现有期权Delta敞口无法完整核验")
-    xiaomi["reason"] = ("收盘价>MA60且MA20>MA60；正式正股计划为下一交易日开盘复核。"
-                        f"账户另有小米衍生品：{exposure}，该敞口只提示、不覆盖正股信号")
+    if delta_missing:
+        xiaomi["raw_action"] = xiaomi["action"]
+        xiaomi["raw_suggested_qty"] = proposed_qty
+        xiaomi["action"] = "BLOCKED"
+        xiaomi["suggested_qty"] = 0
+        xiaomi["reason"] = ("原始正股方向为BUY，但账户已有小米衍生品且Delta不可用；"
+                            "无法核验合并方向敞口，暂停给出股数")
+    else:
+        xiaomi["reason"] = ("收盘价>MA60且MA20>MA60；账户另有小米衍生品，"
+                            f"{exposure}；已保留合并敞口供执行前复核")
 
 
 def _apply_execution_timing(strategies: list[dict], now: datetime | None = None) -> None:
@@ -339,8 +384,9 @@ def _apply_execution_timing(strategies: list[dict], now: datetime | None = None)
     )
 
 
-def _action_queue(portfolio: dict, strategies: list[dict]) -> list[dict]:
+def _action_queue(portfolio: dict, strategies: list[dict], now: datetime | None = None) -> list[dict]:
     """Build one prioritized list so the user never has to reconcile panels manually."""
+    now = now or datetime.now()
     queue = []
     gate = portfolio.get("gate") or {}
     advisory_gate = bool(gate.get("disabled"))
@@ -356,12 +402,12 @@ def _action_queue(portfolio: dict, strategies: list[dict]) -> list[dict]:
             queue.append({"priority": 0, "level": "MUST", "action": "止损复核",
                           "code": holding["code"], "name": holding["name"],
                           "reason": position_risk.get("advice") or "已触发持仓止损规则",
-                          "deadline": "今日开盘优先复核", "allowed": True})
+                          "deadline": "下一交易时段优先复核", "allowed": True})
         elif holding.get("risk") == "止盈复核":
             queue.append({"priority": 1, "level": "SHOULD", "action": "止盈复核",
                           "code": holding["code"], "name": holding["name"],
                           "reason": position_risk.get("advice") or "已触发持仓止盈规则",
-                          "deadline": "今日", "allowed": True})
+                          "deadline": "下一交易时段复核", "allowed": True})
         elif holding.get("risk") == "集中度过高":
             queue.append({"priority": 1, "level": "SHOULD" if advisory_gate else "MUST", "action": "降低集中度",
                           "code": holding["code"], "name": holding["name"],
@@ -387,7 +433,10 @@ def _action_queue(portfolio: dict, strategies: list[dict]) -> list[dict]:
             queue.append({"priority": 2, "level": "SHOULD", "action": "方向敞口复核",
                           "code": "HK.01810", "name": "小米集团-W",
                           "reason": strategy.get("reason"), "deadline": "新增小米仓位前",
-                          "allowed": True, "execution_conflict": conflict})
+                          "allowed": not conflict.get("blocking", False),
+                          "execution_conflict": conflict})
+        if not strategy.get("actionable"):
+            continue
         if action == "SELL":
             queue.append({"priority": 1, "level": "MUST", "action": "卖出",
                           "code": "HK.01810" if strategy.get("id") == "xiaomi_trend_v1" else None,
@@ -398,10 +447,16 @@ def _action_queue(portfolio: dict, strategies: list[dict]) -> list[dict]:
             if not items and strategy.get("id") == "xiaomi_trend_v1":
                 qty = int(strategy.get("suggested_qty") or 0)
                 if qty:
+                    try:
+                        stamp = pd.Timestamp(strategy.get("as_of"))
+                        signal_date = now.date() if pd.isna(stamp) else stamp.date()
+                    except (TypeError, ValueError):
+                        signal_date = now.date()
                     queue.append({"priority": 3, "level": "OPPORTUNITY",
                                   "action": "买入复核", "code": "HK.01810",
                                   "name": "小米集团-W", "reason": strategy.get("reason"),
-                                  "deadline": "今日开盘复核", "allowed": True,
+                                  "deadline": ("下一交易日开盘复核" if signal_date >= now.date()
+                                               else "今日开盘复核"), "allowed": True,
                                   "suggested_qty": qty,
                                   "estimated_amount": qty * float(strategy.get("price") or 0),
                                   "trade_plan": strategy.get("trade_plan"),
@@ -1110,13 +1165,13 @@ def _xiaomi_status(positions: dict[str, float], portfolio: dict | None = None) -
         action, reason = ("HOLD", f"趋势仍有效；收盘跌破MA{exit_days}时退出，"
                           f"{trailing_pct:g}%高点回撤需有入场状态才能核验")
     elif entry_ok:
-        sizing = _fixed_allocation_size(float(latest.close), board_lot, portfolio, capital, allocation_pct)
+        sizing = _live_allocation_size(float(latest.close), board_lot, portfolio, capital, allocation_pct)
         qty = sizing["qty"]
         action, reason = "BUY" if qty else "WAIT", "收盘价>MA60且MA20>MA60；下一交易日开盘执行"
     else:
         action, reason = "WAIT", "小米趋势条件尚未同时成立"
     exit_reference = float(exit_ma)
-    sizing = (_fixed_allocation_size(float(latest.close), board_lot, portfolio, capital, allocation_pct)
+    sizing = (_live_allocation_size(float(latest.close), board_lot, portfolio, capital, allocation_pct)
               if action != "SELL" else {"qty": int(positions.get("HK.01810", 0)),
                                          "estimated_amount_hkd": None,
                                          "reason": "卖出全部现有持仓"})
@@ -1181,6 +1236,7 @@ def _rotation_status(positions: dict[str, float], portfolio: dict | None = None)
     latest_date = idx.index[-1]
     idx_ma200 = idx.close.rolling(market_ma_days).mean().iloc[-1]
     market_ok = idx.close.iloc[-1] > idx_ma200
+    market_distance_pct = (float(idx.close.iloc[-1]) / float(idx_ma200) - 1) * 100
     candidates = []
     filter_counts = {"history_or_date": 0, "outside_dynamic_pool": 0,
                      "turnover": 0, "price": 0, "below_ma200": 0,
@@ -1217,8 +1273,8 @@ def _rotation_status(positions: dict[str, float], portfolio: dict | None = None)
             continue
         filter_counts["passed"] += 1
         lot = lots[code]
-        sized = _fixed_allocation_size(float(r.close), lot, portfolio,
-                                       float(contract["capital_hkd"]), target_pct)
+        sized = _live_allocation_size(float(r.close), lot, portfolio,
+                                      float(contract["capital_hkd"]), target_pct)
         qty = int(sized["qty"])
         executable_qty = qty if market_ok else 0
         sizing = {**sized, "qty": executable_qty, "reference_qty": qty,
@@ -1240,6 +1296,7 @@ def _rotation_status(positions: dict[str, float], portfolio: dict | None = None)
                            "risk_reward": None, "validity": "仅正式调仓日执行排名退出"},
         })
     candidates.sort(key=lambda z: z["score"], reverse=True)
+    _allocate_rotation_cash(candidates, portfolio or {}, target_pct, max_positions)
     dates = list(idx.index)
     anchor = pd.Timestamp(contract["rebalance_anchor"])
     anchored_dates = [d for d in dates if d >= anchor]
@@ -1282,14 +1339,20 @@ def _rotation_status(positions: dict[str, float], portfolio: dict | None = None)
         item["sizing"]["qty"] = 0
         item["sizing"]["estimated_amount_hkd"] = 0.0
     action = "NO_TRADE"
-    reason = (f"仅观察：{len(candidates)}只股票通过筛选；轮动策略前向证据不足，"
-              "不生成正式交易指令")
+    feasible = sum(item["reference_qty"] > 0 for item in candidates[:max_positions])
+    reason = (f"仅观察：{len(candidates)}只通过个股筛选，其中{feasible}只可由当前现金整手配置；"
+              f"恒指距MA200为{market_distance_pct:+.2f}%，下次复核{trading_days_until_review}个交易日后")
     guard = _contract_guard("hk_liquid_trend_rotation_v2", _rotation_status,
                             str(latest_date.date()))
     return {
         "id": "hk_liquid_trend_rotation_v2", "name": "港股200日风险调整动量", "status": "历史候选·前向验证中",
         "as_of": str(latest_date.date()), "action": action, "reason": reason,
-        "market": {"hsi_close": float(idx.close.iloc[-1]), "hsi_ma200": float(idx_ma200), "eligible": bool(market_ok)},
+        "market": {"hsi_close": float(idx.close.iloc[-1]), "hsi_ma200": float(idx_ma200),
+                   "distance_to_ma_pct": market_distance_pct,
+                   "gate_state": ("OPEN" if market_ok else
+                                  "NEAR_THRESHOLD_BLOCKED" if market_distance_pct >= -.25
+                                  else "BLOCKED"),
+                   "eligible": bool(market_ok)},
         "is_review_day": is_review, "current_strategy_holdings": sorted(strategy_holdings),
         "last_review_date": str(prior_reviews[-1].date()) if prior_reviews else None,
         "next_review_date": "今天" if is_review else f"约{trading_days_until_review}个交易日后",
@@ -1398,9 +1461,12 @@ def _breakout_status(positions: dict[str, float], portfolio: dict | None = None)
         _write_state(BREAKOUT_POSITION_STATE_FILE, owned)
     guard = _contract_guard("hk_long_term_high_breakout_v1", _breakout_status,
                             str(date.date()))
+    breakout_reason = (f"发现{len(rows)}只突破候选；" +
+                       (str(rows[0]["sizing"]["reason"]) if rows else "当前没有合格突破") +
+                       "；仅进入每日发现报告")
     return {"id":"hk_long_term_high_breakout_v1","name":"港股长期新高突破","status":"观察验证中",
             "as_of":str(date.date()),"action":"NO_TRADE",
-            "reason":"仅观察：退出状态闭环和前向验证完成前不生成正式交易指令",
+            "reason":breakout_reason,
             "market_eligible":bool(market_ok),
             "candidates":rows[:int(portfolio_cfg["maximum_positions"])],
             "owned_positions": list(owned.values()),
@@ -1453,6 +1519,8 @@ def get_status(client, refresh: bool = False) -> dict:
                                   f"应更新至{freshness['expected_through']}；禁止据此交易")
     forward = forward_ledger.dashboard(limit=1000)
     forward_stats = {x["strategy_id"]: x for x in forward.get("strategy_stats", [])}
+    paper_stats = {x["strategy_id"]: x for x in
+                   (forward.get("paper_execution", {}).get("strategy_metrics") or [])}
     for strategy in strategies:
         stat = forward_stats.get(strategy.get("id"))
         strategy["forward_validation"] = stat or {"status": "COLLECTING", "mature_samples": 0}
@@ -1460,6 +1528,36 @@ def get_status(client, refresh: bool = False) -> dict:
             strategy["raw_action"] = strategy["action"]
             strategy["action"] = "BLOCKED"
             strategy["reason"] = "前向验证表现失效，策略已自动降级，暂停新增仓位"
+        metric = paper_stats.get(strategy.get("id"), {
+            "strategy_id": strategy.get("id"), "complete_round_trips": 0,
+            "realized_pnl_hkd": 0.0, "net_return_pct": 0.0,
+            "profit_factor": None, "max_drawdown_pct": 0.0,
+            "modeled_fill_deviation_bps": 8.0})
+        contract = strategy.get("strategy_contract") or {}
+        if not contract and strategy.get("id") in {
+                "xiaomi_trend_v1", "hk_liquid_trend_rotation_v2",
+                "hk_long_term_high_breakout_v1"}:
+            contract = _strategy_contract(strategy["id"])
+        gate = contract.get("promotion_gate") or {}
+        strategy["lifecycle"] = str(contract.get("lifecycle") or "RESEARCH").upper()
+        required = int(gate.get("minimum_complete_round_trips", 20))
+        blockers = []
+        if int(metric.get("complete_round_trips") or 0) < required:
+            blockers.append(f"完整模拟交易{int(metric.get('complete_round_trips') or 0)}/{required}")
+        if metric.get("complete_round_trips") and gate.get("require_positive_net_return", True) \
+                and float(metric.get("net_return_pct") or 0) <= 0:
+            blockers.append("扣费后收益未转正")
+        if metric.get("complete_round_trips") and float(metric.get("profit_factor") or 0) \
+                < float(gate.get("minimum_profit_factor", 1.2)):
+            blockers.append("盈利因子未达门槛")
+        if float(metric.get("max_drawdown_pct") or 0) \
+                < float(gate.get("maximum_drawdown_pct", -20)):
+            blockers.append("最大回撤超过门槛")
+        strategy["paper_validation"] = metric
+        strategy["promotion"] = {
+            "status": "READY_FOR_MANUAL_REVIEW" if not blockers else "COLLECTING",
+            "eligible": not blockers, "blockers": blockers,
+            "automatic_promotion": False}
     _apply_portfolio_gate(strategies, portfolio["gate"])
     _apply_execution_conflicts(strategies, portfolio)
     _apply_execution_timing(strategies)
@@ -1476,9 +1574,6 @@ def get_status(client, refresh: bool = False) -> dict:
             "observed_value_pct": None, "note": f"研究观察不可用：{exc}",
         }]
     universe_payload = _universe_payload()
-    forward_ledger.record_universe_snapshot(
-        universe_payload, next((s.get("as_of") for s in strategies if s.get("as_of")), None))
-    forward_ledger.record_rotation_shadow(strategies[1])
     rotation_codes = {x.get("code") for x in strategies[1].get("candidates", [])}
     breakout_codes = {x.get("code") for x in strategies[2].get("candidates", [])}
     for stock in universe_payload.get("stocks", []):
@@ -1494,7 +1589,8 @@ def get_status(client, refresh: bool = False) -> dict:
     payload = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "mode": "READ_ONLY_PAPER_ADVICE",
-        "capital_hkd": CAPITAL,
+        "capital_hkd": portfolio.get("total_assets"),
+        "research_reference_capital_hkd": CAPITAL,
         "universe": universe_payload,
         "portfolio": portfolio,
         "market_context": market_context,
@@ -1506,7 +1602,8 @@ def get_status(client, refresh: bool = False) -> dict:
         "refresh_errors": errors[:8],
         "data_freshness": {**freshness, "refresh_attempted_now": refresh_attempted},
         "signal_governance": signal_governance.governance_summary(
-            notification_configured=bool((load_config().get("wecom", {}) or {}).get("webhook"))),
+            notification_configured=bool((load_config().get("wecom", {}) or {}).get("webhook")),
+            strategies=strategies),
         "research_observations": research_observations,
         "strategies": strategies,
         "intraday": {

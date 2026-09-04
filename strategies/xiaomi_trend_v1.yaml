@@ -1,5 +1,6 @@
 strategy_id: xiaomi_trend_v1
 status: research_qualified
+lifecycle: PAPER_VALIDATING
 symbol: HK.01810
 capital_hkd: 20000
 data_frequency: daily
@@ -28,6 +29,12 @@ validation:
   test_max_drawdown_pct: -14.4996
   full_history_return_pct: 72.2844
   full_history_max_drawdown_pct: -18.3768
+promotion_gate:
+  minimum_complete_round_trips: 20
+  require_positive_net_return: true
+  minimum_profit_factor: 1.2
+  maximum_drawdown_pct: -20
+  maximum_fill_deviation_bps: 25
 notes:
   - Research result only; not connected to live order execution.
   - Half of account capital remains cash.

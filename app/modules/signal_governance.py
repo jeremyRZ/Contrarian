@@ -1,14 +1,9 @@
 """Governance for read-only strategy signals and trade notifications.
 
-Only strategies in ``PRODUCTION_STRATEGIES`` may create an actionable trade
-intent or a trade notification.  Research models can expose observations, but
-they cannot publish BUY/SELL language or override the production decision.
+Only manually approved ``PRODUCTION`` strategies may create an actionable
+trade intent or notification. Paper validation never promotes itself.
 """
 from __future__ import annotations
-
-PRODUCTION_STRATEGIES = {
-    "xiaomi_trend_v1": "小米专属趋势",
-}
 
 RESEARCH_MODELS = {
     "xiaomi_momentum_20d_v1": "小米20日方向观察",
@@ -32,12 +27,19 @@ ACTION_TO_INTENT = {
 def annotate_production_strategy(strategy: dict) -> dict:
     """Attach explicit decision authority and unambiguous trade semantics."""
     strategy_id = str(strategy.get("id") or "")
-    is_production = strategy_id in PRODUCTION_STRATEGIES
+    lifecycle = str(strategy.get("lifecycle") or "RESEARCH").upper()
+    is_production = lifecycle == "PRODUCTION"
     action = str(strategy.get("action") or "UNAVAILABLE").upper()
-    strategy["decision_role"] = "PRODUCTION" if is_production else "RESEARCH_ONLY"
-    strategy["trade_intent"] = ACTION_TO_INTENT.get(action, "NO_TRADE")
+    strategy["lifecycle"] = lifecycle
+    strategy["decision_role"] = "PRODUCTION" if is_production else lifecycle
+    strategy["observed_trade_intent"] = ACTION_TO_INTENT.get(action, "NO_TRADE")
+    strategy["trade_intent"] = (strategy["observed_trade_intent"]
+                                if is_production else "NO_TRADE")
     strategy["actionable"] = bool(is_production and action in {"BUY", "SELL", "REVIEW"})
-    strategy["decision_authority"] = "策略中心唯一正式信号源" if is_production else "无交易决策权"
+    strategy["decision_authority"] = (
+        "策略中心正式信号源" if is_production else
+        "仅影子验证，无真实交易决策权" if lifecycle == "PAPER_VALIDATING" else
+        "无交易决策权")
     return strategy
 
 
@@ -70,10 +72,10 @@ def production_notifications(status: dict) -> list[tuple[str, str]]:
     for strategy in status.get("strategies") or []:
         strategy_id = str(strategy.get("id") or "")
         action = str(strategy.get("action") or "").upper()
-        if strategy_id not in PRODUCTION_STRATEGIES or action not in {"BUY", "SELL", "REVIEW"}:
+        if not strategy.get("actionable") or strategy.get("lifecycle") != "PRODUCTION":
             continue
         as_of = str(strategy.get("as_of") or "unknown")
-        name = str(strategy.get("name") or PRODUCTION_STRATEGIES[strategy_id])
+        name = str(strategy.get("name") or strategy_id)
         intent = ACTION_TO_INTENT[action]
         lines = [
             f"**正式策略信号：{name}（{action}）**",
@@ -104,30 +106,54 @@ def watchlist_notifications(status: dict) -> list[tuple[str, str]]:
         return []
     rotation = next((item for item in status.get("strategies") or []
                      if item.get("id") == "hk_liquid_trend_rotation_v2"), None)
+    breakout = next((item for item in status.get("strategies") or []
+                     if item.get("id") == "hk_long_term_high_breakout_v1"), None)
     candidates = (rotation or {}).get("candidates") or []
-    if not rotation or not candidates:
+    breakouts = (breakout or {}).get("candidates") or []
+    if not rotation or (not candidates and not breakouts):
         return []
     top = candidates[:4]
     market = rotation.get("market") or {}
+    gap = market.get("distance_to_ma_pct")
     lines = [
-        f"**港股每日观察候选｜{rotation.get('as_of')}**",
-        ("恒指MA200门控通过；仍需等待正式调仓日。" if market.get("eligible")
-         else "恒指低于MA200；以下仅作观察，不执行买入。"),
+        f"**港股每日新股扫描｜{rotation.get('as_of')}**",
+        (f"恒指MA200门控通过；距离下次轮动复核{rotation.get('next_review_date') or '待定'}。"
+         if market.get("eligible") else
+         f"恒指低于MA200{abs(float(gap or 0)):.2f}%；以下仅作观察，不执行买入。"),
     ]
     for index, item in enumerate(top, 1):
+        qty = int(item.get("reference_qty") or 0)
+        amount = qty * float(item.get("price") or 0)
+        reject = (item.get("rejection_reasons") or
+                  (["组合可用现金无法同时容纳整手"] if not qty else []))
         lines.append(
             f"{index}. {item.get('name')}({item.get('code')})｜"
             f"200日动量{float(item.get('momentum_pct') or 0):+.1f}%｜"
-            f"风险调整分{float(item.get('score') or 0):.2f}")
-    lines.append("观察名单不是交易指令；只有正式调仓信号才进入执行队列。")
-    codes = "|".join(str(item.get("code")) for item in top)
+            f"风险调整分{float(item.get('score') or 0):.2f}｜"
+            + (f"资金参考{qty}股/HK${amount:,.0f}" if qty else
+               f"暂不可整手配置：{'；'.join(reject)}"))
+    for item in breakouts[:2]:
+        qty = int(item.get("reference_qty") or 0)
+        lines.append(
+            f"突破候选：{item.get('name')}({item.get('code')})｜"
+            f"放量{float(item.get('volume_ratio') or 0):.2f}倍｜"
+            + (f"资金参考{qty}股" if qty else
+               f"未给股数：{(item.get('sizing') or {}).get('reason') or '风险预算不允许一手'}"))
+    lines.append("这是每日发现报告，不是交易指令；正式动作仍需策略门槛和用户确认。")
+    codes = "|".join(str(item.get("code")) for item in [*top, *breakouts[:2]])
     return [(f"watchlist:hk_rotation:{rotation.get('as_of')}:{codes}", "\n".join(lines))]
 
 
-def governance_summary(*, notification_configured: bool) -> dict:
+def governance_summary(*, notification_configured: bool,
+                       strategies: list[dict] | None = None) -> dict:
+    lifecycles = {str(item.get("id")): str(item.get("lifecycle") or "RESEARCH")
+                  for item in (strategies or []) if item.get("id")}
+    production_ids = [key for key, value in lifecycles.items() if value == "PRODUCTION"]
     return {
         "source_of_truth": "strategy-center/status",
-        "production_strategy_ids": list(PRODUCTION_STRATEGIES),
+        "production_strategy_ids": production_ids,
+        "strategy_lifecycles": lifecycles,
+        "promotion_policy": "MANUAL_APPROVAL_AFTER_GATE",
         "research_model_ids": list(RESEARCH_MODELS),
         "sell_semantics": "EXIT_LONG_ONLY",
         "short_entries_enabled": False,

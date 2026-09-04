@@ -21,11 +21,12 @@ from app.futu_client import load_config  # noqa: E402
 STATE_FILE = ROOT / ".runtime" / "watchdog.json"
 HEALTH_URL = "http://127.0.0.1:8000/health"
 DAILY_URL = "http://127.0.0.1:8000/internal/daily-jobs"
+LOCK_PORT = 18777
 
 
-def _http(url: str, method: str = "GET") -> dict:
+def _http(url: str, method: str = "GET", timeout: int = 8) -> dict:
     request = urllib.request.Request(url, method=method)
-    with urllib.request.urlopen(request, timeout=8) as response:
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
@@ -35,6 +36,13 @@ def _port(port: int) -> bool:
             return True
     except OSError:
         return False
+
+
+def _heartbeat(url: str) -> None:
+    """Ping an external dead-man endpoint; it alerts when these pings stop."""
+    with urllib.request.urlopen(url, timeout=8) as response:
+        if response.status >= 400:
+            raise OSError(f"heartbeat HTTP {response.status}")
 
 
 def _state() -> dict:
@@ -56,6 +64,8 @@ def run(recover: bool = True) -> dict:
     config = load_config()
     webhook = (os.environ.get("CONTRARIAN_WECOM_WEBHOOK", "")
                or config.get("wecom", {}).get("webhook", ""))
+    heartbeat_url = (os.environ.get("CONTRARIAN_HEARTBEAT_URL", "")
+                     or config.get("watchdog", {}).get("heartbeat_url", ""))
     state = _state()
     web_ok = False
     try:
@@ -86,12 +96,21 @@ def run(recover: bool = True) -> dict:
     if periods and now >= datetime.combine(now.date(), periods[-1][1]) + timedelta(minutes=30):
         if web_ok and state.get("last_daily_catchup") != str(now.date()):
             try:
-                _http(DAILY_URL, "POST")
+                _http(DAILY_URL, "POST", timeout=180)
                 state["last_daily_catchup"] = str(now.date())
             except Exception as exc:  # noqa: BLE001
                 state["last_error"] = type(exc).__name__
     state.update({"checked_at": now.isoformat(timespec="seconds"),
                   "website_ok": web_ok, "opend_ok": open_d_ok})
+    if heartbeat_url:
+        try:
+            _heartbeat(heartbeat_url)
+            state["external_heartbeat_ok"] = True
+            state["external_heartbeat_at"] = now.isoformat(timespec="seconds")
+            state.pop("external_heartbeat_error", None)
+        except Exception as exc:  # noqa: BLE001
+            state["external_heartbeat_ok"] = False
+            state["external_heartbeat_error"] = type(exc).__name__
     _save(state)
     notify.retry_outbox(webhook)
     return state
@@ -104,6 +123,12 @@ if __name__ == "__main__":
     parser.add_argument("--no-recover", action="store_true")
     args = parser.parse_args()
     if args.loop:
+        lock = socket.socket()
+        try:
+            lock.bind(("127.0.0.1", LOCK_PORT))
+            lock.listen(1)
+        except OSError:
+            sys.exit(0)
         while True:
             try:
                 run(not args.no_recover)

@@ -125,9 +125,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     </section>
 
     <section class="strategy-desk">
-      <div class="desk-head"><strong>策略状态台</strong><span>仅小米趋势具有正式决策权；轮动和突破只观察</span></div>
+      <div class="desk-head"><strong>策略状态台</strong><span>真实仓位参考按富途实时资金计算；研究收益使用统一基准比较</span></div>
       <div class="strategy-row">
-        <div><span>小米专属趋势</span><small>正式 · HK.01810 · MA20 / MA60</small></div><b id="xm_action">暂无</b><span id="xm_metrics">暂无</span><span id="xm_reason">暂无</span>
+        <div><span>小米专属趋势</span><small>影子验证 · HK.01810 · MA20 / MA60</small></div><b id="xm_action">暂无</b><span id="xm_metrics">暂无</span><span id="xm_reason">暂无</span>
       </div>
       <div class="strategy-row">
         <div><span>200日风险调整动量</span><small>观察验证 · 不生成订单</small></div><b id="rot_action">暂无</b><span id="rot_metrics">暂无</span><span id="rot_reason">暂无</span>
@@ -195,7 +195,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     $('refresh_errors').innerHTML=(d.refresh_errors||[]).length?'<div class="terminal-warning">部分行情更新失败：'+d.refresh_errors.map(esc).join('；')+'</div>':'';
     const basis=(u.basis||[]).join('；'), filters=(u.daily_filters||[]).join(' → ');
     $('method_text').innerHTML='<b>全市场初筛</b><p>'+esc(basis)+'</p><b>策略二筛</b><p>'+esc(filters)+'</p><b>限制</b><p>'+esc(u.limitation||'暂无')+'</p>';
-    renderSectorFilters(); renderStocks(); renderStrategy('xm',xm,`现价 ${fmt(xm.price,2)} · MA20 ${fmt(xm.ma20,2)} · MA60 ${fmt(xm.ma60,2)}`);
+    renderSectorFilters(); renderStocks(); renderStrategy('xm',xm,`现价 ${fmt(xm.price,2)} · MA20 ${fmt(xm.ma20,2)} · MA60 ${fmt(xm.ma60,2)} · 实时资金参考 ${xm.suggested_qty||0}股（非指令）`);
     renderInvestorOverview();
     renderActionQueue(); renderHoldings(); renderTradePlans(); renderForwardScores(); renderExecution();
     renderStrategy('rot',rot,`恒指 ${fmt(rotMarket.hsi_close,0)} / MA200 ${fmt(rotMarket.hsi_ma200,0)} · 观察候选 ${(rot.candidates||[]).length} · 正式下单 ${(rot.orders||[]).length} · ${esc(rot.next_review_date||'')}`);
@@ -203,7 +203,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   }
   function renderIntegrity(){
     const d=CENTER_DATA,g=d.signal_governance||{},f=d.data_freshness||{},n=g.notification||{};
-    $('authority_source').textContent=g.source_of_truth==='strategy-center/status'?'正式策略中心':'不可确认';
+    const production=g.production_strategy_ids||[];$('authority_source').textContent=production.length?`正式策略 ${production.length}套`:'当前无正式信号源';
     $('authority_policy').textContent=g.research_can_override===false?'研究模型无覆盖权':'治理配置异常';
     $('freshness_status').textContent=f.status==='CURRENT'?'当前':'过期'; $('freshness_status').className=f.status==='CURRENT'?'integrity-ok':'integrity-bad';
     $('freshness_date').textContent=`最新 ${f.latest_date||'未知'} · 应至 ${f.expected_through||'未知'}`;
@@ -217,8 +217,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     $('xm_observation_note').textContent=o.note||'研究模型无交易决策权';
   }
   function renderStrategy(prefix,x,metrics){
-    const a=actionLabel[x.action]||x.action; $(prefix+'_action').textContent=a; $(prefix+'_action').className='action '+String(x.action||'').toLowerCase();
-    $(prefix+'_metrics').textContent=metrics; $(prefix+'_reason').textContent=x.reason||'暂无';
+    const a=actionLabel[x.action]||x.action, lifecycle=x.lifecycle==='PRODUCTION'?'正式':x.lifecycle==='PAPER_VALIDATING'?'影子验证':'研究';
+    $(prefix+'_action').textContent=(x.actionable?'':lifecycle+' · ')+a; $(prefix+'_action').className='action '+String(x.action||'').toLowerCase();
+    const paper=x.paper_validation||{};$(prefix+'_metrics').textContent=`${metrics} · 完整模拟 ${paper.complete_round_trips||0}/20`;
+    $(prefix+'_reason').textContent=x.reason||'暂无';
   }
   function renderInvestorOverview(){
     const valid=STOCKS.filter(x=>x.change_rate!=null&&!isNaN(x.change_rate));
@@ -249,14 +251,16 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   }
   function renderTradePlans(){
     const strategies=CENTER_DATA.strategies||[], plans=[];
-    const rotation=strategies.find(s=>s.id==='hk_liquid_trend_rotation_v2');
-    (rotation?.orders||[]).forEach(x=>plans.push({strategy:rotation.name,code:x.code,name:x.name,action:x.action,reason:x.reason,plan:{trigger:(rotation.candidates||[]).find(c=>c.code===x.code)?.price,stop:null,target:null,risk_reward:null,validity:'仅正式调仓日，人工确认后执行'}}));
     strategies.filter(s=>s.decision_role==='PRODUCTION').forEach(s=>{if(s.trade_plan&&s.actionable&&['BUY','SELL'].includes(s.action))plans.push({strategy:s.name,code:s.id==='xiaomi_trend_v1'?'HK.01810':'',name:s.id==='xiaomi_trend_v1'?'小米集团-W':s.name,action:s.action,reason:s.reason,plan:s.trade_plan});if(s.actionable&&['BUY','REVIEW'].includes(s.action))(s.proposed||s.candidates||[]).forEach(x=>{if(x.trade_plan)plans.push({strategy:s.name,code:x.code,name:x.name,action:s.action,reason:s.reason,plan:x.trade_plan})})});
     $('trade_plan_rows').innerHTML=plans.length?plans.map(x=>`<div class="trade-plan"><div><b>${esc(x.name)}</b><small>${esc(x.code)} · ${esc(x.strategy)}</small></div><span class="action ${String(x.action).toLowerCase()}">${actionLabel[x.action]||x.action}</span><dl><div><dt>触发价</dt><dd>${fmt(x.plan.trigger,3)}</dd></div><div><dt>${x.plan.stop_type==='DAILY_CLOSE_BELOW_MA20'?'MA20退出参考':'止损价'}</dt><dd>${fmt(x.plan.stop,3)}</dd></div><div><dt>目标价</dt><dd>${x.plan.target==null?'不设固定目标':fmt(x.plan.target,3)}</dd></div><div><dt>退出规则</dt><dd>${x.plan.stop_type==='DAILY_CLOSE_BELOW_MA20'?'收盘破MA20 / 高点回撤15%':x.plan.risk_reward==null?'策略规则':fmt(x.plan.risk_reward,1)+':1'}</dd></div></dl><p>${esc(x.reason||'')} · ${esc(x.plan.validity||'')}</p></div>`).join(''):'<div class="no-plan"><b>当前没有可执行交易</b><span>市场门控或策略条件未通过。保持现金不是遗漏，而是当前策略动作。</span></div>';
   }
   function renderExecution(){
     const p=CENTER_DATA.paper_execution||{};
-    $('execution_summary').innerHTML=`<div class="forward-score"><div><b>点时股票池</b><small>${p.snapshot_days||0}个交易日 · ${p.snapshot_rows||0}条</small></div><span>影子订单 <b>${p.order_count||0}</b></span><span>${esc(p.note||'')}</span></div>`;
+    const metrics=p.strategy_metrics||[], orders=(p.orders||[]).slice(0,5), coverage=p.point_in_time_coverage||{};
+    const summary=`<div class="forward-score"><div><b>研究验证基准 HK$${Number(p.shadow_capital_hkd||20000).toLocaleString()}</b><small>仅计算策略可比收益，不用于建议股数 · 点时股票池 ${coverage.first_date||'尚未开始'} 至 ${coverage.last_date||'—'} · ${p.snapshot_days||0}日</small></div><span>影子订单 <b>${p.order_count||0}</b></span><span>${esc(p.note||'')}</span></div>`;
+    const metricRows=metrics.map(x=>`<div class="forward-score"><div><b>${esc(x.strategy_id)}</b><small>完整往返 ${x.complete_round_trips||0}</small></div><span>已实现 <b class="${marketClass(x.realized_pnl_hkd)}">HK$ ${signed(x.realized_pnl_hkd,2)}</b></span><span>PF ${x.profit_factor==null?'—':fmt(x.profit_factor,2)} · 回撤 ${fmt(x.max_drawdown_pct,2)}%</span></div>`).join('');
+    const orderRows=orders.length?`<div class="forward-score"><div><b>最近影子订单</b><small>${orders.map(x=>`${x.signal_date} ${x.code} ${x.action} ${Math.abs(x.difference_qty)}股 · ${x.status==='WAITING_FILL'?'待下一开盘':x.status==='MATURE'?'20日到期':'已锁定成交'}`).join('；')}</small></div></div>`:'';
+    $('execution_summary').innerHTML=summary+metricRows+orderRows;
   }
   function renderForwardScores(){
     const f=CENTER_DATA.forward_scoreboard||{}, rows=f.strategy_stats||[];

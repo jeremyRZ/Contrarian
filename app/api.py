@@ -114,11 +114,26 @@ def _daily_jobs():
     """Record research, but publish trade language from one canonical source only."""
     notify.retry_outbox(_webhook())
     status = strategy_center.get_status(client(), refresh=True)
+    signal_date = next((item.get("as_of") for item in status.get("strategies", [])
+                        if item.get("as_of")), None)
+    forward_ledger.record_universe_snapshot(status.get("universe", {}), signal_date)
+    rotation = next((item for item in status.get("strategies", [])
+                     if item.get("id") == "hk_liquid_trend_rotation_v2"), None)
+    if rotation:
+        forward_ledger.record_rotation_shadow(rotation)
+    xiaomi = next((item for item in status.get("strategies", [])
+                   if item.get("id") == "xiaomi_trend_v1"), None)
+    if xiaomi:
+        forward_ledger.record_xiaomi_shadow(xiaomi)
+    forward_ledger.settle_paper_orders()
     forward_ledger.record_status(status)
     forward_ledger.record_supertrend_exit_shadow()
     report = daily_report.run_daily_report(client(), _webhook(),
                                            funds_note=_funds_note(status.get("portfolio")))
     for fingerprint, message in signal_governance.production_notifications(status):
+        notify.push_if_new(fingerprint, message + "\n" + _funds_note(status.get("portfolio")),
+                           _webhook(), min_interval=86_400)
+    for fingerprint, message in signal_governance.watchlist_notifications(status):
         notify.push_if_new(fingerprint, message + "\n" + _funds_note(status.get("portfolio")),
                            _webhook(), min_interval=86_400)
     # Xiaomi momentum and option selectors remain readable research endpoints.

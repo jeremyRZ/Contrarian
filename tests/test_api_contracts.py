@@ -62,10 +62,13 @@ def test_daily_job_publishes_only_canonical_strategy_notifications(monkeypatch):
     monkeypatch.setattr(api.strategy_center, "get_status", lambda *_args, **_kwargs: status)
     monkeypatch.setattr(api.forward_ledger, "record_status", lambda _status: None)
     monkeypatch.setattr(api.forward_ledger, "record_supertrend_exit_shadow", lambda: None)
+    monkeypatch.setattr(api.forward_ledger, "settle_paper_orders", lambda: None)
     monkeypatch.setattr(api.daily_report, "run_daily_report", lambda *_args, **_kwargs: {"ok": True})
     monkeypatch.setattr(api, "_funds_note", lambda *_args: "实时资金测试快照")
     monkeypatch.setattr(api.signal_governance, "production_notifications",
                         lambda _status: [("production:test", "formal")])
+    monkeypatch.setattr(api.signal_governance, "watchlist_notifications",
+                        lambda _status: [("watchlist:test", "daily discoveries")])
     monkeypatch.setattr(api.notify, "push_if_new",
                         lambda fp, text, *_args, **_kwargs: pushed.append((fp, text)))
     monkeypatch.setattr(api.xiaomi_directional, "notification",
@@ -76,7 +79,41 @@ def test_daily_job_publishes_only_canonical_strategy_notifications(monkeypatch):
     result = api._daily_jobs()
 
     assert result == {"ok": True}
-    assert pushed == [("production:test", "formal\n实时资金测试快照")]
+    assert pushed == [
+        ("production:test", "formal\n实时资金测试快照"),
+        ("watchlist:test", "daily discoveries\n实时资金测试快照"),
+    ]
+
+
+def test_daily_job_is_the_only_writer_of_strategy_snapshots(monkeypatch):
+    status = {"universe": {"stocks": [{"code": "HK.01810"}]}, "portfolio": {},
+              "strategies": [
+                  {"id": "xiaomi_trend_v1", "as_of": "2026-09-04"},
+                  {"id": "hk_liquid_trend_rotation_v2", "as_of": "2026-09-04"},
+              ]}
+    calls = []
+    monkeypatch.setattr(api.strategy_center, "get_status", lambda *_args, **_kwargs: status)
+    monkeypatch.setattr(api.notify, "retry_outbox", lambda *_args: None)
+    monkeypatch.setattr(api.forward_ledger, "record_universe_snapshot",
+                        lambda universe, date: calls.append(("universe", date)))
+    monkeypatch.setattr(api.forward_ledger, "record_rotation_shadow",
+                        lambda strategy: calls.append(("rotation", strategy["id"])))
+    monkeypatch.setattr(api.forward_ledger, "record_xiaomi_shadow",
+                        lambda strategy: calls.append(("xiaomi", strategy["id"])))
+    monkeypatch.setattr(api.forward_ledger, "settle_paper_orders",
+                        lambda: calls.append(("settle", True)))
+    monkeypatch.setattr(api.forward_ledger, "record_status",
+                        lambda value: calls.append(("status", value is status)))
+    monkeypatch.setattr(api.forward_ledger, "record_supertrend_exit_shadow", lambda: None)
+    monkeypatch.setattr(api.daily_report, "run_daily_report", lambda *_args, **_kwargs: {"ok": True})
+    monkeypatch.setattr(api, "_funds_note", lambda *_args: "test funds")
+    monkeypatch.setattr(api.signal_governance, "production_notifications", lambda _status: [])
+
+    assert api._daily_jobs() == {"ok": True}
+    assert calls == [("universe", "2026-09-04"),
+                     ("rotation", "hk_liquid_trend_rotation_v2"),
+                     ("xiaomi", "xiaomi_trend_v1"), ("settle", True),
+                     ("status", True)]
 
 
 def test_position_risk_notification_includes_live_position_and_funds(monkeypatch):

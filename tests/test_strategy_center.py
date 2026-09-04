@@ -116,6 +116,12 @@ def test_breakout_strategy_is_exposed_read_only(monkeypatch):
     monkeypatch.setattr(strategy_center, "_xiaomi_status", lambda p: {"id": "x"})
     monkeypatch.setattr(strategy_center, "_rotation_status", lambda p: {"id": "r"})
     monkeypatch.setattr(strategy_center, "_breakout_status", lambda p: {"id": "b", "action": "WAIT"})
+    monkeypatch.setattr(strategy_center.forward_ledger, "record_universe_snapshot",
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                            AssertionError("GET status wrote the forward ledger")))
+    monkeypatch.setattr(strategy_center.forward_ledger, "record_rotation_shadow",
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                            AssertionError("GET status wrote the forward ledger")))
     result = strategy_center.get_status(object(), refresh=False)
     assert [x["id"] for x in result["strategies"]] == ["x", "r", "b"]
 
@@ -252,27 +258,54 @@ def test_risk_position_size_uses_equity_cash_and_stop(monkeypatch):
     assert result["risk_pct"] == 1.0
 
 
-def test_xiaomi_fixed_allocation_uses_frozen_contract_and_board_lot():
-    result = strategy_center._fixed_allocation_size(
-        entry=27.50, lot_size=200, portfolio=_fresh_funds(50_000),
-        capital=20_000, allocation_pct=50.0)
-    assert result["qty"] == 200
-    assert result["estimated_amount_hkd"] == 5500
-    assert result["allocation_budget_hkd"] == 10_000
-    assert result["estimated_cost_hkd"] == 29.10
-    assert result["post_trade_cash_hkd"] == 44_470.90
+def test_xiaomi_allocation_uses_live_equity_and_board_lot():
+    result = strategy_center._live_allocation_size(
+        entry=27.50, lot_size=200, portfolio=_fresh_funds(50_000, 50_000),
+        reference_capital=20_000, allocation_pct=50.0)
+    assert result["qty"] == 800
+    assert result["estimated_amount_hkd"] == 22_000
+    assert result["allocation_budget_hkd"] == 25_000
+    assert result["capital_hkd"] == 50_000
+    assert result["contract_reference_capital_hkd"] == 20_000
+    assert result["estimated_cost_hkd"] == 63.99
+    assert result["post_trade_cash_hkd"] == 27_936.01
     assert result["affordable"] is True
 
 
-def test_xiaomi_fixed_allocation_uses_live_cash_before_frozen_budget():
-    result = strategy_center._fixed_allocation_size(
+def test_xiaomi_allocation_uses_live_cash_and_live_equity():
+    result = strategy_center._live_allocation_size(
         entry=27.50, lot_size=200,
         portfolio={**_fresh_funds(5000, 8000),
                    "funds_source": "ALL_MATCHING_HK_REAL_ACCOUNTS"},
-        capital=20_000, allocation_pct=50.0)
+        reference_capital=20_000, allocation_pct=50.0)
     assert result["qty"] == 0
     assert result["available_cash_hkd"] == 5000
     assert result["affordable"] is False
+
+
+def test_rotation_cash_is_allocated_once_across_ranked_candidates():
+    candidates = [
+        {"price": 7.0, "lot_size": 1000, "sizing": {}},
+        {"price": 6.0, "lot_size": 1000, "sizing": {}},
+    ]
+    strategy_center._allocate_rotation_cash(
+        candidates, _fresh_funds(9500, 33600), target_pct=25, max_positions=4)
+    assert candidates[0]["reference_qty"] == 1000
+    assert candidates[1]["reference_qty"] == 0
+    assert "剩余可配置现金" in candidates[1]["rejection_reasons"][0]
+
+
+def test_risk_sizing_explains_when_one_board_lot_exceeds_risk_budget(monkeypatch):
+    monkeypatch.setattr(strategy_center, "_risk_settings", lambda: {
+        "portfolio_gate_enabled": False, "min_cash_pct": 15,
+        "max_single_position_pct": 30, "max_leveraged_position_pct": 15,
+        "max_trade_risk_pct": 1,
+    })
+    result = strategy_center._risk_position_size(
+        67.6, 57.5, 100, _fresh_funds(9509, 33643), 20)
+    assert result["qty"] == 0
+    assert "一手止损风险" in result["reason"]
+    assert result["one_lot_risk_hkd"] == pytest.approx(1010)
 
 
 def test_portfolio_gate_converts_buy_to_blocked():
@@ -303,15 +336,39 @@ def test_existing_xiaomi_put_discloses_exposure_without_overriding_stock_signal(
     assert strategies[0]["execution_conflict"]["projected_delta_equivalent_shares"] == -80
 
 
+def test_missing_option_delta_blocks_stock_qty_but_keeps_raw_direction():
+    strategies = [{"id": "xiaomi_trend_v1", "action": "BUY", "price": 25.0,
+                   "suggested_qty": 200, "reason": "趋势成立"}]
+    portfolio = {"underlyings": [{"code": "HK.01810",
+        "delta_exposure_available": False,
+        "derivatives": [{"code": "HK.MIU260929P26000"}]}]}
+    strategy_center._apply_execution_conflicts(strategies, portfolio)
+    assert strategies[0]["raw_action"] == "BUY"
+    assert strategies[0]["action"] == "BLOCKED"
+    assert strategies[0]["suggested_qty"] == 0
+    assert strategies[0]["execution_conflict"]["blocking"] is True
+
+
 def test_execution_overlap_and_buy_are_both_visible_in_action_queue():
     conflict = {"type": "EXISTING_DERIVATIVE_EXPOSURE"}
     strategies = [{"id": "xiaomi_trend_v1", "name": "小米专属趋势", "price": 25,
                    "action": "BUY", "suggested_qty": 200, "reason": "期权方向重叠",
-                   "execution_conflict": conflict, "trade_plan": {"trigger": 25}}]
+                   "actionable": True, "execution_conflict": conflict,
+                   "trade_plan": {"trigger": 25}}]
     queue = strategy_center._action_queue(
         {"underlyings": [], "gate": {"allow_new_risk": True}}, strategies)
     assert [item["action"] for item in queue] == ["方向敞口复核", "买入复核"]
     assert all(item["allowed"] is True for item in queue)
+
+
+def test_after_close_signal_never_says_today_open():
+    strategies = [{"id": "xiaomi_trend_v1", "name": "小米专属趋势", "price": 28,
+                   "action": "BUY", "as_of": "2026-09-04", "suggested_qty": 200,
+                   "actionable": True, "reason": "收盘信号"}]
+    queue = strategy_center._action_queue(
+        {"underlyings": [], "gate": {"allow_new_risk": True}}, strategies,
+        now=strategy_center.datetime(2026, 9, 4, 19, 0))
+    assert queue[0]["deadline"] == "下一交易日开盘复核"
 
 
 def test_xiaomi_next_open_entry_expires_after_ten_without_erasing_signal():
@@ -355,6 +412,7 @@ def test_action_queue_includes_single_stock_xiaomi_buy():
                  "gate": {"allow_new_risk": True, "settings": {"min_cash_pct": 15}}}
     strategies = [{"id": "xiaomi_trend_v1", "action": "BUY",
                    "name": "小米专属趋势", "reason": "趋势成立", "price": 27.82,
+                   "actionable": True,
                    "suggested_qty": 200, "sizing": {"risk_pct": 0.9},
                    "trade_plan": {"stop": 26.36}}]
 

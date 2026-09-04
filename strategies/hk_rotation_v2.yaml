@@ -1,5 +1,6 @@
 strategy_id: hk_liquid_trend_rotation_v2
 status: forward_validation
+lifecycle: PAPER_VALIDATING
 market: HK
 capital_hkd: 20000
 data_frequency: daily

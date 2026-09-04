@@ -12,7 +12,7 @@
 
 默认 Python 环境为 `G:\Coding\envs\ContestTrade\python.exe`。配置放在 `config.yaml`；企业微信 Webhook 等凭证不要提交到 Git。
 
-独立守护使用 `install_watchdog_startup.ps1` 注册当前用户登录自启动，随后每5分钟检查网站与 OpenD、补跑遗漏的收盘任务并重试企业微信 outbox。运行状态写入 `.runtime/watchdog.json`。
+一键启动会同时启动单实例 Watchdog；`install_watchdog_startup.ps1` 可额外注册当前用户登录自启动。Watchdog 每5分钟检查网站与 OpenD、补跑遗漏的收盘任务并重试企业微信 outbox，状态写入 `.runtime/watchdog.json`。如需覆盖电脑关机或守护进程死亡，在本机 `config.yaml` 的 `watchdog.heartbeat_url`（或环境变量 `CONTRARIAN_HEARTBEAT_URL`）填写外部 dead-man 服务地址；未配置外部地址时，本机进程死亡无法自行报警。
 
 ## 正式港股策略
 

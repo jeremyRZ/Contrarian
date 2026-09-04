@@ -26,13 +26,16 @@ DATA = ROOT / ".research_daily_150"
 
 
 def load_data():
-    universe = pd.read_csv(DATA / "universe.csv")
+    data_dir = DATA if (DATA / "universe.csv").exists() else ROOT / ".universal_daily_60"
+    universe_path = (DATA / "universe.csv" if (DATA / "universe.csv").exists()
+                     else ROOT / ".universal_daily" / "research_universe_60.csv")
+    universe = pd.read_csv(universe_path)
     # Exclude RMB dual-counter 8xxxx codes so one issuer cannot enter twice.
     universe = universe[~universe.code.astype(str).str.match(r"HK\.8\d{4}$")]
     lots = {str(row.code): int(row.lot_size) for _, row in universe.iterrows()}
     names = {str(row.code): str(row["name"]) for _, row in universe.iterrows()}
     frames = {}
-    for path in DATA.glob("HK_*.csv"):
+    for path in data_dir.glob("HK_*.csv"):
         frame = pd.read_csv(path)
         if frame.empty or "code" not in frame:
             continue
@@ -44,7 +47,7 @@ def load_data():
         close = frame.close.astype(float)
         frame["turn20"] = frame.turnover.astype(float).rolling(20).mean()
         frames[code] = frame
-    index = pd.read_csv(DATA / "HK_800000.csv")
+    index = pd.read_csv(data_dir / "HK_800000.csv")
     index.time_key = pd.to_datetime(index.time_key)
     index = index.sort_values("time_key").drop_duplicates("time_key", keep="last").set_index("time_key")
     return frames, index, lots, names
@@ -109,7 +112,8 @@ def empty_result(capital: float = 20_000.) -> dict:
 
 
 def simulate(data, index, lots, p: Params, start, end, capital=20_000.,
-             slippage_bps=8., omit=None, daily_market_exit: bool = False) -> dict:
+             slippage_bps=8., omit=None, daily_market_exit: bool = False,
+             market_buffer_pct: float = 0., market_confirm_days: int = 1) -> dict:
     omit = set(omit or [])
     dates = [d for d in index.index if start <= d <= end]
     if not dates:
@@ -152,8 +156,12 @@ def simulate(data, index, lots, p: Params, start, end, capital=20_000.,
         value = cash + sum(h["qty"] * float(data[c].loc[date].close)
                            for c, h in positions.items() if date in data[c].index)
         curve.append((date, value))
-        market_ok = (date in index.index and np.isfinite(index.loc[date, f"rot_ma{p.market_ma}"])
-                     and float(index.loc[date].close) > float(index.loc[date, f"rot_ma{p.market_ma}"]))
+        location = index.index.get_loc(date)
+        first = location - max(int(market_confirm_days), 1) + 1
+        window = index.iloc[max(first, 0):location + 1]
+        threshold = window[f"rot_ma{p.market_ma}"] * (1 + market_buffer_pct / 100)
+        market_ok = (len(window) == max(int(market_confirm_days), 1)
+                     and threshold.notna().all() and (window.close > threshold).all())
         if daily_market_exit and not market_ok and positions and date != dates[-1]:
             pending_targets = []
         elif day_no % p.rebalance == 0 and date != dates[-1]:

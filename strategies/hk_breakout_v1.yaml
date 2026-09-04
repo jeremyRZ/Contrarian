@@ -1,5 +1,6 @@
 strategy_id: hk_long_term_high_breakout_v1
 status: research_qualified
+lifecycle: PAPER_VALIDATING
 market: HK
 capital_hkd: 20000
 direction: long_only

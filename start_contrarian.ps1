@@ -6,9 +6,11 @@ param(
 $ErrorActionPreference = "Stop"
 $ProjectRoot = $PSScriptRoot
 $PythonPath = "G:\Coding\envs\ContestTrade\python.exe"
+$PythonwPath = "G:\Coding\envs\ContestTrade\pythonw.exe"
 $DashboardUrl = "http://127.0.0.1:8000/strategy-center.html"
 $HealthUrl = "http://127.0.0.1:8000/health"
 $RuntimeDir = Join-Path $ProjectRoot ".runtime\launcher"
+$ServerPidFile = Join-Path $RuntimeDir "server.pid"
 
 function Test-LocalPort {
     param([int]$Port, [int]$TimeoutMs = 400)
@@ -77,8 +79,25 @@ catch { $serverReady = $false }
 
 if (-not $serverReady) {
     if (Test-LocalPort -Port 8000) {
-        Show-LauncherMessage "Port 8000 is already used by another application."
-        exit 1
+        $ownedServer = $null
+        if (Test-Path -LiteralPath $ServerPidFile) {
+            $savedPid = 0
+            if ([int]::TryParse((Get-Content -LiteralPath $ServerPidFile -Raw).Trim(), [ref]$savedPid)) {
+                $candidate = Get-Process -Id $savedPid -ErrorAction SilentlyContinue
+                if ($candidate -and $candidate.Path -eq $PythonPath) { $ownedServer = $candidate }
+            }
+        }
+        if (-not $ownedServer) {
+            Show-LauncherMessage "Port 8000 is occupied by a process not owned by Contrarian. It was not stopped."
+            exit 1
+        }
+        Stop-Process -Id $ownedServer.Id -Force
+        $ownedServer.WaitForExit(5000) | Out-Null
+        Remove-Item -LiteralPath $ServerPidFile -Force -ErrorAction SilentlyContinue
+        if (Test-LocalPort -Port 8000) {
+            Show-LauncherMessage "The previous Contrarian process did not release port 8000."
+            exit 1
+        }
     }
 
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
@@ -88,6 +107,7 @@ if (-not $serverReady) {
         -ArgumentList @("-m", "uvicorn", "app.api:app", "--host", "127.0.0.1", "--port", "8000") `
         -WorkingDirectory $ProjectRoot -WindowStyle Hidden `
         -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog -PassThru
+    Set-Content -LiteralPath $ServerPidFile -Value $server.Id -Encoding ascii
 
     for ($attempt = 0; $attempt -lt 40; $attempt++) {
         Start-Sleep -Milliseconds 500
@@ -116,6 +136,11 @@ if (-not $NoBrowser) {
         Show-LauncherMessage "Contrarian is ready, but Futu OpenD port 11111 is not ready. Sign in to Futu OpenD, then refresh the page."
     }
 }
+
+# The watchdog owns a localhost lock, so starting it on every launch is safe.
+Start-Process -FilePath $PythonwPath `
+    -ArgumentList @((Join-Path $ProjectRoot "scripts\watchdog.py"), "--loop") `
+    -WorkingDirectory $ProjectRoot -WindowStyle Hidden
 
 Write-Output "CONTRARIAN_READY"
 Write-Output "DASHBOARD=$DashboardUrl"
