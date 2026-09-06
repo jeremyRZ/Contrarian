@@ -31,7 +31,17 @@ def _send_wecom(text: str, webhook: str = "", timeout: int = 5) -> tuple[bool, s
         r = requests.post(webhook, json={"msgtype": "markdown", "markdown": {"content": text}},
                           timeout=timeout)
         if r.status_code == 200:
-            return True, "HTTP_200"
+            try:
+                payload = r.json()
+            except (ValueError, TypeError):
+                logger.error("[WeCom-失败] HTTP 200 但响应不是有效 JSON")
+                return False, "INVALID_JSON"
+            errcode = payload.get("errcode")
+            if errcode == 0:
+                return True, "WECOM_ERR_0"
+            logger.error("[WeCom-失败] errcode=%s errmsg=%s",
+                         errcode, str(payload.get("errmsg", ""))[:120])
+            return False, f"WECOM_ERR_{errcode}"
         logger.error("[WeCom-失败] HTTP %s: %s", r.status_code, r.text[:200])
         return False, f"HTTP_{r.status_code}"
     except Exception as exc:  # noqa: BLE001
