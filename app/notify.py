@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
+import re
 
 import requests
 
@@ -20,6 +21,24 @@ logger = logging.getLogger("hk-notify")
 # fingerprint -> 上次成功推送的时间戳
 _LAST_PUSH: dict[str, float] = {}
 _DEFAULT_INTERVAL = 600  # 同指纹最短推送间隔（秒）
+
+
+def _suppressed(fingerprint: str, text: str) -> bool:
+    from .futu_client import load_config
+
+    policy = load_config().get("notifications", {}) or {}
+    codes = set(re.findall(r"\bHK\.\d{5}\b", fingerprint + " " + text))
+    muted = set(policy.get("muted_codes") or [])
+    is_risk = (fingerprint.startswith("daily-div:")
+               or any(label in text for label in ("持仓风险", "持仓预警", "每日持仓资金面背离扫描")))
+    return bool(codes & muted or (is_risk and policy.get("risk_alerts_enabled") is False))
+
+
+def _skip_muted(fingerprint: str, text: str) -> bool:
+    if not _suppressed(fingerprint, text):
+        return False
+    notification_ledger.record(fingerprint, text, "SUPPRESSED", detail="USER_NOTIFICATION_POLICY")
+    return True
 
 
 def _send_wecom(text: str, webhook: str = "", timeout: int = 5) -> tuple[bool, str]:
@@ -54,6 +73,8 @@ def _send_wecom(text: str, webhook: str = "", timeout: int = 5) -> tuple[bool, s
 def push_wecom(text: str, webhook: str = "", timeout: int = 5) -> bool:
     """推送 markdown 消息到企业微信群机器人。无 webhook 时降级为日志，返回是否真正推送。"""
     fingerprint = "direct:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+    if _skip_muted(fingerprint, text):
+        return False
     ok, detail = _send_wecom(text, webhook, timeout)
     notification_ledger.record(fingerprint, text, "SENT" if ok else "FAILED", detail=detail)
     if not ok:
@@ -64,6 +85,8 @@ def push_wecom(text: str, webhook: str = "", timeout: int = 5) -> bool:
 def push_if_new(fingerprint: str, text: str, webhook: str = "",
                 min_interval: int = _DEFAULT_INTERVAL, *, title: str = "Contrarian交易提醒") -> bool:
     """指纹去重推送：同一指纹在 min_interval 内只推一次，避免重复轰炸。"""
+    if _skip_muted(fingerprint, text):
+        return False
     now = time.time()
     last = _LAST_PUSH.get(fingerprint)
     if last and (now - last) < min_interval:
@@ -90,6 +113,9 @@ def retry_outbox(webhook: str, limit: int = 20) -> dict:
     """Retry persisted messages with exponential backoff."""
     sent = failed = 0
     for item in notification_ledger.due(limit):
+        if _skip_muted(item["fingerprint"], item["message"]):
+            notification_ledger.mark_suppressed(item["id"])
+            continue
         ok, detail = _send_wecom(item["message"], webhook)
         notification_ledger.record(item["fingerprint"], item["message"],
                                    "SENT" if ok else "RETRY_FAILED", detail=detail)

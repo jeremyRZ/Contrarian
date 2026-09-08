@@ -1,0 +1,15 @@
+[Unit]
+Description=Contrarian independent strategy research and forward validation
+Wants=network-online.target
+After=network-online.target futu-opend.service contrarian.service
+
+[Service]
+Type=oneshot
+User=admin
+WorkingDirectory=/home/admin/Contrarian
+Environment=PYTHONUNBUFFERED=1
+UMask=0077
+Nice=10
+TimeoutStartSec=1800
+ExecStart=/home/admin/Contrarian/.venv/bin/python /home/admin/Contrarian/scripts/collect_strategy_research.py --source /home/admin/Contrarian --output /home/admin/contrarian-research/.runtime/strategy-research/input
+ExecStart=/home/admin/Contrarian/.venv/bin/python /home/admin/Contrarian/scripts/research_strategy_lab.py --input /home/admin/contrarian-research/.runtime/strategy-research/input --output /home/admin/contrarian-research/.runtime/strategy-research

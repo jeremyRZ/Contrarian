@@ -16,11 +16,15 @@ def execution_phase(now: datetime) -> str:
 def build(status: dict, *, now: datetime | None = None,
           option_review: dict | None = None, live_price: float | None = None) -> dict | None:
     now = now or datetime.now()
+    if (status.get("mode") != "READ_ONLY_PAPER_ADVICE"
+            or (status.get("data_freshness") or {}).get("status") != "CURRENT"):
+        return None
     xiaomi = next((item for item in status.get("strategies", [])
                    if item.get("id") == "xiaomi_trend_v1"), None)
-    if not xiaomi:
+    if (not xiaomi or xiaomi.get("lifecycle") != "PRODUCTION"
+            or not xiaomi.get("actionable")):
         return None
-    action = str(xiaomi.get("raw_action") or xiaomi.get("action") or "").upper()
+    action = str(xiaomi.get("action") or "").upper()
     if action not in {"BUY", "SELL"}:
         return None
     as_of = str(xiaomi.get("as_of") or "unknown")

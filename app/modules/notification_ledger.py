@@ -110,6 +110,12 @@ def mark_delivered(item_id: int) -> None:
                    (now, int(item_id)))
 
 
+def mark_suppressed(item_id: int) -> None:
+    with _connect() as db:
+        db.execute("UPDATE notification_outbox SET status='SUPPRESSED' WHERE id=?",
+                   (int(item_id),))
+
+
 def mark_failed(item_id: int, attempts: int, error: str) -> None:
     attempts = int(attempts) + 1
     delay = min(3600, 30 * (2 ** min(attempts - 1, 7)))

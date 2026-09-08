@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Contrarian research after the HK market close
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 17:10:00 Asia/Shanghai
+Persistent=true
+AccuracySec=1min
+Unit=contrarian-research.service
+
+[Install]
+WantedBy=timers.target

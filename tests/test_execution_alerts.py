@@ -4,11 +4,13 @@ from app.modules import execution_alerts
 
 
 def _status():
-    return {"portfolio": {"cash": 20911.4, "total_assets": 33185.4,
+    return {"mode": "READ_ONLY_PAPER_ADVICE", "data_freshness": {"status": "CURRENT"},
+            "portfolio": {"cash": 20911.4, "total_assets": 33185.4,
                            "funds_source": "ALL_MATCHING_HK_REAL_ACCOUNTS",
                            "matching_accounts": 2, "active_accounts": 1},
             "strategies": [{
         "id": "xiaomi_trend_v1", "action": "BUY", "as_of": "2026-08-25",
+        "lifecycle": "PRODUCTION", "actionable": True,
         "price": 27.76, "suggested_qty": 200,
         "execution_conflict": {"current_delta_equivalent_shares": -279,
                                "projected_delta_equivalent_shares": -79},
@@ -54,3 +56,19 @@ def test_buy_alert_is_blocked_when_live_cash_is_insufficient():
         status, now=datetime(2026, 8, 26, 9, 35), live_price=28)
     assert "现金不足，禁止执行" in alert["message"]
     assert alert["funding"]["affordable"] is False
+
+
+def test_paper_stale_and_blocked_signals_cannot_generate_execution_reminders():
+    for lifecycle in ("PAPER_VALIDATING", "RESEARCH", None):
+        status = _status()
+        status["strategies"][0]["lifecycle"] = lifecycle
+        assert execution_alerts.build(status) is None
+    status = _status()
+    status["data_freshness"]["status"] = "STALE"
+    assert execution_alerts.build(status) is None
+    status = _status()
+    status["strategies"][0].update(action="BLOCKED", raw_action="BUY")
+    assert execution_alerts.build(status) is None
+    status = _status()
+    status["strategies"][0]["actionable"] = False
+    assert execution_alerts.build(status) is None

@@ -45,6 +45,11 @@ screener:
 wecom:
   webhook: ""
 
+# 通知偏好只影响推送，不修改持仓、选股或交易判断。
+notifications:
+  risk_alerts_enabled: true
+  muted_codes: []
+
 # 每日持仓资金面背离报告自动推送（后端内置调度器，进程常驻即按点推送）
 schedule:
   enabled: true        # false 则关闭每日自动推送
