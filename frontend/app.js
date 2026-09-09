@@ -74,6 +74,7 @@ function openAnalyze(code) {
   links.innerHTML = `
     <a href="index.html" data-section="home">今日</a>
     <a href="index.html#portfolio" data-section="portfolio">组合</a>
+    <a href="options.html" data-section="options">期权</a>
     <a href="markets.html" data-section="markets">研究</a>
     <a href="forward.html" data-section="forward">验证</a>`;
 

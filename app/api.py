@@ -28,6 +28,7 @@ from .modules import valuation, monitor, ipo, price_alert, analyze, buybacks, ne
 from .markets import cn_lot_size, cn_price_limit, get_market_rules, resolve_security
 from .providers import MarketDataRouter, TigerPositionsProvider
 from . import hk_calendar, scheduler, intraday_scheduler, notify
+from .modules import option_workspace
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
@@ -853,7 +854,35 @@ def _formal_execution_run():
 def _start_intraday_scheduler():
     """Run formal execution reminders plus risk checks; no intraday entry invention."""
     intraday_scheduler.start(CONFIG.get("intraday", {}) or {},
-                             [_formal_execution_run, _price_alert_run, _position_risk_run])
+                             [_formal_execution_run, _price_alert_run, _position_risk_run, _options_run])
+
+
+def _options_run():
+    from datetime import datetime, timezone
+    previous = option_workspace.cached().get("generated_at")
+    if previous and (datetime.now(timezone.utc) - datetime.fromisoformat(previous)).total_seconds() < 1800:
+        return {"scan_type": "options", "skipped": True}
+    data = option_workspace.refresh(client(), CONFIG)
+    return {"scan_type": "options", "candidates": len(data["candidates"])}
+
+
+@app.get("/api/options-workspace")
+def get_options_workspace():
+    data = option_workspace.cached()
+    data["notifications"] = {"configured": bool(_webhook()), "enabled": False,
+                             "note": "期权摘要推送尚未开启；此页可直接查看扫描结果。"}
+    return _wrap(data, None)
+
+
+@app.post("/api/options-workspace/refresh")
+def refresh_options_workspace():
+    def run():
+        try:
+            option_workspace.refresh(client(), CONFIG)
+        except Exception:
+            pass  # Failure is exposed in scan_error by the workspace.
+    threading.Thread(target=run, daemon=True, name="option-workspace").start()
+    return {"ok": True, "data": {"requested": True}}
 
 
 # 托管前端（/ 必须在 API 路由之后）

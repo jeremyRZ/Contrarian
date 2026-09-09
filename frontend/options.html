@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>港股期权 · Contrarian</title><link rel="stylesheet" href="app.css"><link rel="icon" href="favicon.ico">
+<style>.option-controls{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin:18px 0}.option-controls input,.option-controls select{padding:8px;max-width:160px}.option-table{overflow-x:auto}.option-table table{min-width:1250px}#summary,#notice{white-space:pre-line;line-height:1.8}td small{display:block}.topnav .links{flex-wrap:wrap}</style></head>
+<body data-page="options">
+<nav class="topnav"><div class="brand"><img src="logo.png" alt="Contrarian" class="logo-img"></div><div class="links"></div><div id="conn" class="status bad">检测中…</div></nav>
+<main class="page"><div class="page-head"><h1>港股期权</h1><p>Call 与 Put · 多标的合约比较与持续报价追踪</p></div>
+<section class="card"><div class="card-head"><div class="card-title">扫描与消息状态</div><button id="refresh" class="act">更新行情</button></div><div id="summary">读取中…</div><div id="notice"></div></section>
+<section class="card"><div class="option-controls"><label>方向 <select id="side"><option value="">Call + Put</option><option>CALL</option><option>PUT</option></select></label><label>每张权利金上限 HK$ <input id="budget" type="number" min="1" placeholder="未设定"></label><label><input id="liquid" type="checkbox">仅看流动性达标</label></div><p>买入金额按卖一 × 合约乘数；盈亏平衡价为持有至到期的价格，均未含手续费。报价回报按首次双边卖一买入、当前买一退出计算，不代表实际成交或策略收益。快照采集时间不等于盘口更新时间。</p><div id="rows" class="option-table"></div></section>
+<section class="card"><div class="card-title">最近消息记录</div><p>“企业微信已接受”表示机器人接口返回 errcode=0，不等于用户已读。</p><div id="messages">读取中…</div></section></main>
+<script src="app.js"></script><script>
+let data={candidates:[]};
+function render(){
+ const budget=Number($('budget').value),side=$('side').value;
+ const rows=(data.candidates||[]).filter(r=>(!side||r.side===side)&&(!budget||(r.premium!=null&&r.premium<=budget))&&(!$('liquid').checked||r.liquidity_pass));
+ $('rows').innerHTML=rows.length?`<table><thead><tr><th>标的 / 合约</th><th>方向 / 到期</th><th>买一 / 卖一</th><th>每张 HK$ / 乘数</th><th>行权 / 平衡价</th><th>价差</th><th>Delta / IV</th><th>Theta / 张</th><th>成交 / 持仓</th><th>报价回报</th><th>筛选状态</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.name)}<small>${esc(r.underlying)} · ${esc(r.code)}</small><small>最近成交 ${esc(r.last_trade_time)}</small></td><td>${esc(r.side)}<small>${esc(r.expiry)} / ${r.dte}天</small></td><td>${fmt(r.bid,3)} / ${fmt(r.ask,3)}</td><td>${fmt(r.premium)}<small>乘数 ${r.multiplier}</small></td><td>${fmt(r.strike)} / ${fmt(r.breakeven_at_expiry)}</td><td>${fmt(r.spread_pct)}%</td><td>${fmt(r.delta)} / ${fmt(r.iv_pct)}%</td><td>${fmt(r.theta_per_contract)}</td><td>${r.volume} / ${r.open_interest}</td><td>${r.quote_return_pct==null?'等待后续报价':fmt(r.quote_return_pct)+'%'}<small>${esc(r.first_two_sided_at||'尚无基准')}</small></td><td>${r.liquidity_pass?'流动性达标，待方向策略验证':esc(r.reasons.join('；'))}</td></tr>`).join('')}</tbody></table>`:'当前筛选无合约；可取消过滤条件或更新行情。';
+}
+async function load(){try{
+ const response=await fetch('/api/options-workspace');if(!response.ok)throw Error('行情接口 '+response.status);const j=await response.json();if(!j.ok)throw Error(j.error);data=j.data;
+ $('summary').textContent=data.generated_at?`采集时间 ${new Date(data.generated_at).toLocaleString('zh-CN',{timeZone:'Asia/Hong_Kong'})}（香港）\n港股期权标的 ${data.underlying_total} 个；成交量前 ${data.ranked_contracts} 份合约；14–90天候选 ${data.candidates.length} 份；流动性达标 ${data.liquidity_pass_count} 份。持续追踪 ${data.tracked_contracts} 份，最多保留最近500份未到期合约进入后续扫描。`:'尚未采集，点击“更新行情”。';
+ $('notice').textContent=(data.scanning?'正在扫描…\n':'')+(data.scan_error?'扫描失败：'+data.scan_error+'\n':'')+(data.notifications?.configured?'企业微信机器人已配置。':'未配置企业微信机器人。')+(data.notifications?.note||'');
+ $('refresh').disabled=data.scanning;render();
+ }catch(e){$('summary').textContent='读取失败：'+e.message;}}
+$('refresh').onclick=async()=>{try{$('refresh').disabled=true;const r=await fetch('/api/options-workspace/refresh',{method:'POST'});if(!r.ok)throw Error('扫描请求失败');$('notice').textContent='扫描已请求…';}catch(e){$('notice').textContent=e.message;}finally{setTimeout(load,1500);}};
+['side','budget','liquid'].forEach(id=>$(id).addEventListener('input',render));
+async function messages(){try{const j=await(await fetch('/api/notification-ledger?limit=10')).json();if(!j.ok)throw Error(j.error);$('messages').innerHTML=j.data.records.length?j.data.records.map(r=>`<p>${esc(r.attempted_at)} · ${esc(r.detail==='WECOM_ERR_0'?'企业微信已接受':r.status+' / '+r.detail)}<br>${esc(r.message)}</p>`).join(''):'尚无发送记录。';}catch(e){$('messages').textContent='消息记录读取失败：'+e.message;}}
+load();messages();setInterval(load,10000);
+</script></body></html>

@@ -264,6 +264,28 @@ class FutuClient:
         except Exception as e:  # noqa: BLE001
             return None, str(e)
 
+    def option_rankings(self, market: str = "HK", count: int = 200):
+        """Native option-volume rankings, independent of the cash-stock pool."""
+        if market not in {"HK", "US"}:
+            return None, "仅支持HK或US期权市场"
+        ok, error = self._ensure_quote()
+        if not ok:
+            return None, error
+        try:
+            option_market = ft.OptionMarket.HK_SECURITY if market == "HK" else ft.OptionMarket.US_SECURITY
+            ret, underlyings, _, total = self._quote.get_option_underlying_rank(
+                option_market, ft.UnderlyingRankSortType.VOLUME, count=30)
+            if ret != ft.RET_OK:
+                return None, str(underlyings)
+            ret, contracts, _, contract_total = self._quote.get_option_rank(
+                option_market, ft.OptionRankType.VOLUME, count=min(200, max(1, count)))
+            if ret != ft.RET_OK:
+                return None, str(contracts)
+            return {"underlyings": underlyings, "contracts": contracts,
+                    "underlying_total": int(total), "contract_total": int(contract_total)}, None
+        except Exception as exc:
+            return None, type(exc).__name__
+
     def option_expiration_dates(self, code: str) -> Tuple[Optional[object], Optional[str]]:
         """Available option expiries for an underlying; read-only quote request."""
         ok, msg = self._ensure_quote()

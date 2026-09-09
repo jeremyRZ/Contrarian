@@ -24,7 +24,7 @@ def test_intraday_scheduler_runs_formal_execution_before_price_risk(monkeypatch)
     captured = []
     monkeypatch.setattr(api.intraday_scheduler, "start", lambda cfg, fns: captured.extend(fns))
     api._start_intraday_scheduler()
-    assert captured == [api._formal_execution_run, api._price_alert_run, api._position_risk_run]
+    assert captured == [api._formal_execution_run, api._price_alert_run, api._position_risk_run, api._options_run]
 
 
 def test_formal_execution_run_pushes_time_aware_alert(monkeypatch):
