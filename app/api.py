@@ -859,18 +859,39 @@ def _start_intraday_scheduler():
 
 def _options_run():
     from datetime import datetime, timezone
-    previous = option_workspace.cached().get("generated_at")
+    data = option_workspace.cached()
+    previous = data.get("generated_at")
     if previous and (datetime.now(timezone.utc) - datetime.fromisoformat(previous)).total_seconds() < 1800:
-        return {"scan_type": "options", "skipped": True}
-    data = option_workspace.refresh(client(), CONFIG)
-    return {"scan_type": "options", "candidates": len(data["candidates"])}
+        pass
+    else:
+        data = option_workspace.refresh(client(), CONFIG)
+    pushed = _publish_options_digest(data)
+    return {"scan_type": "options", "candidates": len(data["candidates"]), "pushed": int(pushed)}
+
+
+def _publish_options_digest(data):
+    from datetime import datetime, timedelta, timezone
+    if not (CONFIG.get("option_workspace", {}) or {}).get("notifications_enabled", False):
+        return False
+    if not data.get("candidates") or data.get("scan_error"):
+        return False
+    now = datetime.now(timezone(timedelta(hours=8)))
+    if not data.get("generated_at") or (now - datetime.fromisoformat(data["generated_at"])).total_seconds() > 3600:
+        return False
+    # One summary per HK morning/afternoon session, persisted across restarts.
+    slot = "AM" if now.hour < 12 else "PM"
+    return notify.push_if_new(f"options-digest:{now.date()}:{slot}",
+                              option_workspace.digest(data), _webhook(),
+                              min_interval=86400, title="港股期权候选摘要")
 
 
 @app.get("/api/options-workspace")
 def get_options_workspace():
     data = option_workspace.cached()
-    data["notifications"] = {"configured": bool(_webhook()), "enabled": False,
-                             "note": "期权摘要推送尚未开启；此页可直接查看扫描结果。"}
+    enabled = bool((CONFIG.get("option_workspace", {}) or {}).get("notifications_enabled", False))
+    data["notifications"] = {"configured": bool(_webhook()), "enabled": enabled,
+                             "note": ("期权摘要已开启：交易日上午、下午各至多一条。" if enabled else
+                                      "期权摘要推送尚未开启；此页可直接查看扫描结果。")}
     return _wrap(data, None)
 
 

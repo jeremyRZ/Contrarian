@@ -5,6 +5,27 @@ import pytest
 from app.modules import option_workspace as w
 
 
+def test_digest_delivery_requires_enabled_fresh_candidates(monkeypatch):
+    from app import api
+    from datetime import timezone, timedelta
+    sent = []
+    monkeypatch.setattr(api.notify, "push_if_new", lambda *a, **k: sent.append((a, k)) or True)
+    monkeypatch.setattr(w, "digest", lambda data: "summary")
+    monkeypatch.setattr(api, "_webhook", lambda: "test-webhook")
+    settings = {"notifications_enabled": False}
+    monkeypatch.setitem(api.CONFIG, "option_workspace", settings)
+    data = {"candidates": [{}], "generated_at": datetime.now(timezone.utc).isoformat()}
+    assert not api._publish_options_digest(data)
+    settings["notifications_enabled"] = True
+    assert not api._publish_options_digest({**data, "candidates": []})
+    assert not api._publish_options_digest({**data, "scan_error": "failed"})
+    assert not api._publish_options_digest({**data, "generated_at": (datetime.now(timezone.utc)-timedelta(hours=2)).isoformat()})
+    assert api._publish_options_digest(data)
+    assert len(sent) == 1
+    assert sent[0][0][0].startswith("options-digest:")
+    assert sent[0][1]["min_interval"] == 86400
+
+
 def quote(**changes):
     return {"code": "HK.TEST", "stock_owner": "HK.00700", "option_type": "CALL",
             "strike_time": "2026-10-29", "option_contract_multiplier": 100,
